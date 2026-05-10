@@ -1,0 +1,29 @@
+{
+  "title": "Documentos",
+  "checklist": "Checklist de Documentos",
+  "upload_document": "Enviar Documento",
+  "approve": "Aprovar",
+  "reject": "Reprovar",
+  "pending_review": "Aguardando Revisão",
+  "rejection_reason": "Motivo da Reprovação",
+  "expiry_date": "Data de Validade",
+  "file_name": "Nome do Arquivo",
+  "file_size": "Tamanho",
+  "reviewed_by": "Revisado por",
+  "reviewed_at": "Revisado em",
+  "status": {
+    "pendente": "Pendente",
+    "enviado": "Enviado",
+    "aprovado": "Aprovado",
+    "reprovado": "Reprovado",
+    "expirado": "Expirado"
+  },
+  "templates": "Templates de Documentos",
+  "new_template": "Novo Template",
+  "mandatory": "Obrigatório",
+  "optional": "Opcional",
+  "no_documents": "Nenhum documento",
+  "upload_success": "Documento enviado com sucesso",
+  "upload_error": "Erro ao enviar documento",
+  "select_file": "Selecionar arquivo"
+}

@@ -1,0 +1,223 @@
+/* Ueno Assessoria — Design Tokens & Base */
+:root {
+  /* Brand */
+  --ueno-navy-900: #0F1F4D;
+  --ueno-navy-800: #1E3A8A;   /* primary */
+  --ueno-navy-700: #2A4BB0;
+  --ueno-navy-600: #3B5BD9;
+  --ueno-navy-100: #E6ECFB;
+  --ueno-navy-50:  #F2F5FD;
+
+  --ueno-accent-green: #2BA84A;   /* derived from BR flag, used sparingly */
+  --ueno-accent-red:   #D7263D;
+  --ueno-accent-amber: #E0A700;
+
+  /* Neutrals — cool tinted */
+  --ink-900: #0B1020;
+  --ink-700: #2A3142;
+  --ink-500: #5A6478;
+  --ink-400: #8A93A6;
+  --ink-300: #B7BECD;
+  --ink-200: #DDE2EC;
+  --ink-100: #EEF1F7;
+  --ink-50:  #F6F8FC;
+  --paper:   #FFFFFF;
+
+  /* Status */
+  --ok: #16A34A;
+  --warn: #D97706;
+  --err: #DC2626;
+
+  /* Radii & shadow */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --shadow-sm: 0 1px 2px rgba(15,31,77,.06), 0 1px 1px rgba(15,31,77,.04);
+  --shadow-md: 0 8px 24px rgba(15,31,77,.08), 0 2px 6px rgba(15,31,77,.05);
+  --shadow-lg: 0 20px 60px rgba(15,31,77,.18);
+
+  /* Type */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: 'Inter', sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+body { margin: 0; font-family: var(--font-sans); color: var(--ink-900); }
+
+/* ─── iOS phone shell (no chrome — just the canvas) ─── */
+.phone {
+  width: 360px;
+  height: 760px;
+  background: var(--paper);
+  border-radius: 36px;
+  overflow: hidden;
+  position: relative;
+  font-family: var(--font-sans);
+  color: var(--ink-900);
+  display: flex;
+  flex-direction: column;
+  box-shadow: inset 0 0 0 1px rgba(15,31,77,.06);
+}
+
+/* iOS status bar */
+.statusbar {
+  height: 44px;
+  padding: 14px 22px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-feature-settings: "tnum";
+  color: var(--ink-900);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.statusbar.light { color: white; }
+.statusbar .right {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+.statusbar .right svg { display: block; }
+
+/* Home indicator */
+.home-indicator {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-900);
+  opacity: .35;
+  z-index: 50;
+}
+.home-indicator.light { background: white; opacity: .5; }
+
+/* App content area */
+.app-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tab bar */
+.tabbar {
+  height: 78px;
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--ink-100);
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 8px 22px;
+  flex-shrink: 0;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-400);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 0;
+  position: relative;
+}
+.tab.active { color: var(--ueno-navy-800); }
+.tab .ico {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Generic */
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll::-webkit-scrollbar { display: none; }
+
+.card {
+  background: white;
+  border-radius: var(--r-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--ink-100);
+}
+
+.btn-primary {
+  background: var(--ueno-navy-800);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 16px;
+  font-weight: 600;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+  letter-spacing: -0.01em;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.h-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+}
+.h-section {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-500);
+  margin: 0 0 10px 0;
+}
+
+/* Brand background — Ueno logo as watermark */
+.bg-brand {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(155deg, var(--ueno-navy-900) 0%, var(--ueno-navy-800) 55%, var(--ueno-navy-700) 100%);
+  overflow: hidden;
+}
+.bg-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 90%, rgba(59,91,217,.4) 0%, transparent 50%);
+}
+
+/* small dotted divider */
+.dot-sep {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .4;
+  display: inline-block;
+}

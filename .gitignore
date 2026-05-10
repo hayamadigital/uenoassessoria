@@ -1,0 +1,39 @@
+node_modules/
+.turbo/
+dist/
+build/
+.expo/
+*.tsbuildinfo
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Compiled output
+functions/lib/
+
+# Secrets
+service-account.json
+*.serviceAccountKey.json
+
+# Claude Code local settings (não commitar)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Expo
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/

@@ -1,0 +1,20 @@
+{
+  "title": "Notificações",
+  "mark_all_read": "Marcar todas como lidas",
+  "no_notifications": "Nenhuma notificação",
+  "unread": "Não lidas",
+  "read": "Lidas",
+  "new_notification": "Nova Notificação",
+  "send_to": "Enviar para",
+  "message": "Mensagem",
+  "type": {
+    "agendamento": "Agendamento",
+    "documento": "Documento",
+    "pagamento": "Pagamento",
+    "contrato": "Contrato",
+    "material": "Material",
+    "avaliacao": "Avaliação",
+    "sistema": "Sistema",
+    "rota": "Rota"
+  }
+}

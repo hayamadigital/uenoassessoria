@@ -1,0 +1,32 @@
+{
+  "title": "Financial",
+  "payments": "Payments",
+  "new_payment": "Register Payment",
+  "payment_detail": "Payment Details",
+  "amount": "Amount",
+  "method": "Method",
+  "due_date": "Due Date",
+  "payment_date": "Payment Date",
+  "receipt": "Receipt",
+  "upload_receipt": "Upload Receipt",
+  "description": "Description",
+  "total_paid": "Total Paid (month)",
+  "total_pending": "Total Pending",
+  "total_cancelled": "Total Cancelled",
+  "status": {
+    "pendente": "Pending",
+    "pago": "Paid",
+    "cancelado": "Cancelled",
+    "estornado": "Refunded"
+  },
+  "method_options": {
+    "dinheiro": "Cash",
+    "transferencia": "Bank Transfer",
+    "pix": "PIX",
+    "outro": "Other"
+  },
+  "mark_as_paid": "Mark as Paid",
+  "no_payments": "No payments registered",
+  "filter_by_period": "Filter by period",
+  "revenue_chart": "Revenue Chart"
+}

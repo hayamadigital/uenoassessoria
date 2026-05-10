@@ -1,0 +1,60 @@
+{
+  "page_title": "Configurações",
+  "tabs": {
+    "meu_perfil": "Meu Perfil",
+    "seguranca": "Segurança",
+    "usuarios": "Usuários",
+    "preferencias": "Preferências"
+  },
+  "profile": {
+    "title": "Dados do Perfil",
+    "avatar_title": "Foto de Perfil",
+    "avatar_hint": "Clique no ícone para alterar a foto",
+    "avatar_spec": "JPG, PNG ou WebP · Máx. 2 MB",
+    "avatar_uploading": "Enviando...",
+    "full_name": "Nome Completo",
+    "email": "Email",
+    "phone": "Telefone",
+    "whatsapp": "WhatsApp",
+    "endereco_jp": "Endereço no Japão",
+    "preferred_lang": "Idioma do Perfil",
+    "save": "Salvar Alterações",
+    "success": "Perfil atualizado com sucesso."
+  },
+  "security": {
+    "title": "Alterar Senha",
+    "description": "Defina uma nova senha para sua conta.",
+    "new_password": "Nova Senha",
+    "confirm_password": "Confirmar Senha",
+    "save": "Alterar Senha",
+    "success": "Senha alterada com sucesso."
+  },
+  "users": {
+    "title": "Usuários do Sistema",
+    "filter_all": "Todos",
+    "invite_button": "Convidar Usuário",
+    "invite_title": "Convidar Novo Usuário",
+    "invite_description": "O usuário receberá um email com o link para definir sua senha.",
+    "invite_email": "Email",
+    "invite_name": "Nome Completo",
+    "invite_role": "Perfil",
+    "invite_send": "Enviar Convite",
+    "invite_success": "Convite enviado com sucesso.",
+    "deactivate": "Desativar",
+    "activate": "Ativar",
+    "role_admin": "Admin",
+    "role_instrutor": "Instrutor",
+    "role_cliente": "Cliente",
+    "status_active": "Ativo",
+    "status_inactive": "Inativo"
+  },
+  "preferences": {
+    "title": "Preferências",
+    "language_title": "Idioma da Interface",
+    "language_hint": "Altera o idioma da interface para você.",
+    "lang_ptbr": "Português",
+    "lang_en": "English",
+    "save": "Salvar Preferências",
+    "success": "Preferências salvas com sucesso."
+  }
+}

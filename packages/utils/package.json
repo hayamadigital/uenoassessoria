@@ -1,0 +1,22 @@
+{
+  "name": "@ueno/utils",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./date": "./src/date.ts",
+    "./currency": "./src/currency.ts",
+    "./cpf": "./src/cpf.ts",
+    "./validators": "./src/validators.ts"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

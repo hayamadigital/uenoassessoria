@@ -1,0 +1,30 @@
+{
+  "title": "Agendamentos",
+  "new_appointment": "Novo Agendamento",
+  "edit_appointment": "Editar Agendamento",
+  "appointment_detail": "Detalhes do Agendamento",
+  "client": "Cliente",
+  "instructor": "Instrutor",
+  "service": "Serviço",
+  "start_time": "Início",
+  "end_time": "Término",
+  "location": "Local",
+  "instructor_notes": "Notas do Instrutor",
+  "admin_notes": "Notas do Admin",
+  "status": {
+    "agendado": "Agendado",
+    "confirmado": "Confirmado",
+    "em_andamento": "Em Andamento",
+    "concluido": "Concluído",
+    "cancelado": "Cancelado",
+    "faltou": "Faltou"
+  },
+  "no_appointments": "Nenhum agendamento",
+  "today_appointments": "Agendamentos de Hoje",
+  "upcoming": "Próximos",
+  "past": "Passados",
+  "month_view": "Mês",
+  "week_view": "Semana",
+  "day_view": "Dia",
+  "select_date": "Selecionar data"
+}

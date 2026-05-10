@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<title>Ueno Assessoria — App iOS</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  body { background: #EEF1F7; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="phone-chrome.jsx"></script>
+<script type="text/babel" src="screens-client-auth.jsx"></script>
+<script type="text/babel" src="screens-client-home.jsx"></script>
+<script type="text/babel" src="screens-client-processos.jsx"></script>
+<script type="text/babel" src="screens-client-rest.jsx"></script>
+<script type="text/babel" src="screens-client-extra1.jsx"></script>
+<script type="text/babel" src="screens-client-extra2.jsx"></script>
+<script type="text/babel" src="screens-client-extra3.jsx"></script>
+<script type="text/babel" src="screens-client-cfg-simulados.jsx"></script>
+<script type="text/babel" src="screens-admin-1.jsx"></script>
+<script type="text/babel" src="screens-admin-2.jsx"></script>
+<script type="text/babel" src="screens-admin-3.jsx"></script>
+<script type="text/babel" src="screens-admin-extra.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "view": "both",
+  "fontScale": 1.0
+}/*EDITMODE-END*/;
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Apply font scale globally
+  React.useEffect(() => {
+    document.documentElement.style.fontSize = `${16 * t.fontScale}px`;
+  }, [t.fontScale]);
+
+  const showClient = t.view === 'client' || t.view === 'both';
+  const showAdmin  = t.view === 'admin'  || t.view === 'both';
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="intro" title="Ueno Assessoria · App Mobile" subtitle="Habilitação japonesa para brasileiros · iOS · PT/JP/EN">
+          <DCArtboard id="splash"  label="Splash"          width={360} height={760}><ScreenSplash/></DCArtboard>
+          <DCArtboard id="login"   label="Login"           width={360} height={760}><ScreenLogin/></DCArtboard>
+          <DCArtboard id="onboard" label="Onboarding"      width={360} height={760}><ScreenOnboard/></DCArtboard>
+        </DCSection>
+
+        {showClient && (
+          <DCSection id="client" title="Cliente" subtitle="App do usuário final — 5 abas principais + telas de detalhe">
+            <DCArtboard id="c-home"  label="01 · Início"           width={360} height={760}><ScreenClientHome/></DCArtboard>
+            <DCArtboard id="c-notif" label="01b · Notificações"    width={360} height={760}><ScreenClientNotifs/></DCArtboard>
+            <DCArtboard id="c-chat"  label="01c · Chat com equipe" width={360} height={760}><ScreenClientChat/></DCArtboard>
+            <DCArtboard id="c-proc"  label="02 · Processos"        width={360} height={760}><ScreenClientProcessos/></DCArtboard>
+            <DCArtboard id="c-procd" label="02b · Detalhe do processo" width={360} height={760}><ScreenClientProcessoDetalhe/></DCArtboard>
+            <DCArtboard id="c-sim"   label="03 · Simulados"        width={360} height={760}><ScreenClientSimulados/></DCArtboard>
+            <DCArtboard id="c-simq"  label="03b · Questão"         width={360} height={760}><ScreenClientSimuladoQuestao/></DCArtboard>
+            <DCArtboard id="c-simr"  label="03c · Resultado"       width={360} height={760}><ScreenClientSimuladoResultado/></DCArtboard>
+            <DCArtboard id="c-cat"   label="04 · Catálogo"         width={360} height={760}><ScreenClientCatalogo/></DCArtboard>
+            <DCArtboard id="c-catd"  label="04b · Detalhe serviço" width={360} height={760}><ScreenClientServicoDetalhe/></DCArtboard>
+            <DCArtboard id="c-me"    label="05 · Perfil"           width={360} height={760}><ScreenClientPerfil/></DCArtboard>
+            <DCArtboard id="c-edit"  label="05b · Editar dados"    width={360} height={760}><ScreenClientEditarPerfil/></DCArtboard>
+            <DCArtboard id="c-pay"   label="05c · Pagamentos"      width={360} height={760}><ScreenClientPagamentos/></DCArtboard>
+            <DCArtboard id="c-ref"   label="05d · Indicação"       width={360} height={760}><ScreenClientIndicacao/></DCArtboard>
+            <DCArtboard id="c-cfgs"  label="05e · Cfg Simulados"   width={360} height={760}><ScreenClientCfgSimulados/></DCArtboard>
+          </DCSection>
+        )}
+
+        {showAdmin && (
+          <DCSection id="admin" title="Admin" subtitle="Painel da equipe Ueno — 5 abas principais">
+            <DCArtboard id="a-home"  label="01 · Dashboard"        width={360} height={760}><ScreenAdminHome/></DCArtboard>
+            <DCArtboard id="a-notif" label="01b · Notificações"    width={360} height={760}><ScreenAdminNotifs/></DCArtboard>
+            <DCArtboard id="a-mod"   label="02 · Módulos"          width={360} height={760}><ScreenAdminModulos/></DCArtboard>
+            <DCArtboard id="a-edsim" label="02b · Editor simulado" width={360} height={760}><ScreenAdminEditorSimulado/></DCArtboard>
+            <DCArtboard id="a-edcat" label="02c · Editor catálogo" width={360} height={760}><ScreenAdminEditorCatalogo/></DCArtboard>
+            <DCArtboard id="a-cli"   label="03 · Clientes"         width={360} height={760}><ScreenAdminClientes/></DCArtboard>
+            <DCArtboard id="a-clid"  label="03b · Detalhe cliente" width={360} height={760}><ScreenAdminClienteDetalhe/></DCArtboard>
+            <DCArtboard id="a-clin"  label="03c · Novo cliente"    width={360} height={760}><ScreenAdminNovoCliente/></DCArtboard>
+            <DCArtboard id="a-cal"   label="04 · Calendário"       width={360} height={760}><ScreenAdminCalendario/></DCArtboard>
+            <DCArtboard id="a-evt"   label="04b · Novo evento"     width={360} height={760}><ScreenAdminEvento/></DCArtboard>
+            <DCArtboard id="a-proc"  label="05 · Processos"        width={360} height={760}><ScreenAdminProcessos/></DCArtboard>
+            <DCArtboard id="a-procd" label="05b · Detalhe processo" width={360} height={760}><ScreenAdminProcessoDetalhe/></DCArtboard>
+            <DCArtboard id="a-cfg"   label="06 · Configurações"    width={360} height={760}><ScreenAdminConfig/></DCArtboard>
+          </DCSection>
+        )}
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Visualização"/>
+        <TweakRadio label="Modo"
+          value={t.view}
+          options={['client', 'admin', 'both']}
+          onChange={(v) => setTweak('view', v)}/>
+        <TweakSection label="Tipografia"/>
+        <TweakSlider label="Tamanho do texto"
+          value={t.fontScale} min={0.85} max={1.2} step={0.05} unit="x"
+          onChange={(v) => setTweak('fontScale', v)}/>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

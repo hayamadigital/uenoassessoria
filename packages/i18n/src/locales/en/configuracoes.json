@@ -1,0 +1,60 @@
+{
+  "page_title": "Settings",
+  "tabs": {
+    "meu_perfil": "My Profile",
+    "seguranca": "Security",
+    "usuarios": "Users",
+    "preferencias": "Preferences"
+  },
+  "profile": {
+    "title": "Profile Data",
+    "avatar_title": "Profile Photo",
+    "avatar_hint": "Click the icon to change photo",
+    "avatar_spec": "JPG, PNG or WebP · Max 2 MB",
+    "avatar_uploading": "Uploading...",
+    "full_name": "Full Name",
+    "email": "Email",
+    "phone": "Phone",
+    "whatsapp": "WhatsApp",
+    "endereco_jp": "Address in Japan",
+    "preferred_lang": "Profile Language",
+    "save": "Save Changes",
+    "success": "Profile updated successfully."
+  },
+  "security": {
+    "title": "Change Password",
+    "description": "Set a new password for your account.",
+    "new_password": "New Password",
+    "confirm_password": "Confirm Password",
+    "save": "Change Password",
+    "success": "Password changed successfully."
+  },
+  "users": {
+    "title": "System Users",
+    "filter_all": "All",
+    "invite_button": "Invite User",
+    "invite_title": "Invite New User",
+    "invite_description": "The user will receive an email with a link to set their password.",
+    "invite_email": "Email",
+    "invite_name": "Full Name",
+    "invite_role": "Role",
+    "invite_send": "Send Invitation",
+    "invite_success": "Invitation sent successfully.",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "role_admin": "Admin",
+    "role_instrutor": "Instructor",
+    "role_cliente": "Client",
+    "status_active": "Active",
+    "status_inactive": "Inactive"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "language_title": "Interface Language",
+    "language_hint": "Changes the interface language for you.",
+    "lang_ptbr": "Português",
+    "lang_en": "English",
+    "save": "Save Preferences",
+    "success": "Preferences saved successfully."
+  }
+}

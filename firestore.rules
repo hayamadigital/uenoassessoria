@@ -1,0 +1,297 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ───────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isInstrutor() {
+      return isSignedIn() && request.auth.token.role == 'instrutor';
+    }
+
+    function isCliente() {
+      return isSignedIn() && request.auth.token.role == 'cliente';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ── /users/{uid} — profiles ────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isAdmin() || isOwner(uid)
+        || (isInstrutor() && resource.data.role in ['cliente', 'admin']);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || isOwner(uid);
+      allow delete: if isAdmin();
+    }
+
+    // ── /clientes/{clienteId} ──────────────────────────────────────
+    match /clientes/{clienteId} {
+      allow read: if isAdmin()
+        || (isInstrutor() && resource.data.assigned_instrutor_id == request.auth.uid)
+        || (isCliente() && resource.data.profile_id == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+
+      // Subcollections: documentos, contatos, habilitacoes, entrada_saida, historico, materiais_progresso, simulado_resultado
+      match /documentos/{docId} {
+        allow read: if isAdmin()
+          || (isInstrutor() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.assigned_instrutor_id == request.auth.uid)
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+        allow create: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+
+      match /contatos/{id} {
+        allow read, write: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+      }
+
+      match /habilitacoes/{id} {
+        allow read, write: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+      }
+
+      match /entrada_saida/{id} {
+        allow read, write: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+      }
+
+      match /historico/{id} {
+        allow read: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+        allow create: if isAdmin() || isInstrutor();
+        allow update, delete: if isAdmin();
+      }
+
+      match /materiais_progresso/{materialId} {
+        allow read, write: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+      }
+
+      match /simulado_resultado/{id} {
+        allow read: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+        allow create: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Collection group: documentos (for listPendingDocumentos)
+    match /{path=**}/documentos/{docId} {
+      allow read: if isAdmin() || isInstrutor();
+    }
+
+    // ── /agendamentos/{id} ─────────────────────────────────────────
+    match /agendamentos/{id} {
+      allow read: if isAdmin()
+        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid)
+        || (isCliente() && resource.data.cliente_id != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
+      allow create: if isAdmin() || isInstrutor();
+      allow update: if isAdmin()
+        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // ── /servicos/{id} ─────────────────────────────────────────────
+    match /servicos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /etapa_templates/{tplId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── /pagamentos/{id} ──────────────────────────────────────────
+    match /pagamentos/{id} {
+      allow read: if isAdmin()
+        || (isCliente() && resource.data.cliente_id != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+
+      match /parcelas/{parId} {
+        allow read: if isAdmin()
+          || (isCliente() && get(/databases/$(database)/documents/pagamentos/$(id)).data.cliente_id != null
+              && get(/databases/$(database)/documents/clientes/$(get(/databases/$(database)/documents/pagamentos/$(id)).data.cliente_id)).data.profile_id == request.auth.uid);
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── /contratos/{id} ───────────────────────────────────────────
+    match /contratos/{id} {
+      allow read: if isAdmin()
+        || (isCliente() && resource.data.cliente_id != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isCliente() && resource.data.cliente_id != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid
+            && request.resource.data.keys().hasOnly(['status', 'assinatura_url', 'ip_assinatura', 'assinado_em', 'updated_at']));
+      allow delete: if isAdmin();
+    }
+
+    // ── /contrato_templates/{id} ───────────────────────────────────
+    match /contrato_templates/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /materiais/{id} ───────────────────────────────────────────
+    match /materiais/{id} {
+      allow read: if isSignedIn() || resource.data.is_public == true;
+      allow write: if isAdmin();
+    }
+
+    // ── /categorias_material/{id} ─────────────────────────────────
+    match /categorias_material/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /simulado_config/{materialId} ─────────────────────────────
+    match /simulado_config/{materialId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /questoes/{qId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── /questoes/{id} ────────────────────────────────────────────
+    match /questoes/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /opcoes/{opId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+
+      match /imagens/{imgId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+
+      match /erros/{errId} {
+        allow read: if isAdmin();
+        allow create: if isSignedIn();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // ── /questao_erro_reports/{id} ────────────────────────────────
+    match /questao_erro_reports/{id} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── /simulado_resultados/{id} ─────────────────────────────────
+    match /simulado_resultados/{id} {
+      allow read: if isAdmin()
+        || (isCliente() && resource.data.cliente_id == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── /avaliacoes/{id} ──────────────────────────────────────────
+    match /avaliacoes/{id} {
+      allow read: if isAdmin()
+        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid)
+        || (isCliente() && resource.data.cliente_id != null
+            && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /notificacoes/{id} ────────────────────────────────────────
+    match /notificacoes/{id} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.destinatario_id == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.destinatario_id == request.auth.uid
+            && request.resource.data.keys().hasOnly(['lida', 'lida_em']));
+      allow delete: if isAdmin();
+    }
+
+    // ── /push_tokens/{id} ─────────────────────────────────────────
+    match /push_tokens/{id} {
+      allow read, create, update, delete: if isSignedIn()
+        && request.auth.uid != null;
+    }
+
+    // ── /rotas_dia/{id} ───────────────────────────────────────────
+    match /rotas_dia/{id} {
+      allow read: if isAdmin()
+        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
+      allow create: if isAdmin() || isInstrutor();
+      allow update: if isAdmin()
+        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
+      allow delete: if isAdmin();
+
+      match /paradas/{paradaId} {
+        allow read: if isAdmin()
+          || (isInstrutor() && get(/databases/$(database)/documents/rotas_dia/$(id)).data.instrutor_id == request.auth.uid);
+        allow write: if isAdmin()
+          || (isInstrutor() && get(/databases/$(database)/documents/rotas_dia/$(id)).data.instrutor_id == request.auth.uid);
+      }
+    }
+
+    // ── /destinos_fixos/{id} ──────────────────────────────────────
+    match /destinos_fixos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /documento_templates/{id} ─────────────────────────────────
+    match /documento_templates/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /cliente_processos/{id} ───────────────────────────────────
+    match /cliente_processos/{id} {
+      allow read: if isAdmin()
+        || (isInstrutor() && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.assigned_instrutor_id == request.auth.uid)
+        || (isCliente() && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── /processo_etapas/{id} ─────────────────────────────────────
+    match /processo_etapas/{id} {
+      allow read: if isAdmin() || isInstrutor()
+        || (isCliente() && get(/databases/$(database)/documents/cliente_processos/$(resource.data.processo_id)).data.cliente_id != null);
+      allow write: if isAdmin();
+    }
+
+    // ── /etapa_templates/{id} ─────────────────────────────────────
+    match /etapa_templates/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /faq/{id} ─────────────────────────────────────────────────
+    match /faq/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

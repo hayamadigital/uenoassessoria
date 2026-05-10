@@ -1,0 +1,32 @@
+{
+  "title": "Financeiro",
+  "payments": "Pagamentos",
+  "new_payment": "Registrar Pagamento",
+  "payment_detail": "Detalhes do Pagamento",
+  "amount": "Valor",
+  "method": "Método",
+  "due_date": "Data de Vencimento",
+  "payment_date": "Data do Pagamento",
+  "receipt": "Comprovante",
+  "upload_receipt": "Enviar Comprovante",
+  "description": "Descrição",
+  "total_paid": "Total Pago (mês)",
+  "total_pending": "Total Pendente",
+  "total_cancelled": "Total Cancelado",
+  "status": {
+    "pendente": "Pendente",
+    "pago": "Pago",
+    "cancelado": "Cancelado",
+    "estornado": "Estornado"
+  },
+  "method_options": {
+    "dinheiro": "Dinheiro",
+    "transferencia": "Transferência",
+    "pix": "PIX",
+    "outro": "Outro"
+  },
+  "mark_as_paid": "Marcar como Pago",
+  "no_payments": "Nenhum pagamento registrado",
+  "filter_by_period": "Filtrar por período",
+  "revenue_chart": "Gráfico de Receita"
+}
