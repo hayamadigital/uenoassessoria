@@ -368,7 +368,7 @@ function QuickActions() {
 // ── DashboardPage ─────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard', 'kpis-v2'],
     queryFn: fetchDashboardKPIs,
     refetchInterval: 60_000,
@@ -389,6 +389,10 @@ export function DashboardPage() {
           <div className="flex justify-center py-16">
             <Spinner />
           </div>
+        ) : isError ? (
+          <p className="py-16 text-center text-sm text-destructive">
+            Erro ao carregar dados. Tente recarregar a página.
+          </p>
         ) : (
           <>
             {/* KPI Row */}
@@ -427,7 +431,11 @@ export function DashboardPage() {
                 borderColor="#3b82f6"
                 iconBg="#eff6ff"
                 icon={Users}
-                subtitleText={`↑ ${data?.novos_clientes_mes ?? 0} novos este mês`}
+                subtitleText={
+                  (data?.novos_clientes_mes ?? 0) > 0
+                    ? `↑ ${data!.novos_clientes_mes} novos este mês`
+                    : 'Nenhum novo este mês'
+                }
                 subtitleColor="#3b82f6"
               />
               <KPICard
