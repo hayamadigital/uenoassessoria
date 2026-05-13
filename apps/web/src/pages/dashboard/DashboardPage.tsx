@@ -77,7 +77,7 @@ async function fetchDashboardKPIs(): Promise<DashboardData> {
   const todayJST = getTodayJST() // 'YYYY-MM-DD'
   const mesAtual = todayJST.slice(0, 7)
   const mesAnterior = getPrevMonth(mesAtual)
-  const inicioMes = new Date(`${mesAtual}-01T00:00:00Z`).toISOString()
+  const inicioMes = getJSTDayStartUTC(`${mesAtual}-01`)
 
   const em7Dias = new Date()
   em7Dias.setDate(em7Dias.getDate() + 7)
@@ -400,11 +400,13 @@ export function DashboardPage() {
                 iconBg="#f0fdf4"
                 icon={CreditCard}
                 subtitleText={
-                  deltaPct >= 0
+                  deltaPct > 0
                     ? `↑ ${deltaPct}% vs mês anterior`
-                    : `↓ ${Math.abs(deltaPct)}% vs mês anterior`
+                    : deltaPct < 0
+                    ? `↓ ${Math.abs(deltaPct)}% vs mês anterior`
+                    : `→ igual ao mês anterior`
                 }
-                subtitleColor={deltaPct >= 0 ? '#22c55e' : '#ef4444'}
+                subtitleColor={deltaPct > 0 ? '#22c55e' : deltaPct < 0 ? '#ef4444' : '#94a3b8'}
               />
               <KPICard
                 label="Receita Pendente"
