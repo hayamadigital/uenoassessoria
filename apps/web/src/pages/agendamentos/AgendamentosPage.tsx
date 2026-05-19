@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Calendar, Clock } from 'lucide-react'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import { db } from '@/lib/firebase'
 import {
   listAgendamentos,
@@ -16,6 +17,7 @@ import {
 import { listInstrutores } from '@ueno/firebase/queries/perfis'
 import { formatDateJST, formatTimeJST, getJSTDayStartUTC, getJSTDayEndUTC } from '@ueno/utils/date'
 import type { StatusAgendamento } from '@ueno/firebase'
+import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 const statusLabel: Record<StatusAgendamento, string> = {
   agendado: 'Agendado',
@@ -48,9 +50,16 @@ export function AgendamentosPage() {
   const queryClient = useQueryClient()
   const [clienteSearch, setClienteSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusAgendamento | ''>('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
   const [instrutorFilter, setInstrutorFilter] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'data' | 'cliente' | 'instrutor' | 'servico' | 'local' | 'status' | 'created_at'>>({
+    key: 'data',
+    direction: 'desc',
+  })
 
   const filters: AgendamentoFilters = {}
   if (statusFilter) filters.status = statusFilter
@@ -76,11 +85,35 @@ export function AgendamentosPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agendamentos'] }),
   })
 
-  const filtered = agendamentos?.filter((ag) =>
-    clienteSearch
-      ? ag.cliente.profile.full_name.toLowerCase().includes(clienteSearch.toLowerCase())
-      : true,
-  )
+  const filtered = useMemo(() => {
+    const activeStatuses: StatusAgendamento[] = ['agendado', 'confirmado', 'em_andamento']
+    const rows = (agendamentos ?? []).filter((ag) => {
+      const isActive = activeStatuses.includes(ag.status)
+      if (activeFilter === 'active' && !isActive) return false
+      if (activeFilter === 'inactive' && isActive) return false
+      if (!includesText(
+        [
+          ag.cliente?.profile.full_name ?? 'Evento pessoal',
+          ag.instrutor?.full_name,
+          ag.servico?.nome ?? 'Pessoal',
+          ag.local,
+          statusLabel[ag.status],
+        ].join(' '),
+        clienteSearch,
+      )) return false
+      return isWithinDateRange(ag.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      data: (ag) => ag.data_hora_inicio,
+      cliente: (ag) => ag.cliente?.profile.full_name ?? 'Evento pessoal',
+      instrutor: (ag) => ag.instrutor?.full_name,
+      servico: (ag) => ag.servico?.nome ?? 'Pessoal',
+      local: (ag) => ag.local,
+      status: (ag) => statusLabel[ag.status],
+      created_at: (ag) => ag.created_at,
+    })
+  }, [activeFilter, agendamentos, clienteSearch, createdFrom, createdTo, sort])
 
   return (
     <div>
@@ -103,12 +136,21 @@ export function AgendamentosPage() {
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por cliente..."
+              placeholder="Buscar por cliente, serviço, local..."
               className="pl-9"
               value={clienteSearch}
               onChange={(e) => setClienteSearch(e.target.value)}
             />
           </div>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+          >
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="all">Ativos e inativos</option>
+          </select>
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             value={statusFilter}
@@ -151,6 +193,24 @@ export function AgendamentosPage() {
               onChange={(e) => setDataFim(e.target.value)}
             />
           </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground whitespace-nowrap">Criado de</label>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={createdFrom}
+              onChange={(e) => setCreatedFrom(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground whitespace-nowrap">Criado até</label>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={createdTo}
+              onChange={(e) => setCreatedTo(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Tabela */}
@@ -163,12 +223,12 @@ export function AgendamentosPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Data / Hora</th>
-                  <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                  <th className="px-4 py-3 text-left font-medium">Instrutor</th>
-                  <th className="px-4 py-3 text-left font-medium">Serviço</th>
-                  <th className="px-4 py-3 text-left font-medium">Local</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <SortableTh sort={sort} sortKey="data" onSort={(key) => setSort(nextSort(sort, key))}>Data / Hora</SortableTh>
+                  <SortableTh sort={sort} sortKey="cliente" onSort={(key) => setSort(nextSort(sort, key))}>Cliente</SortableTh>
+                  <SortableTh sort={sort} sortKey="instrutor" onSort={(key) => setSort(nextSort(sort, key))}>Instrutor</SortableTh>
+                  <SortableTh sort={sort} sortKey="servico" onSort={(key) => setSort(nextSort(sort, key))}>Serviço</SortableTh>
+                  <SortableTh sort={sort} sortKey="local" onSort={(key) => setSort(nextSort(sort, key))}>Local</SortableTh>
+                  <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -198,9 +258,9 @@ export function AgendamentosPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-medium">{ag.cliente.profile.full_name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{ag.instrutor.full_name}</td>
-                      <td className="px-4 py-3">{ag.servico.nome}</td>
+                      <td className="px-4 py-3 font-medium">{ag.cliente?.profile.full_name ?? 'Evento pessoal'}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{ag.instrutor?.full_name ?? '—'}</td>
+                      <td className="px-4 py-3">{ag.servico?.nome ?? 'Pessoal'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{ag.local ?? '—'}</td>
                       <td className="px-4 py-3">
                         <Badge variant={statusVariant[ag.status]}>{statusLabel[ag.status]}</Badge>

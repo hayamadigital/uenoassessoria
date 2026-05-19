@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { Label } from '@/components/ui/label'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ import {
 } from '@ueno/firebase/queries/avaliacoes'
 import { formatDateJST } from '@ueno/utils/date'
 import type { AvaliacaoComDetalhes, AvaliacaoTipo } from '@ueno/firebase'
+import { includesText, nextSort, sortBy, type SortState } from '@/utils/table'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -55,8 +57,8 @@ const tipoVariant: Record<
 }
 
 function getNomeObjeto(av: AvaliacaoComDetalhes): string {
-  if (av.tipo === 'servico') return av.agendamentos?.servicos?.nome ?? 'Agendamento'
-  return av.materiais?.titulo ?? (av.tipo === 'simulado' ? 'Simulado' : 'Material')
+  if (av.tipo === 'servico') return av.servico_nome ?? 'Agendamento'
+  return av.material_titulo ?? (av.tipo === 'simulado' ? 'Simulado' : 'Material')
 }
 
 function truncate(text: string, max = 70): string {
@@ -73,6 +75,10 @@ export function AvaliacoesPage() {
   const [statusFiltro, setStatusFiltro] = useState<'respondido' | 'pendente' | ''>('')
   const [notaFiltro, setNotaFiltro] = useState<number | ''>('')
   const [busca, setBusca] = useState('')
+  const [sort, setSort] = useState<SortState<'cliente' | 'tipo' | 'objeto' | 'nota' | 'comentario' | 'created_at' | 'status'>>({
+    key: 'created_at',
+    direction: 'desc',
+  })
 
   // dialog responder
   const [responderTarget, setResponderTarget] = useState<AvaliacaoComDetalhes | null>(null)
@@ -103,12 +109,30 @@ export function AvaliacoesPage() {
 
   // client-side text search on top of server filters
   const filtered = useMemo(() => {
-    if (!busca.trim()) return avaliacoes ?? []
-    const term = busca.toLowerCase()
-    return (avaliacoes ?? []).filter((av) =>
-      av.clientes?.profiles?.full_name?.toLowerCase().includes(term),
+    const rows = (avaliacoes ?? []).filter((av) =>
+      includesText(
+        [
+          av.cliente_nome,
+          getNomeObjeto(av),
+          av.comentario,
+          av.resposta_admin,
+          tipoLabel[av.tipo],
+          av.respondido_em ? 'respondida' : 'pendente',
+        ].join(' '),
+        busca,
+      ),
     )
-  }, [avaliacoes, busca])
+
+    return sortBy(rows, sort, {
+      cliente: (av) => av.cliente_nome,
+      tipo: (av) => tipoLabel[av.tipo],
+      objeto: (av) => getNomeObjeto(av),
+      nota: (av) => av.nota,
+      comentario: (av) => av.comentario,
+      created_at: (av) => av.created_at,
+      status: (av) => Boolean(av.respondido_em),
+    })
+  }, [avaliacoes, busca, sort])
 
   const hasFilters = !!(tipoFiltro || statusFiltro || notaFiltro || busca)
 
@@ -245,21 +269,21 @@ export function AvaliacoesPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                  <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                  <th className="px-4 py-3 text-left font-medium">Objeto avaliado</th>
-                  <th className="px-4 py-3 text-left font-medium">Nota</th>
-                  <th className="px-4 py-3 text-left font-medium">Comentário</th>
-                  <th className="px-4 py-3 text-left font-medium">Data</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <SortableTh sort={sort} sortKey="cliente" onSort={(key) => setSort(nextSort(sort, key))}>Cliente</SortableTh>
+                  <SortableTh sort={sort} sortKey="tipo" onSort={(key) => setSort(nextSort(sort, key))}>Tipo</SortableTh>
+                  <SortableTh sort={sort} sortKey="objeto" onSort={(key) => setSort(nextSort(sort, key))}>Objeto avaliado</SortableTh>
+                  <SortableTh sort={sort} sortKey="nota" onSort={(key) => setSort(nextSort(sort, key))}>Nota</SortableTh>
+                  <SortableTh sort={sort} sortKey="comentario" onSort={(key) => setSort(nextSort(sort, key))}>Comentário</SortableTh>
+                  <SortableTh sort={sort} sortKey="created_at" onSort={(key) => setSort(nextSort(sort, key))}>Data</SortableTh>
+                  <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filtered.map((av) => {
-                  const nome = av.clientes?.profiles?.full_name ?? '—'
-                  const avatar = av.clientes?.profiles?.avatar_url
-                  const clienteId = av.clientes?.id
+                  const nome = av.cliente_nome ?? '—'
+                  const avatar = av.cliente_avatar_url
+                  const clienteId = av.cliente_id
                   const isPendente = !av.respondido_em
 
                   return (
@@ -357,7 +381,7 @@ export function AvaliacoesPage() {
       {/* Dialog — Responder avaliação */}
       <Dialog
         open={!!responderTarget}
-        onOpenChange={(o) => {
+        onOpenChange={(o: boolean) => {
           if (!o) {
             setResponderTarget(null)
             setRespostaText('')
@@ -378,7 +402,7 @@ export function AvaliacoesPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    {responderTarget.clientes?.profiles?.full_name ?? '—'}
+                    {responderTarget.cliente_nome ?? '—'}
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {formatDateJST(responderTarget.created_at)}

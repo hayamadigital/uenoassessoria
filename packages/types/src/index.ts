@@ -1,4 +1,4 @@
-import type { UserRole } from '@ueno/supabase'
+import type { UserRole } from '@ueno/firebase'
 
 export type { UserRole }
 

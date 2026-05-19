@@ -6,6 +6,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  collectionGroup,
   query,
   where,
   orderBy,
@@ -20,6 +21,7 @@ import type {
   QuestaoErroReport,
   QuestaoErroReportInsert,
   QuestaoErroReportWithDetails,
+  QuestaoSimuladoUsage,
   StatusErroReport,
 } from '../types'
 
@@ -65,6 +67,59 @@ export async function getQuestaoWithDetails(
   id: string,
 ): Promise<QuestaoWithDetails> {
   return fetchQuestaoWithDetails(db, id)
+}
+
+export async function listSimuladosByQuestao(
+  db: Firestore,
+  questaoId: string,
+): Promise<QuestaoSimuladoUsage[]> {
+  const snap = await getDocs(
+    query(collectionGroup(db, 'questoes'), where('questao_id', '==', questaoId)),
+  )
+
+  const usages = await Promise.all(
+    snap.docs.map(async (linkedDoc) => {
+      const simuladoConfigRef = linkedDoc.ref.parent.parent
+      const simuladoId = simuladoConfigRef?.id
+      if (!simuladoId) return null
+
+      const materialSnap = await getDoc(doc(db, 'materiais', simuladoId))
+      if (!materialSnap.exists()) return null
+      const material = materialSnap.data() as {
+        titulo?: string
+        categoria_id?: string | null
+        is_public?: boolean
+        is_active?: boolean
+      }
+
+      return {
+        simulado_id: simuladoId,
+        titulo: material.titulo ?? 'Simulado',
+        categoria_id: material.categoria_id ?? null,
+        is_public: material.is_public ?? false,
+        is_active: material.is_active ?? true,
+        ordem: (linkedDoc.data().ordem as number | undefined) ?? null,
+      } satisfies QuestaoSimuladoUsage
+    }),
+  )
+
+  return usages.filter((usage): usage is QuestaoSimuladoUsage => usage !== null)
+}
+
+export async function listSimuladoUsageCounts(
+  db: Firestore,
+): Promise<Record<string, number>> {
+  const snap = await getDocs(collectionGroup(db, 'questoes'))
+  const counts: Record<string, number> = {}
+
+  for (const d of snap.docs) {
+    const questaoId = d.data().questao_id as string | undefined
+    if (questaoId) {
+      counts[questaoId] = (counts[questaoId] ?? 0) + 1
+    }
+  }
+
+  return counts
 }
 
 export async function createQuestao(

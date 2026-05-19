@@ -43,7 +43,7 @@ export function NovoClientePage() {
 
       const createCliente = httpsCallable<
         { full_name: string; email: string; whatsapp?: string; nacionalidade?: string },
-        { clienteId: string; whatsapp_url?: string }
+        { clienteId: string; whatsapp_url?: string; reset_link?: string }
       >(getFunctions(), 'createCliente')
 
       const { data: respData } = await createCliente({
@@ -55,6 +55,9 @@ export function NovoClientePage() {
 
       if (respData.whatsapp_url) {
         window.open(respData.whatsapp_url, '_blank', 'noopener,noreferrer')
+      }
+      if (respData.reset_link) {
+        window.open(respData.reset_link, '_blank', 'noopener,noreferrer')
       }
 
       await queryClient.invalidateQueries({ queryKey: ['clientes'] })

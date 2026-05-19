@@ -51,7 +51,10 @@ export async function getContratoTemplateForServico(
   const byServico = await getDocs(
     query(collection(db, 'contrato_templates'), where('servico_id', '==', servicoId), limit(1)),
   )
-  if (!byServico.empty) return toTemplate(byServico.docs[0].id, byServico.docs[0].data())
+  if (!byServico.empty) {
+    const templateDoc = byServico.docs[0]!
+    return toTemplate(templateDoc.id, templateDoc.data())
+  }
 
   const defaultSnap = await getDocs(
     query(
@@ -61,7 +64,10 @@ export async function getContratoTemplateForServico(
       limit(1),
     ),
   )
-  if (!defaultSnap.empty) return toTemplate(defaultSnap.docs[0].id, defaultSnap.docs[0].data())
+  if (!defaultSnap.empty) {
+    const templateDoc = defaultSnap.docs[0]!
+    return toTemplate(templateDoc.id, templateDoc.data())
+  }
   return null
 }
 

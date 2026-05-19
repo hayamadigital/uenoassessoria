@@ -9,7 +9,8 @@
     "./date": "./src/date.ts",
     "./currency": "./src/currency.ts",
     "./cpf": "./src/cpf.ts",
-    "./validators": "./src/validators.ts"
+    "./validators": "./src/validators.ts",
+    "./contrato-render": "./src/contrato-render.ts"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

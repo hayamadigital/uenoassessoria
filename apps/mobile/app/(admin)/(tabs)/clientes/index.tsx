@@ -4,22 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listClientes } from '@ueno/firebase/queries/clientes'
 import { Avatar } from '@/components/Avatar'
 import { colors } from '@/theme'
 import type { StatusProcesso } from '@ueno/firebase'
-
-const STATUS_LABEL: Record<StatusProcesso, string> = {
-  prospect: 'Prospect',
-  contato: 'Contato',
-  documentacao: 'Documentação',
-  agendado: 'Agendado',
-  em_andamento: 'Em andamento',
-  aprovado: 'Aprovado',
-  concluido: 'Concluído',
-  cancelado: 'Cancelado',
-}
 
 const STATUS_COLOR: Record<StatusProcesso, string> = {
   prospect: '#94A3B8',
@@ -34,19 +24,19 @@ const STATUS_COLOR: Record<StatusProcesso, string> = {
 
 type Filtro = 'todos' | 'ativos' | 'concluidos' | 'pendentes'
 
-const FILTROS: { label: string; value: Filtro }[] = [
-  { label: 'Todos', value: 'todos' },
-  { label: 'Ativos', value: 'ativos' },
-  { label: 'Concluídos', value: 'concluidos' },
-  { label: 'Pendentes', value: 'pendentes' },
-]
-
 const ATIVOS: StatusProcesso[] = ['documentacao', 'agendado', 'em_andamento']
 const PENDENTES: StatusProcesso[] = ['prospect', 'contato']
 
 export default function ClientesAdminScreen() {
+  const { t } = useTranslation('common')
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<Filtro>('todos')
+  const filtros: { label: string; value: Filtro }[] = [
+    { label: t('common:all'), value: 'todos' },
+    { label: t('common:active'), value: 'ativos' },
+    { label: t('admin.filters.completed'), value: 'concluidos' },
+    { label: t('admin.filters.pending'), value: 'pendentes' },
+  ]
 
   const { data: clientes, isLoading } = useQuery({
     queryKey: ['admin-clientes-all'],
@@ -76,8 +66,8 @@ export default function ClientesAdminScreen() {
       {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.headerSub}>Gerenciamento</Text>
-          <Text style={s.headerTitle}>Clientes</Text>
+          <Text style={s.headerSub}>{t('admin.clients.management')}</Text>
+          <Text style={s.headerTitle}>{t('admin.tabs.clients')}</Text>
         </View>
         <TouchableOpacity style={s.addBtn} activeOpacity={0.8} onPress={() => router.push('/clientes/novo' as any)}>
           <Ionicons name="add" size={20} color="white" />
@@ -90,7 +80,7 @@ export default function ClientesAdminScreen() {
           <Ionicons name="search-outline" size={16} color={colors.ink400} />
           <TextInput
             style={s.searchInput}
-            placeholder="Buscar por nome ou CPF"
+            placeholder={t('admin.clients.search_placeholder')}
             placeholderTextColor={colors.ink400}
             value={busca}
             onChangeText={setBusca}
@@ -106,7 +96,7 @@ export default function ClientesAdminScreen() {
       {/* Filter pills */}
       <View style={s.pillsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pillsRow}>
-          {FILTROS.map(({ label, value }) => (
+          {filtros.map(({ label, value }) => (
             <TouchableOpacity
               key={value}
               style={[s.pill, filtro === value && s.pillActive]}
@@ -128,7 +118,7 @@ export default function ClientesAdminScreen() {
         ) : filtrados.length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="people-outline" size={40} color={colors.ink200} />
-            <Text style={s.emptyTxt}>Nenhum cliente encontrado</Text>
+            <Text style={s.emptyTxt}>{t('admin.clients.no_clients')}</Text>
           </View>
         ) : (
           <View style={{ gap: 10 }}>
@@ -137,7 +127,7 @@ export default function ClientesAdminScreen() {
               return (
                 <TouchableOpacity key={c.id} style={s.card} activeOpacity={0.85} onPress={() => router.push(`/clientes/${c.id}` as any)}>
                   <View style={[s.cardAccent, { backgroundColor: cor }]} />
-                  <Avatar name={c.profile?.full_name ?? 'Cliente'} size={42} />
+                  <Avatar name={c.profile?.full_name ?? t('admin.clients.client')} size={42} />
                   <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
                     <Text style={s.cardName} numberOfLines={1}>{c.profile?.full_name ?? '—'}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
@@ -152,7 +142,7 @@ export default function ClientesAdminScreen() {
                     </View>
                   </View>
                   <View style={[s.statusChip, { backgroundColor: cor + '18' }]}>
-                    <Text style={[s.statusTxt, { color: cor }]}>{STATUS_LABEL[c.status_processo]}</Text>
+                    <Text style={[s.statusTxt, { color: cor }]}>{t(`admin.status.${c.status_processo}`)}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={colors.ink300} style={{ marginLeft: 6 }} />
                 </TouchableOpacity>

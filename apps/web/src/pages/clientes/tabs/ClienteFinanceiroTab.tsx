@@ -117,7 +117,7 @@ function ParcelasRow({ pagamentoId, clienteId }: ParcelasRowProps) {
           notas: null,
         }
       })
-      return upsertParcelas(db, novasParcelas)
+      return upsertParcelas(db, pagamentoId, novasParcelas)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parcelas', pagamentoId] })
@@ -130,6 +130,7 @@ function ParcelasRow({ pagamentoId, clienteId }: ParcelasRowProps) {
     mutationFn: (p: Parcela) =>
       updateParcelaStatus(
         db,
+        pagamentoId,
         p.id,
         'pago',
         p.valor_original_jpy,
@@ -139,12 +140,12 @@ function ParcelasRow({ pagamentoId, clienteId }: ParcelasRowProps) {
   })
 
   const cancelarParcelaMutation = useMutation({
-    mutationFn: (id: string) => updateParcelaStatus(db, id, 'cancelado'),
+    mutationFn: (id: string) => updateParcelaStatus(db, pagamentoId, id, 'cancelado'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['parcelas', pagamentoId] }),
   })
 
   const atrasarParcelaMutation = useMutation({
-    mutationFn: (id: string) => updateParcelaStatus(db, id, 'atrasado'),
+    mutationFn: (id: string) => updateParcelaStatus(db, pagamentoId, id, 'atrasado'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['parcelas', pagamentoId] }),
   })
 
@@ -418,7 +419,7 @@ export function ClienteFinanceiroTab() {
         <h2 className="text-sm font-medium text-muted-foreground">
           {pagamentos?.length ?? 0} cobrança(s)
         </h2>
-        <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); reset() } else setAddOpen(true) }}>
+        <Dialog open={addOpen} onOpenChange={(o: boolean) => { if (!o) { setAddOpen(false); reset() } else setAddOpen(true) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />

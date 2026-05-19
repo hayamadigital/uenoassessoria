@@ -3,22 +3,12 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listClientes } from '@ueno/firebase/queries/clientes'
 import { Avatar } from '@/components/Avatar'
 import { colors } from '@/theme'
 import type { StatusProcesso } from '@ueno/firebase'
-
-const STATUS_LABEL: Record<StatusProcesso, string> = {
-  prospect: 'Prospect',
-  contato: 'Contato',
-  documentacao: 'Documentação',
-  agendado: 'Agendado',
-  em_andamento: 'Em andamento',
-  aprovado: 'Aprovado',
-  concluido: 'Concluído',
-  cancelado: 'Cancelado',
-}
 
 const STATUS_COLOR: Record<StatusProcesso, string> = {
   prospect: '#94A3B8',
@@ -44,16 +34,16 @@ const STATUS_PROGRESS: Record<StatusProcesso, number> = {
 
 type Filtro = 'todos' | StatusProcesso
 
-const FILTRO_STAGES: { label: string; value: Filtro }[] = [
-  { label: 'Todos', value: 'todos' },
-  { label: 'Documentação', value: 'documentacao' },
-  { label: 'Em andamento', value: 'em_andamento' },
-  { label: 'Aprovado', value: 'aprovado' },
-  { label: 'Concluído', value: 'concluido' },
-]
-
 export default function ProcessosAdminScreen() {
+  const { t } = useTranslation('common')
   const [filtro, setFiltro] = useState<Filtro>('todos')
+  const filtroStages: { label: string; value: Filtro }[] = [
+    { label: t('common:all'), value: 'todos' },
+    { label: t('admin.status.documentacao'), value: 'documentacao' },
+    { label: t('admin.status.em_andamento'), value: 'em_andamento' },
+    { label: t('admin.status.aprovado'), value: 'aprovado' },
+    { label: t('admin.status.concluido'), value: 'concluido' },
+  ]
 
   const { data: clientes, isLoading } = useQuery({
     queryKey: ['admin-clientes-all'],
@@ -64,12 +54,12 @@ export default function ProcessosAdminScreen() {
   const pipelineCounts = PIPELINE.map((s) => ({
     status: s,
     count: (clientes ?? []).filter((c) => c.status_processo === s).length,
-    label: STATUS_LABEL[s],
+    label: t(`admin.status.${s}`),
     color: STATUS_COLOR[s],
   }))
 
   const filtrados = (clientes ?? []).filter((c) => {
-    if (filtro === 'todos') return c.status_processo !== 'cancelado'
+    if (filtro === 'todos') return !['prospect', 'contato', 'cancelado'].includes(c.status_processo)
     return c.status_processo === filtro
   })
 
@@ -87,11 +77,11 @@ export default function ProcessosAdminScreen() {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.headerSub}>Acompanhamento</Text>
-            <Text style={s.headerTitle}>Processos</Text>
+            <Text style={s.headerSub}>{t('admin.processes.tracking')}</Text>
+            <Text style={s.headerTitle}>{t('admin.tabs.processes')}</Text>
           </View>
           <View style={s.totalBadge}>
-            <Text style={s.totalTxt}>{filtrados.length} ativos</Text>
+            <Text style={s.totalTxt}>{t('admin.processes.active_count', { count: filtrados.length })}</Text>
           </View>
         </View>
 
@@ -108,7 +98,7 @@ export default function ProcessosAdminScreen() {
 
         {/* Filter pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillsScroll} contentContainerStyle={s.pillsRow}>
-          {FILTRO_STAGES.map(({ label, value }) => (
+          {filtroStages.map(({ label, value }) => (
             <TouchableOpacity
               key={value}
               style={[s.pill, filtro === value && s.pillActive]}
@@ -125,7 +115,7 @@ export default function ProcessosAdminScreen() {
         ) : filtrados.length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="layers-outline" size={40} color={colors.ink200} />
-            <Text style={s.emptyTxt}>Nenhum processo encontrado</Text>
+            <Text style={s.emptyTxt}>{t('admin.processes.no_processes')}</Text>
           </View>
         ) : (
           <>
@@ -134,7 +124,7 @@ export default function ProcessosAdminScreen() {
                 <View style={s.sectionRow}>
                   <View style={s.urgentePill}>
                     <Ionicons name="alert-circle" size={11} color={colors.err} />
-                    <Text style={s.urgenteTxt}>ATENÇÃO NECESSÁRIA</Text>
+                    <Text style={s.urgenteTxt}>{t('admin.processes.needs_attention')}</Text>
                   </View>
                 </View>
                 <View style={{ gap: 10 }}>
@@ -146,7 +136,7 @@ export default function ProcessosAdminScreen() {
             {normal.length > 0 && (
               <>
                 <View style={[s.sectionRow, { marginTop: urgentes.length > 0 ? 16 : 0 }]}>
-                  <Text style={s.sectionLabel}>EM ANDAMENTO</Text>
+                  <Text style={s.sectionLabel}>{t('admin.status.em_andamento')}</Text>
                 </View>
                 <View style={{ gap: 10 }}>
                   {normal.map((c) => <ProcessoCard key={c.id} cliente={c} />)}
@@ -161,13 +151,14 @@ export default function ProcessosAdminScreen() {
 }
 
 function ProcessoCard({ cliente, urgent = false }: { cliente: any; urgent?: boolean }) {
+  const { t } = useTranslation('common')
   const cor = STATUS_COLOR[cliente.status_processo as StatusProcesso]
   const pct = STATUS_PROGRESS[cliente.status_processo as StatusProcesso]
   return (
     <View style={[s.card, urgent && s.cardUrgent]}>
       {urgent && <View style={[s.cardAccentTop, { backgroundColor: colors.err }]} />}
       <View style={s.cardTop}>
-        <Avatar name={cliente.profile?.full_name ?? 'Cliente'} size={40} />
+        <Avatar name={cliente.profile?.full_name ?? t('admin.clients.client')} size={40} />
         <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
           <Text style={s.cardName} numberOfLines={1}>{cliente.profile?.full_name ?? '—'}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -176,14 +167,14 @@ function ProcessoCard({ cliente, urgent = false }: { cliente: any; urgent?: bool
           </View>
         </View>
         <View style={[s.statusChip, { backgroundColor: cor + '18' }]}>
-          <Text style={[s.statusTxt, { color: cor }]}>{STATUS_LABEL[cliente.status_processo]}</Text>
+          <Text style={[s.statusTxt, { color: cor }]}>{t(`admin.status.${cliente.status_processo}`)}</Text>
         </View>
       </View>
 
       {/* Progress bar */}
       <View style={{ marginTop: 12, marginBottom: 10 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-          <Text style={s.progLabel}>Progresso do processo</Text>
+          <Text style={s.progLabel}>{t('admin.processes.process_progress')}</Text>
           <Text style={[s.progPct, { color: cor }]}>{pct}%</Text>
         </View>
         <View style={s.progBarBg}>
@@ -195,10 +186,10 @@ function ProcessoCard({ cliente, urgent = false }: { cliente: any; urgent?: bool
       <View style={s.actions}>
         <TouchableOpacity style={s.actionBtnSecondary} activeOpacity={0.8}>
           <Ionicons name="chatbubble-outline" size={13} color={colors.navy800} />
-          <Text style={s.actionTxtSecondary}>Mensagem</Text>
+          <Text style={s.actionTxtSecondary}>{t('admin.processes.message')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.actionBtnPrimary} activeOpacity={0.8}>
-          <Text style={s.actionTxtPrimary}>Abrir processo</Text>
+          <Text style={s.actionTxtPrimary}>{t('admin.processes.open_process')}</Text>
           <Ionicons name="arrow-forward" size={13} color="white" />
         </TouchableOpacity>
       </View>

@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { db } from '@/lib/firebase'
+import { db, storage } from '@/lib/firebase'
 import {
   getClienteDocumentos,
   listDocumentoTemplates,
@@ -94,7 +94,7 @@ export function ClienteDocumentosTab() {
     if (!file) return
     setUploading(true)
     try {
-      const filePath = await uploadDocumento(db, cliente.id, file, file.name)
+      const filePath = await uploadDocumento(storage, cliente.id, file, file.name)
       await createClienteDocumento(db, {
         cliente_id: cliente.id,
         template_id: templateId || null,
@@ -130,7 +130,7 @@ export function ClienteDocumentosTab() {
         <h2 className="text-sm font-medium text-muted-foreground">
           {documentos?.length ?? 0} documento(s)
         </h2>
-        <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); else setOpen(true) }}>
+        <Dialog open={open} onOpenChange={(o: boolean) => { if (!o) handleClose(); else setOpen(true) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />

@@ -11,22 +11,26 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Keyboard,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { db } from '@/lib/firebase'
+import * as ImagePicker from 'expo-image-picker'
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { auth, db, storage } from '@/lib/firebase'
 import { getCliente, updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
-import { createProcesso, deleteProcesso, listProcessosByCliente, updateProcesso } from '@ueno/firebase/queries/processos'
+import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import { createContato, deleteContato, listContatosByCliente, updateContato } from '@ueno/firebase/queries/contatos'
 import { createHabilitacao, deleteHabilitacao, listHabilitacoesByCliente, updateHabilitacao } from '@ueno/firebase/queries/habilitacoes'
 import { createEntradaSaida, deleteEntradaSaida, listEntradasSaidasByCliente, updateEntradaSaida } from '@ueno/firebase/queries/entradas_saidas'
 import { listPagamentos } from '@ueno/firebase/queries/financeiro'
 import { getClienteDocumentos } from '@ueno/firebase/queries/documentos'
 import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
-import { listContratos } from '@ueno/firebase/queries/contratos'
+import { avatarPath } from '@ueno/firebase/storage'
 import { Avatar } from '@/components/Avatar'
 import { colors } from '@/theme'
 import { format, parseISO, isValid } from 'date-fns'
@@ -36,9 +40,7 @@ import type {
   ClienteEntradaSaidaInsert,
   ClienteHabilitacaoInsert,
   ClienteInsert,
-  ClienteProcessoInsert,
   ProfileInsert,
-  StatusClienteProcesso,
   StatusProcesso,
 } from '@ueno/firebase'
 
@@ -91,7 +93,18 @@ const TIPO_RESPONSAVEL_LABEL: Record<string, string> = {
   terceiros: 'Terceiros',
 }
 
-type ProfileForm = Pick<ProfileInsert, 'full_name' | 'email' | 'phone' | 'whatsapp' | 'is_active'>
+const DDI_OPTIONS = [
+  { label: '🇯🇵 +81', value: '+81' },
+  { label: '🇧🇷 +55', value: '+55' },
+  { label: '🇺🇸 +1', value: '+1' },
+  { label: '🇵🇹 +351', value: '+351' },
+  { label: '🇪🇸 +34', value: '+34' },
+  { label: '🇮🇹 +39', value: '+39' },
+  { label: '🇬🇧 +44', value: '+44' },
+  { label: '🇵🇾 +595', value: '+595' },
+]
+
+type ProfileForm = Pick<ProfileInsert, 'full_name' | 'email' | 'phone' | 'whatsapp' | 'avatar_url' | 'is_active'>
 
 type ClienteForm = Pick<
   ClienteInsert,
@@ -126,7 +139,6 @@ type ClienteForm = Pick<
 type ContatoForm = Omit<ClienteContatoInsert, 'cliente_id'>
 type HabilitacaoForm = Omit<ClienteHabilitacaoInsert, 'cliente_id'>
 type EntradaSaidaForm = Omit<ClienteEntradaSaidaInsert, 'cliente_id'>
-type ProcessoForm = Omit<ClienteProcessoInsert, 'cliente_id'>
 
 type EditableFieldProps = {
   label: string
@@ -143,12 +155,15 @@ function normalizeFormValue(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function numberOrNull(value: string | number | null | undefined): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  const normalized = normalizeFormValue(value ?? '')
-  if (!normalized) return null
-  const parsed = Number(normalized.replace(/[^\d.-]/g, ''))
-  return Number.isFinite(parsed) ? parsed : null
+function localUriToBlob(uri: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.onload = () => resolve(xhr.response)
+    xhr.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'))
+    xhr.responseType = 'blob'
+    xhr.open('GET', uri, true)
+    xhr.send(null)
+  })
 }
 
 function BooleanField({
@@ -308,13 +323,17 @@ export default function ClienteDetalheScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const queryClient = useQueryClient()
   const [editingSection, setEditingSection] = useState<
-    'pessoal' | 'endereco' | 'cnh' | 'contatos' | 'habilitacoes' | 'japao' | 'processos' | 'observacoes' | null
+    'pessoal' | 'endereco' | 'contatos' | 'habilitacoes' | 'japao' | 'observacoes' | null
   >(null)
+  const [editingItem, setEditingItem] = useState<{ section: 'contatos' | 'habilitacoes' | 'japao'; id: string } | null>(null)
+  const [ddiPickerFor, setDdiPickerFor] = useState<string | null>(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [profileForm, setProfileForm] = useState<ProfileForm>({
     full_name: '',
     email: '',
     phone: null,
     whatsapp: null,
+    avatar_url: null,
     is_active: true,
   })
   const [clienteForm, setClienteForm] = useState<ClienteForm>({
@@ -348,7 +367,6 @@ export default function ClienteDetalheScreen() {
   const [contatoDrafts, setContatoDrafts] = useState<Record<string, ContatoForm>>({})
   const [habilitacaoDrafts, setHabilitacaoDrafts] = useState<Record<string, HabilitacaoForm>>({})
   const [entradaSaidaDrafts, setEntradaSaidaDrafts] = useState<Record<string, EntradaSaidaForm>>({})
-  const [processoDrafts, setProcessoDrafts] = useState<Record<string, ProcessoForm>>({})
 
   const { data: cliente, isLoading } = useQuery({
     queryKey: ['admin-cliente', id],
@@ -398,12 +416,6 @@ export default function ClienteDetalheScreen() {
     enabled: !!id,
   })
 
-  const { data: contratos } = useQuery({
-    queryKey: ['admin-cliente-contratos', id],
-    queryFn: () => listContratos(db, id),
-    enabled: !!id,
-  })
-
   useEffect(() => {
     if (!cliente) return
     setProfileForm({
@@ -411,6 +423,7 @@ export default function ClienteDetalheScreen() {
       email: cliente.profile?.email ?? '',
       phone: cliente.profile?.phone ?? null,
       whatsapp: cliente.profile?.whatsapp ?? null,
+      avatar_url: cliente.profile?.avatar_url ?? null,
       is_active: cliente.profile?.is_active ?? true,
     })
     setClienteForm({
@@ -476,16 +489,6 @@ export default function ClienteDetalheScreen() {
     }])))
   }, [entradasSaidas])
 
-  useEffect(() => {
-    setProcessoDrafts(Object.fromEntries((processos ?? []).map((p) => [p.id, {
-      servico_id: p.servico_id,
-      data_inicio: p.data_inicio,
-      valor_acordado_jpy: p.valor_acordado_jpy,
-      status: p.status,
-      notas: p.notas,
-    }])))
-  }, [processos])
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!cliente) return
@@ -495,6 +498,7 @@ export default function ClienteDetalheScreen() {
           email: profileForm.email.trim(),
           phone: normalizeFormValue(profileForm.phone ?? ''),
           whatsapp: normalizeFormValue(profileForm.whatsapp ?? ''),
+          avatar_url: normalizeFormValue(profileForm.avatar_url ?? ''),
           is_active: profileForm.is_active,
         }),
         updateCliente(db, cliente.id, {
@@ -565,6 +569,7 @@ export default function ClienteDetalheScreen() {
     },
     onSuccess: () => {
       setEditingSection(null)
+      setEditingItem(null)
       refreshEditableLists()
     },
   })
@@ -590,6 +595,7 @@ export default function ClienteDetalheScreen() {
     },
     onSuccess: () => {
       setEditingSection(null)
+      setEditingItem(null)
       refreshEditableLists()
     },
   })
@@ -610,28 +616,7 @@ export default function ClienteDetalheScreen() {
     },
     onSuccess: () => {
       setEditingSection(null)
-      refreshEditableLists()
-    },
-  })
-
-  const saveProcessosMutation = useMutation({
-    mutationFn: async () => {
-      if (!id) return
-      await Promise.all(Object.entries(processoDrafts).map(([processoId, draft]) => {
-        const payload = {
-          servico_id: normalizeFormValue(draft.servico_id) ?? '',
-          data_inicio: normalizeFormValue(draft.data_inicio ?? ''),
-          valor_acordado_jpy: numberOrNull(draft.valor_acordado_jpy),
-          status: (normalizeFormValue(draft.status) ?? 'ativo') as StatusClienteProcesso,
-          notas: normalizeFormValue(draft.notas ?? ''),
-        }
-        return processoId.startsWith('novo-')
-          ? createProcesso(db, { cliente_id: id, ...payload })
-          : updateProcesso(db, processoId, payload)
-      }))
-    },
-    onSuccess: () => {
-      setEditingSection(null)
+      setEditingItem(null)
       refreshEditableLists()
     },
   })
@@ -643,8 +628,6 @@ export default function ClienteDetalheScreen() {
   const totalPendente = pagamentos?.filter((p) => p.status === 'pendente').reduce((acc, p) => acc + p.valor_jpy, 0) ?? 0
   const documentosPendentes = documentos?.filter((d) => d.status !== 'aprovado').length ?? 0
   const proximoAgendamento = agendamentos?.find((a) => new Date(a.data_hora_inicio).getTime() >= Date.now())
-  const contratosAtivos = contratos?.filter((c) => c.status !== 'cancelado').length ?? 0
-
   const statusColor = cliente ? STATUS_COLOR[cliente.status_processo] : colors.navy800
   const statusLabel = cliente ? STATUS_LABEL[cliente.status_processo] : ''
 
@@ -666,7 +649,6 @@ export default function ClienteDetalheScreen() {
       ['Província', cliente.provincia_jp],
       ['Cidade', cliente.cidade_jp],
       ['Endereço', cliente.endereco_jp || cliente.numero_bloco_jp],
-      ['CNH', cliente.cnh_numero],
     ] as const
     const done = checks.filter(([, value]) => Boolean(value)).length
     const missing = checks.filter(([, value]) => !value).slice(0, 3).map(([label]) => label)
@@ -683,6 +665,63 @@ export default function ClienteDetalheScreen() {
     if (phone) Linking.openURL(`tel:${phone}`)
   }
 
+  const handlePickAvatar = async () => {
+    if (!cliente) return
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) {
+      Alert.alert('Permissão necessária', 'Permita acesso à galeria nas configurações.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      allowsMultipleSelection: false,
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Automatic,
+      quality: 0.75,
+    })
+    if (result.canceled || !result.assets[0]) return
+
+    const previousAvatar = profileForm.avatar_url
+    const asset = result.assets[0]
+    const uri = asset.uri
+    setProfileForm((current) => ({ ...current, avatar_url: uri }))
+
+    try {
+      setUploadingAvatar(true)
+      const sourceName = asset.fileName ?? uri.split('/').pop() ?? 'avatar.jpg'
+      const contentType = asset.mimeType ?? 'image/jpeg'
+      const extFromMime = contentType === 'image/jpeg'
+        ? 'jpg'
+        : contentType === 'image/png'
+          ? 'png'
+          : null
+      const ext = extFromMime ?? (sourceName.includes('.') ? sourceName.split('.').pop() : 'jpg')
+      const ownerUid = auth.currentUser?.uid ?? cliente.profile_id
+      const path = avatarPath(ownerUid, `cliente-${cliente.profile_id}-avatar-${Date.now()}.${ext}`)
+      const storageRef = ref(storage, path)
+      const blob = await localUriToBlob(uri)
+      try {
+        await uploadBytes(storageRef, blob, { contentType })
+      } finally {
+        ;(blob as Blob & { close?: () => void }).close?.()
+      }
+      const publicUrl = await getDownloadURL(storageRef)
+      await updateProfile(db, cliente.profile_id, { avatar_url: publicUrl })
+      setProfileForm((current) => ({ ...current, avatar_url: publicUrl }))
+      queryClient.setQueryData(['admin-cliente', id], (current: any) => current
+        ? { ...current, profile: { ...current.profile, avatar_url: publicUrl } }
+        : current)
+      queryClient.invalidateQueries({ queryKey: ['admin-cliente', id] })
+    } catch (error) {
+      console.error('Erro ao enviar avatar:', error)
+      setProfileForm((current) => ({ ...current, avatar_url: previousAvatar }))
+      Alert.alert('Não foi possível enviar a foto', 'Tente novamente com outra imagem.')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
   const updateProfileField = (field: keyof ProfileForm, value: string) => {
     setProfileForm((current) => ({ ...current, [field]: value }))
   }
@@ -692,9 +731,10 @@ export default function ClienteDetalheScreen() {
   }
 
   const addContatoDraft = () => {
+    const key = `novo-${Date.now()}`
     setContatoDrafts((current) => ({
       ...current,
-      [`novo-${Date.now()}`]: {
+      [key]: {
         ddi: '+81',
         numero: '',
         tipo_responsavel: 'pessoal',
@@ -704,13 +744,14 @@ export default function ClienteDetalheScreen() {
         is_principal: Object.keys(current).length === 0,
       },
     }))
-    setEditingSection('contatos')
+    setEditingItem({ section: 'contatos', id: key })
   }
 
   const addHabilitacaoDraft = () => {
+    const key = `novo-${Date.now()}`
     setHabilitacaoDrafts((current) => ({
       ...current,
-      [`novo-${Date.now()}`]: {
+      [key]: {
         pais: '',
         categoria: null,
         nome_habilitacao: null,
@@ -721,34 +762,24 @@ export default function ClienteDetalheScreen() {
         situacao: 'positiva',
       },
     }))
-    setEditingSection('habilitacoes')
+    setEditingItem({ section: 'habilitacoes', id: key })
   }
 
   const addEntradaSaidaDraft = () => {
+    const key = `novo-${Date.now()}`
     setEntradaSaidaDrafts((current) => ({
       ...current,
-      [`novo-${Date.now()}`]: {
+      [key]: {
         data_viagem: new Date().toISOString().slice(0, 10),
         tipo: 'entrada',
         observacao: null,
       },
     }))
-    setEditingSection('japao')
+    setEditingItem({ section: 'japao', id: key })
   }
 
-  const addProcessoDraft = () => {
-    setProcessoDrafts((current) => ({
-      ...current,
-      [`novo-${Date.now()}`]: {
-        servico_id: '',
-        data_inicio: new Date().toISOString().slice(0, 10),
-        valor_acordado_jpy: null,
-        status: 'ativo',
-        notas: null,
-      },
-    }))
-    setEditingSection('processos')
-  }
+  const isEditingItem = (section: 'contatos' | 'habilitacoes' | 'japao', key: string) =>
+    editingItem?.section === section && editingItem.id === key
 
   const removeLocalDraft = <T,>(setter: Dispatch<SetStateAction<Record<string, T>>>, key: string) => {
     setter((current) => {
@@ -757,6 +788,41 @@ export default function ClienteDetalheScreen() {
       return next
     })
   }
+
+  const activeNewContatoId = editingItem?.section === 'contatos' && editingItem.id.startsWith('novo-') ? editingItem.id : null
+  const activeNewContato = activeNewContatoId ? contatoDrafts[activeNewContatoId] : null
+  const activeNewHabilitacaoId = editingItem?.section === 'habilitacoes' && editingItem.id.startsWith('novo-') ? editingItem.id : null
+  const activeNewHabilitacao = activeNewHabilitacaoId ? habilitacaoDrafts[activeNewHabilitacaoId] : null
+  const activeNewEntradaId = editingItem?.section === 'japao' && editingItem.id.startsWith('novo-') ? editingItem.id : null
+  const activeNewEntrada = activeNewEntradaId ? entradaSaidaDrafts[activeNewEntradaId] : null
+
+  const renderDdiDropdown = (draftId: string) => (
+    <View style={s.ddiDropdown}>
+      {DDI_OPTIONS.map((option) => (
+        <TouchableOpacity
+          key={option.value}
+          style={s.ddiOption}
+          onPress={() => {
+            setContatoDrafts((current) => {
+              const draft = current[draftId]
+              if (!draft) return current
+              return {
+                ...current,
+                [draftId]: { ...draft, ddi: option.value },
+              }
+            })
+            setDdiPickerFor(null)
+          }}
+          activeOpacity={0.85}
+        >
+          <Text style={s.ddiOptionTxt}>{option.label}</Text>
+          {contatoDrafts[draftId]?.ddi === option.value && (
+            <Ionicons name="checkmark" size={16} color={colors.navy800} />
+          )}
+        </TouchableOpacity>
+      ))}
+    </View>
+  )
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -782,13 +848,11 @@ export default function ClienteDetalheScreen() {
                 <Ionicons name="chevron-back" size={18} color="white" />
               </TouchableOpacity>
               <Text style={s.heroNavTitle}>Clientes</Text>
-              <TouchableOpacity style={s.heroBtn} onPress={() => setEditingSection('pessoal')}>
-                <Ionicons name="create-outline" size={18} color="white" />
-              </TouchableOpacity>
+              <View style={s.heroBtnSpacer} />
             </View>
 
             <View style={s.heroProfile}>
-              <Avatar name={cliente.profile?.full_name ?? 'Cliente'} size={64} />
+              <Avatar name={cliente.profile?.full_name ?? 'Cliente'} size={64} url={cliente.profile?.avatar_url} />
               <View style={{ flex: 1 }}>
                 <Text style={s.heroName}>{cliente.profile?.full_name ?? '—'}</Text>
                 <Text style={s.heroEmail}>{cliente.profile?.email ?? '—'}</Text>
@@ -855,11 +919,11 @@ export default function ClienteDetalheScreen() {
             <SectionHeader title="Acessos do cliente" />
             <View style={s.actionGrid}>
               <ActionTile
-                icon="wallet-outline"
-                label="Financeiro"
-                value={totalPendente > 0 ? `${formatJpy(totalPendente)} pendente` : `${formatJpy(totalPago)} pago`}
-                color={colors.ok}
-                onPress={() => router.push({ pathname: '/(admin)/(tabs)/clientes/relacionados', params: { clienteId: id, tipo: 'financeiro' } } as any)}
+                icon="layers-outline"
+                label="Processo"
+                value={processosAtivos > 0 ? `${processosAtivos} ativo(s)` : `${processos?.length ?? 0} registro(s)`}
+                color={colors.navy800}
+                onPress={() => router.push({ pathname: '/(admin)/(tabs)/clientes/relacionados', params: { clienteId: id, tipo: 'processos' } } as any)}
               />
               <ActionTile
                 icon="document-text-outline"
@@ -876,11 +940,11 @@ export default function ClienteDetalheScreen() {
                 onPress={() => router.push({ pathname: '/(admin)/(tabs)/clientes/relacionados', params: { clienteId: id, tipo: 'agendamentos' } } as any)}
               />
               <ActionTile
-                icon="reader-outline"
-                label="Contratos"
-                value={`${contratosAtivos} contrato(s)`}
-                color={colors.navy800}
-                onPress={() => router.push({ pathname: '/(admin)/(tabs)/clientes/relacionados', params: { clienteId: id, tipo: 'contratos' } } as any)}
+                icon="wallet-outline"
+                label="Financeiro"
+                value={totalPendente > 0 ? `${formatJpy(totalPendente)} pendente` : `${formatJpy(totalPago)} pago`}
+                color={colors.ok}
+                onPress={() => router.push({ pathname: '/(admin)/(tabs)/clientes/relacionados', params: { clienteId: id, tipo: 'financeiro' } } as any)}
               />
             </View>
 
@@ -892,51 +956,58 @@ export default function ClienteDetalheScreen() {
               onCancel={() => setEditingSection(null)}
             />
             <View style={s.infoCard}>
+              <View style={s.photoField}>
+                <View style={s.photoAvatarWrap}>
+                  <Avatar name={profileForm.full_name || 'Cliente'} size={76} url={profileForm.avatar_url} />
+                  {editingSection === 'pessoal' && (
+                    <TouchableOpacity style={s.photoCameraBtn} onPress={handlePickAvatar} disabled={uploadingAvatar} activeOpacity={0.85}>
+                      {uploadingAvatar ? (
+                        <ActivityIndicator size="small" color={colors.white} />
+                      ) : (
+                        <Ionicons name="camera" size={15} color={colors.white} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.photoTitle}>Foto de Perfil</Text>
+                  <Text style={s.photoHint}>
+                    {editingSection === 'pessoal' ? 'Selecione uma imagem da galeria.' : 'Edite os dados pessoais para alterar a foto.'}
+                  </Text>
+                  {editingSection === 'pessoal' && (
+                    <TouchableOpacity style={s.photoPickerBtn} onPress={handlePickAvatar} disabled={uploadingAvatar} activeOpacity={0.85}>
+                      {uploadingAvatar ? <ActivityIndicator size="small" color={colors.navy800} /> : <Ionicons name="image-outline" size={15} color={colors.navy800} />}
+                      <Text style={s.photoPickerTxt}>{uploadingAvatar ? 'Enviando foto...' : 'Escolher da galeria'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
               <EditableField label="Nome completo" value={profileForm.full_name} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('full_name', v)} />
-              <EditableField
-                label="Status do processo"
-                value={clienteForm.status_processo}
-                editing={editingSection === 'pessoal'}
-                onChange={(v) => updateClienteField('status_processo', v)}
-                placeholder="prospect, contato, documentacao, agendado..."
-              />
-              <EditableField
-                label="Instrutor responsável"
-                value={clienteForm.assigned_instrutor_id}
-                editing={editingSection === 'pessoal'}
-                onChange={(v) => updateClienteField('assigned_instrutor_id', v)}
-                placeholder="ID do instrutor"
-              />
-              <BooleanField
-                label="Perfil ativo"
-                value={profileForm.is_active}
-                editing={editingSection === 'pessoal'}
-                onChange={(value) => setProfileForm((current) => ({ ...current, is_active: value }))}
-              />
-              <EditableField label="Nome japonês" value={clienteForm.nome_japones} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nome_japones', v)} />
-              <EditableField label="Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : safeDate(cliente.data_nascimento, 'd/MM/yyyy')} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} placeholder="AAAA-MM-DD" />
+              <EditableField label="Nome em Japonês (フリガナ)" value={clienteForm.nome_japones} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nome_japones', v)} placeholder="Katakana ou Kanji" />
+              <EditableField label="Data de Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : safeDate(cliente.data_nascimento, 'd/MM/yyyy')} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} placeholder="AAAA-MM-DD" />
               <EditableField label="Nacionalidade" value={clienteForm.nacionalidade} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nacionalidade', v)} />
               <EditableField label="CPF" value={clienteForm.cpf} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('cpf', v)} keyboardType="number-pad" />
-              <EditableField label="Zairyu Card" value={clienteForm.zairyu_card} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('zairyu_card', v)} />
-              <EditableField label="Visto" value={clienteForm.visto_tipo} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('visto_tipo', v)} />
+              <EditableField label="Email" value={profileForm.email} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('email', v)} keyboardType="email-address" />
+              <EditableField label="Zairyu Card / Japanese ID" value={clienteForm.zairyu_card} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('zairyu_card', v)} placeholder="Número do cartão" />
+              <EditableField label="Tipo de Visto" value={clienteForm.visto_tipo} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('visto_tipo', v)} placeholder="Ex: Cônjuge, Trabalho, Estudante..." />
               <EditableField
-                label="Validade visto"
+                label="Validade do Visto / Documento"
                 value={editingSection === 'pessoal' ? clienteForm.visto_validade : safeDate(cliente.visto_validade, 'd/MM/yyyy')}
                 editing={editingSection === 'pessoal'}
                 onChange={(v) => updateClienteField('visto_validade', v)}
                 placeholder="AAAA-MM-DD"
               />
+              <View style={s.formSubsection}>
+                <Text style={s.formSubsectionTitle}>Profissão / Trabalho</Text>
+              </View>
               <EditableField
-                label="Profissão"
+                label="Tipo de Trabalho"
                 value={editingSection === 'pessoal' ? clienteForm.profissao_tipo : cliente.profissao_tipo ? PROFISSAO_LABEL[cliente.profissao_tipo] ?? cliente.profissao_tipo : null}
                 editing={editingSection === 'pessoal'}
                 onChange={(v) => updateClienteField('profissao_tipo', v)}
-                placeholder="autonomo, fabrica, empreiteira..."
+                placeholder="Selecionar"
               />
               <EditableField label="Empresa" value={clienteForm.profissao_empresa} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('profissao_empresa', v)} />
-              <EditableField label="E-mail" value={profileForm.email} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('email', v)} keyboardType="email-address" />
-              <EditableField label="Telefone" value={profileForm.phone} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('phone', v)} keyboardType="phone-pad" />
-              <EditableField label="WhatsApp" value={profileForm.whatsapp} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('whatsapp', v)} keyboardType="phone-pad" />
             </View>
             {editingSection === 'pessoal' && (
               <TouchableOpacity style={s.saveBtn} onPress={() => saveMutation.mutate()} disabled={saveMutation.isPending} activeOpacity={0.85}>
@@ -945,28 +1016,168 @@ export default function ClienteDetalheScreen() {
               </TouchableOpacity>
             )}
 
-            <SectionHeader
-              title="CNH e habilitação base"
-              editing={editingSection === 'cnh'}
-              onEdit={() => setEditingSection('cnh')}
-              onCancel={() => setEditingSection(null)}
-            />
-            <View style={s.infoCard}>
-              <EditableField label="Número da CNH" value={clienteForm.cnh_numero} editing={editingSection === 'cnh'} onChange={(v) => updateClienteField('cnh_numero', v)} />
-              <EditableField label="Categoria" value={clienteForm.cnh_categoria} editing={editingSection === 'cnh'} onChange={(v) => updateClienteField('cnh_categoria', v)} />
-              <EditableField label="Validade" value={editingSection === 'cnh' ? clienteForm.cnh_validade : safeDate(cliente.cnh_validade, 'd/MM/yyyy')} editing={editingSection === 'cnh'} onChange={(v) => updateClienteField('cnh_validade', v)} placeholder="AAAA-MM-DD" />
-              <EditableField label="Estado emissor" value={clienteForm.cnh_estado_emissor} editing={editingSection === 'cnh'} onChange={(v) => updateClienteField('cnh_estado_emissor', v)} />
-            </View>
-            {editingSection === 'cnh' && (
-              <TouchableOpacity style={s.saveBtn} onPress={() => saveMutation.mutate()} disabled={saveMutation.isPending} activeOpacity={0.85}>
-                {saveMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                <Text style={s.saveBtnTxt}>Salvar CNH</Text>
+            {/* ── Contatos ── */}
+            <SectionHeader title="Contatos" />
+            <View style={s.inlineActions}>
+              <TouchableOpacity style={s.lightActionBtn} onPress={addContatoDraft} activeOpacity={0.85}>
+                <Ionicons name="add" size={14} color={colors.navy800} />
+                <Text style={s.lightActionTxt}>Adicionar contato</Text>
               </TouchableOpacity>
+            </View>
+            {Object.entries(contatoDrafts).length > 0 ? (
+              <View style={{ gap: 10, marginBottom: 22 }}>
+                {Object.entries(contatoDrafts).filter(([draftId]) => draftId !== activeNewContatoId).map(([draftId, draft]) => {
+                  const editing = isEditingItem('contatos', draftId)
+                  const tipoContato = TIPO_RESPONSAVEL_LABEL[draft.tipo_responsavel] ?? draft.tipo_responsavel
+                  return (
+                    <View key={draftId} style={editing ? s.contactFormCard : s.contactListCard}>
+                      {!editing ? (
+                        <>
+                          <View style={s.contactListMain}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={s.contactTitleRow}>
+                                <Text style={s.contactNumber} numberOfLines={1}>{draft.ddi} {draft.numero || 'Novo contato'}</Text>
+                                {draft.is_principal && <MiniTag label="Principal" color={colors.white} bg={colors.navy800} />}
+                                {draft.tem_whatsapp && <MiniTag label="WhatsApp" color="#166534" bg="#DCFCE7" />}
+                              </View>
+                              <Text style={s.contactMeta} numberOfLines={1}>
+                                {tipoContato}
+                                {draft.nome_responsavel ? ` — ${draft.nome_responsavel}` : ''}
+                                {draft.relacao ? ` (${draft.relacao})` : ''}
+                              </Text>
+                            </View>
+                            <View style={s.itemHeaderActions}>
+                              <TouchableOpacity style={s.editMiniBtn} onPress={() => setEditingItem({ section: 'contatos', id: draftId })}>
+                                <Ionicons name="create-outline" size={14} color={colors.navy800} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={s.deleteMiniBtn}
+                                onPress={() => {
+                                  if (draftId.startsWith('novo-')) removeLocalDraft(setContatoDrafts, draftId)
+                                  else deleteContato(db, id, draftId).then(refreshEditableLists)
+                                }}
+                              >
+                                <Ionicons name="trash-outline" size={14} color={colors.err} />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </>
+                      ) : (
+                        <>
+                          <View style={s.contactFormHeader}>
+                            <Text style={s.contactFormTitle}>{draftId.startsWith('novo-') ? 'Novo Contato' : 'Editar Contato'}</Text>
+                            <TouchableOpacity
+                              style={s.cancelMiniBtn}
+                              onPress={() => {
+                                if (draftId.startsWith('novo-')) removeLocalDraft(setContatoDrafts, draftId)
+                                setEditingItem(null)
+                              }}
+                            >
+                              <Ionicons name="close" size={15} color={colors.ink500} />
+                            </TouchableOpacity>
+                          </View>
+
+                          <View style={s.contactFormBody}>
+                            <Text style={s.contactFormLabel}>Número</Text>
+                            <View style={s.contactNumberInputs}>
+                              <TouchableOpacity style={s.contactDdiInput} onPress={() => setDdiPickerFor((current) => current === draftId ? null : draftId)} activeOpacity={0.85}>
+                                <Text style={s.contactDdiTxt}>{DDI_OPTIONS.find((o) => o.value === draft.ddi)?.label ?? draft.ddi}</Text>
+                                <Ionicons name={ddiPickerFor === draftId ? 'chevron-up' : 'chevron-down'} size={13} color={colors.ink500} />
+                              </TouchableOpacity>
+                              <TextInput
+                                value={draft.numero}
+                                onChangeText={(v: string) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, numero: v } }))}
+                                placeholder="90 0000-0000"
+                                placeholderTextColor={colors.ink300}
+                                style={s.contactNumberInput}
+                                keyboardType="phone-pad"
+                              />
+                            </View>
+                            {ddiPickerFor === draftId && renderDdiDropdown(draftId)}
+
+                            <Text style={s.contactFormLabel}>Responsável pelo número</Text>
+                            <View style={s.contactTypeGroup}>
+                              {(['pessoal', 'parente', 'terceiros'] as const).map((tipo) => (
+                                <TouchableOpacity
+                                  key={tipo}
+                                  style={[s.contactTypeBtn, draft.tipo_responsavel === tipo && s.contactTypeBtnActive]}
+                                  onPress={() => setContatoDrafts((current) => ({
+                                    ...current,
+                                    [draftId]: {
+                                      ...draft,
+                                      tipo_responsavel: tipo,
+                                      nome_responsavel: tipo === 'pessoal' ? null : draft.nome_responsavel,
+                                      relacao: tipo === 'pessoal' ? null : draft.relacao,
+                                    },
+                                  }))}
+                                  activeOpacity={0.85}
+                                >
+                                  <Text style={[s.contactTypeTxt, draft.tipo_responsavel === tipo && s.contactTypeTxtActive]}>
+                                    {TIPO_RESPONSAVEL_LABEL[tipo]}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+
+                            {draft.tipo_responsavel !== 'pessoal' && (
+                              <>
+                                <EditableField label="Nome do responsável" value={draft.nome_responsavel} editing onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, nome_responsavel: v } }))} />
+                                <EditableField label="Relação" value={draft.relacao} editing onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, relacao: v } }))} placeholder="Ex: Esposa, Filho, Amigo..." />
+                              </>
+                            )}
+
+                            <View style={s.contactCheckboxRow}>
+                              <TouchableOpacity
+                                style={s.contactCheckboxItem}
+                                onPress={() => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, tem_whatsapp: !draft.tem_whatsapp } }))}
+                                activeOpacity={0.85}
+                              >
+                                <View style={[s.contactCheckbox, draft.tem_whatsapp && s.contactCheckboxActive]}>
+                                  {draft.tem_whatsapp && <Ionicons name="checkmark" size={12} color={colors.white} />}
+                                </View>
+                                <Text style={s.contactCheckboxTxt}>Tem WhatsApp</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={s.contactCheckboxItem}
+                                onPress={() => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, is_principal: !draft.is_principal } }))}
+                                activeOpacity={0.85}
+                              >
+                                <View style={[s.contactCheckbox, draft.is_principal && s.contactCheckboxActive]}>
+                                  {draft.is_principal && <Ionicons name="checkmark" size={12} color={colors.white} />}
+                                </View>
+                                <Text style={s.contactCheckboxTxt}>Principal para contato</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            <View style={s.contactFooter}>
+                              <TouchableOpacity
+                                style={s.contactCancelBtn}
+                                onPress={() => {
+                                  if (draftId.startsWith('novo-')) removeLocalDraft(setContatoDrafts, draftId)
+                                  setEditingItem(null)
+                                }}
+                                activeOpacity={0.85}
+                              >
+                                <Text style={s.contactCancelTxt}>Cancelar</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={s.contactSaveBtn} onPress={() => saveContatosMutation.mutate()} disabled={saveContatosMutation.isPending} activeOpacity={0.85}>
+                                {saveContatosMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Text style={s.contactSaveTxt}>Salvar</Text>}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  )
+                })}
+              </View>
+            ) : (
+              <View style={s.infoCard}><EmptyState text="Nenhum contato cadastrado" /></View>
             )}
 
             {/* ── Endereço JP ── */}
             <SectionHeader
-              title="Endereço no Japão"
+              title="Endereço"
               editing={editingSection === 'endereco'}
               onEdit={() => setEditingSection('endereco')}
               onCancel={() => setEditingSection(null)}
@@ -1002,64 +1213,8 @@ export default function ClienteDetalheScreen() {
               </TouchableOpacity>
             )}
 
-            {/* ── Contatos ── */}
-            <SectionHeader
-              title="Contatos"
-              editing={editingSection === 'contatos'}
-              onEdit={() => setEditingSection('contatos')}
-              onCancel={() => setEditingSection(null)}
-            />
-            <View style={s.inlineActions}>
-              <TouchableOpacity style={s.lightActionBtn} onPress={addContatoDraft} activeOpacity={0.85}>
-                <Ionicons name="add" size={14} color={colors.navy800} />
-                <Text style={s.lightActionTxt}>Adicionar contato</Text>
-              </TouchableOpacity>
-            </View>
-            {Object.entries(contatoDrafts).length > 0 ? (
-              <View style={{ gap: 10, marginBottom: 22 }}>
-                {Object.entries(contatoDrafts).map(([draftId, draft]) => (
-                  <View key={draftId} style={s.editItemCard}>
-                    <View style={s.editItemHeader}>
-                      <Text style={s.editItemTitle}>{draft.ddi} {draft.numero || 'Novo contato'}</Text>
-                      {editingSection === 'contatos' && (
-                        <TouchableOpacity
-                          style={s.deleteMiniBtn}
-                          onPress={() => {
-                            if (draftId.startsWith('novo-')) removeLocalDraft(setContatoDrafts, draftId)
-                            else deleteContato(db, id, draftId).then(refreshEditableLists)
-                          }}
-                        >
-                          <Ionicons name="trash-outline" size={14} color={colors.err} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    <EditableField label="DDI" value={draft.ddi} editing={editingSection === 'contatos'} onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, ddi: v } }))} />
-                    <EditableField label="Número" value={draft.numero} editing={editingSection === 'contatos'} onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, numero: v } }))} keyboardType="phone-pad" />
-                    <EditableField label="Responsável" value={draft.nome_responsavel} editing={editingSection === 'contatos'} onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, nome_responsavel: v } }))} />
-                    <EditableField label="Relação" value={draft.relacao} editing={editingSection === 'contatos'} onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, relacao: v } }))} />
-                    <EditableField label="Tipo" value={editingSection === 'contatos' ? draft.tipo_responsavel : TIPO_RESPONSAVEL_LABEL[draft.tipo_responsavel] ?? draft.tipo_responsavel} editing={editingSection === 'contatos'} onChange={(v) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, tipo_responsavel: v as ClienteContatoInsert['tipo_responsavel'] } }))} placeholder="pessoal, parente ou terceiros" />
-                    <BooleanField label="Principal" value={draft.is_principal} editing={editingSection === 'contatos'} onChange={(value) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, is_principal: value } }))} />
-                    <BooleanField label="WhatsApp" value={draft.tem_whatsapp} editing={editingSection === 'contatos'} onChange={(value) => setContatoDrafts((current) => ({ ...current, [draftId]: { ...draft, tem_whatsapp: value } }))} />
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <View style={s.infoCard}><EmptyState text="Nenhum contato cadastrado" /></View>
-            )}
-            {editingSection === 'contatos' && (
-              <TouchableOpacity style={s.saveBtn} onPress={() => saveContatosMutation.mutate()} disabled={saveContatosMutation.isPending} activeOpacity={0.85}>
-                {saveContatosMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                <Text style={s.saveBtnTxt}>Salvar contatos</Text>
-              </TouchableOpacity>
-            )}
-
             {/* ── Habilitações ── */}
-            <SectionHeader
-              title="Habilitações"
-              editing={editingSection === 'habilitacoes'}
-              onEdit={() => setEditingSection('habilitacoes')}
-              onCancel={() => setEditingSection(null)}
-            />
+            <SectionHeader title="Habilitações" />
             <View style={s.inlineActions}>
               <TouchableOpacity style={s.lightActionBtn} onPress={addHabilitacaoDraft} activeOpacity={0.85}>
                 <Ionicons name="add" size={14} color={colors.navy800} />
@@ -1068,53 +1223,59 @@ export default function ClienteDetalheScreen() {
             </View>
             {Object.entries(habilitacaoDrafts).length > 0 ? (
               <View style={{ gap: 10, marginBottom: 22 }}>
-                {Object.entries(habilitacaoDrafts).map(([draftId, draft]) => (
-                  <View key={draftId} style={s.editItemCard}>
-                    <View style={s.editItemHeader}>
-                      <Text style={s.editItemTitle}>{draft.pais || 'Nova habilitação'}{draft.categoria ? ` · Cat. ${draft.categoria}` : ''}</Text>
-                      {editingSection === 'habilitacoes' && (
-                        <TouchableOpacity
-                          style={s.deleteMiniBtn}
-                          onPress={() => {
-                            if (draftId.startsWith('novo-')) removeLocalDraft(setHabilitacaoDrafts, draftId)
-                            else deleteHabilitacao(db, id, draftId).then(refreshEditableLists)
-                          }}
-                        >
-                          <Ionicons name="trash-outline" size={14} color={colors.err} />
+                {Object.entries(habilitacaoDrafts).filter(([draftId]) => draftId !== activeNewHabilitacaoId).map(([draftId, draft]) => {
+                  const editing = isEditingItem('habilitacoes', draftId)
+                  return (
+                    <View key={draftId} style={s.editItemCard}>
+                      <View style={s.editItemHeader}>
+                        <Text style={s.editItemTitle}>{draft.pais || 'Nova habilitação'}{draft.categoria ? ` · Cat. ${draft.categoria}` : ''}</Text>
+                        <View style={s.itemHeaderActions}>
+                          {editing ? (
+                            <>
+                              <TouchableOpacity style={s.cancelMiniBtn} onPress={() => setEditingItem(null)}>
+                                <Ionicons name="close" size={14} color={colors.ink500} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={s.deleteMiniBtn}
+                                onPress={() => {
+                                  if (draftId.startsWith('novo-')) removeLocalDraft(setHabilitacaoDrafts, draftId)
+                                  else deleteHabilitacao(db, id, draftId).then(refreshEditableLists)
+                                }}
+                              >
+                                <Ionicons name="trash-outline" size={14} color={colors.err} />
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <TouchableOpacity style={s.editMiniBtn} onPress={() => setEditingItem({ section: 'habilitacoes', id: draftId })}>
+                              <Ionicons name="create-outline" size={14} color={colors.navy800} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                      <EditableField label="País" value={draft.pais} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, pais: v } }))} />
+                      <EditableField label="Nome" value={draft.nome_habilitacao} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, nome_habilitacao: v } }))} />
+                      <EditableField label="Categoria" value={draft.categoria} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, categoria: v } }))} />
+                      <EditableField label="Número" value={draft.numero} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, numero: v } }))} />
+                      <EditableField label="Emissão" value={editing ? draft.data_emissao : safeDate(draft.data_emissao, 'd/MM/yyyy')} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_emissao: v } }))} placeholder="AAAA-MM-DD" />
+                      <EditableField label="Validade" value={editing ? draft.data_vencimento : safeDate(draft.data_vencimento, 'd/MM/yyyy')} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_vencimento: v } }))} placeholder="AAAA-MM-DD" />
+                      <EditableField label="Situação" value={draft.situacao} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, situacao: v as ClienteHabilitacaoInsert['situacao'] } }))} placeholder="positiva ou negativa" />
+                      <EditableField label="Observações" value={draft.observacoes} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, observacoes: v } }))} multiline />
+                      {editing && (
+                        <TouchableOpacity style={s.saveItemBtn} onPress={() => saveHabilitacoesMutation.mutate()} disabled={saveHabilitacoesMutation.isPending} activeOpacity={0.85}>
+                          {saveHabilitacoesMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={15} color={colors.white} />}
+                          <Text style={s.saveItemTxt}>Salvar habilitação</Text>
                         </TouchableOpacity>
                       )}
                     </View>
-                    <EditableField label="País" value={draft.pais} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, pais: v } }))} />
-                    <EditableField label="Nome" value={draft.nome_habilitacao} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, nome_habilitacao: v } }))} />
-                    <EditableField label="Categoria" value={draft.categoria} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, categoria: v } }))} />
-                    <EditableField label="Número" value={draft.numero} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, numero: v } }))} />
-                    <EditableField label="Emissão" value={editingSection === 'habilitacoes' ? draft.data_emissao : safeDate(draft.data_emissao, 'd/MM/yyyy')} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_emissao: v } }))} placeholder="AAAA-MM-DD" />
-                    <EditableField label="Validade" value={editingSection === 'habilitacoes' ? draft.data_vencimento : safeDate(draft.data_vencimento, 'd/MM/yyyy')} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_vencimento: v } }))} placeholder="AAAA-MM-DD" />
-                    <EditableField label="Situação" value={draft.situacao} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, situacao: v as ClienteHabilitacaoInsert['situacao'] } }))} placeholder="positiva ou negativa" />
-                    <EditableField label="Observações" value={draft.observacoes} editing={editingSection === 'habilitacoes'} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, observacoes: v } }))} multiline />
-                  </View>
-                ))}
+                  )
+                })}
               </View>
             ) : (
               <View style={s.infoCard}><EmptyState text="Nenhuma habilitação cadastrada" /></View>
             )}
-            {editingSection === 'habilitacoes' && (
-              <TouchableOpacity style={s.saveBtn} onPress={() => saveHabilitacoesMutation.mutate()} disabled={saveHabilitacoesMutation.isPending} activeOpacity={0.85}>
-                {saveHabilitacoesMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                <Text style={s.saveBtnTxt}>Salvar habilitações</Text>
-              </TouchableOpacity>
-            )}
 
             {/* ── Japão / Visto ── */}
-            <SectionHeader
-              title="Japão / Visto"
-              editing={editingSection === 'japao'}
-              onEdit={() => setEditingSection('japao')}
-              onCancel={() => setEditingSection(null)}
-            />
-            <View style={s.infoCard}>
-              <EditableField label="Entrada no Japão" value={editingSection === 'japao' ? clienteForm.data_entrada_japao : safeDate(cliente.data_entrada_japao, 'd/MM/yyyy')} editing={editingSection === 'japao'} onChange={(v) => updateClienteField('data_entrada_japao', v)} placeholder="AAAA-MM-DD" />
-            </View>
+            <SectionHeader title="Japão/Visto" />
             <View style={s.inlineActions}>
               <TouchableOpacity style={s.lightActionBtn} onPress={addEntradaSaidaDraft} activeOpacity={0.85}>
                 <Ionicons name="add" size={14} color={colors.navy800} />
@@ -1123,92 +1284,48 @@ export default function ClienteDetalheScreen() {
             </View>
             {Object.entries(entradaSaidaDrafts).length > 0 && (
               <View style={{ gap: 10, marginBottom: 22 }}>
-                {Object.entries(entradaSaidaDrafts).map(([draftId, draft]) => (
-                  <View key={draftId} style={s.editItemCard}>
-                    <View style={s.editItemHeader}>
-                      <Text style={s.editItemTitle}>{draft.tipo === 'entrada' ? 'Entrada' : 'Saída'} · {draft.data_viagem}</Text>
-                      {editingSection === 'japao' && (
-                        <TouchableOpacity
-                          style={s.deleteMiniBtn}
-                          onPress={() => {
-                            if (draftId.startsWith('novo-')) removeLocalDraft(setEntradaSaidaDrafts, draftId)
-                            else deleteEntradaSaida(db, id, draftId).then(refreshEditableLists)
-                          }}
-                        >
-                          <Ionicons name="trash-outline" size={14} color={colors.err} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    <EditableField label="Tipo" value={draft.tipo} editing={editingSection === 'japao'} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, tipo: v as ClienteEntradaSaidaInsert['tipo'] } }))} placeholder="entrada ou saida" />
-                    <EditableField label="Data" value={editingSection === 'japao' ? draft.data_viagem : safeDate(draft.data_viagem, 'd/MM/yyyy')} editing={editingSection === 'japao'} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, data_viagem: v } }))} placeholder="AAAA-MM-DD" />
-                    <EditableField label="Observação" value={draft.observacao} editing={editingSection === 'japao'} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, observacao: v } }))} multiline />
-                  </View>
-                ))}
-              </View>
-            )}
-            {editingSection === 'japao' && (
-              <>
-                <TouchableOpacity style={s.saveBtn} onPress={() => saveMutation.mutate()} disabled={saveMutation.isPending} activeOpacity={0.85}>
-                  {saveMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                  <Text style={s.saveBtnTxt}>Salvar visto</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.saveBtn} onPress={() => saveEntradasSaidasMutation.mutate()} disabled={saveEntradasSaidasMutation.isPending} activeOpacity={0.85}>
-                  {saveEntradasSaidasMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                  <Text style={s.saveBtnTxt}>Salvar viagens</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {/* ── Processo ativo ── */}
-            <SectionHeader
-              title="Processos"
-              editing={editingSection === 'processos'}
-              onEdit={() => setEditingSection('processos')}
-              onCancel={() => setEditingSection(null)}
-            />
-            <View style={s.inlineActions}>
-              <TouchableOpacity style={s.lightActionBtn} onPress={addProcessoDraft} activeOpacity={0.85}>
-                <Ionicons name="add" size={14} color={colors.navy800} />
-                <Text style={s.lightActionTxt}>Adicionar processo</Text>
-              </TouchableOpacity>
-            </View>
-            {Object.entries(processoDrafts).length > 0 ? (
-              <View style={{ gap: 10, marginBottom: 22 }}>
-                {Object.entries(processoDrafts).map(([draftId, draft]) => {
-                  const processo = processos?.find((p) => p.id === draftId)
+                {Object.entries(entradaSaidaDrafts).filter(([draftId]) => draftId !== activeNewEntradaId).map(([draftId, draft]) => {
+                  const editing = isEditingItem('japao', draftId)
                   return (
                     <View key={draftId} style={s.editItemCard}>
                       <View style={s.editItemHeader}>
-                        <Text style={s.editItemTitle}>{processo?.servico?.nome ?? 'Processo'}</Text>
-                        {editingSection === 'processos' && (
-                          <TouchableOpacity
-                            style={s.deleteMiniBtn}
-                            onPress={() => {
-                              if (draftId.startsWith('novo-')) removeLocalDraft(setProcessoDrafts, draftId)
-                              else deleteProcesso(db, draftId).then(refreshEditableLists)
-                            }}
-                          >
-                            <Ionicons name="trash-outline" size={14} color={colors.err} />
-                          </TouchableOpacity>
-                        )}
+                        <Text style={s.editItemTitle}>{draft.tipo === 'entrada' ? 'Entrada' : 'Saída'} · {draft.data_viagem}</Text>
+                        <View style={s.itemHeaderActions}>
+                          {editing ? (
+                            <>
+                              <TouchableOpacity style={s.cancelMiniBtn} onPress={() => setEditingItem(null)}>
+                                <Ionicons name="close" size={14} color={colors.ink500} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={s.deleteMiniBtn}
+                                onPress={() => {
+                                  if (draftId.startsWith('novo-')) removeLocalDraft(setEntradaSaidaDrafts, draftId)
+                                  else deleteEntradaSaida(db, id, draftId).then(refreshEditableLists)
+                                }}
+                              >
+                                <Ionicons name="trash-outline" size={14} color={colors.err} />
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <TouchableOpacity style={s.editMiniBtn} onPress={() => setEditingItem({ section: 'japao', id: draftId })}>
+                              <Ionicons name="create-outline" size={14} color={colors.navy800} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                      <EditableField label="ID do serviço" value={draft.servico_id} editing={editingSection === 'processos'} onChange={(v) => setProcessoDrafts((current) => ({ ...current, [draftId]: { ...draft, servico_id: v } }))} />
-                      <EditableField label="Status" value={draft.status} editing={editingSection === 'processos'} onChange={(v) => setProcessoDrafts((current) => ({ ...current, [draftId]: { ...draft, status: v as StatusClienteProcesso } }))} placeholder="ativo, concluido ou cancelado" />
-                      <EditableField label="Início" value={editingSection === 'processos' ? draft.data_inicio : safeDate(draft.data_inicio, 'd/MM/yyyy')} editing={editingSection === 'processos'} onChange={(v) => setProcessoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_inicio: v } }))} placeholder="AAAA-MM-DD" />
-                      <EditableField label="Valor acordado" value={draft.valor_acordado_jpy === null ? null : String(draft.valor_acordado_jpy)} editing={editingSection === 'processos'} onChange={(v) => setProcessoDrafts((current) => ({ ...current, [draftId]: { ...draft, valor_acordado_jpy: numberOrNull(v) } }))} keyboardType="number-pad" />
-                      <EditableField label="Notas" value={draft.notas} editing={editingSection === 'processos'} onChange={(v) => setProcessoDrafts((current) => ({ ...current, [draftId]: { ...draft, notas: v } }))} multiline />
+                      <EditableField label="Tipo" value={draft.tipo} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, tipo: v as ClienteEntradaSaidaInsert['tipo'] } }))} placeholder="entrada ou saida" />
+                      <EditableField label="Data" value={editing ? draft.data_viagem : safeDate(draft.data_viagem, 'd/MM/yyyy')} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, data_viagem: v } }))} placeholder="AAAA-MM-DD" />
+                      <EditableField label="Observação" value={draft.observacao} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, observacao: v } }))} multiline />
+                      {editing && (
+                        <TouchableOpacity style={s.saveItemBtn} onPress={() => saveEntradasSaidasMutation.mutate()} disabled={saveEntradasSaidasMutation.isPending} activeOpacity={0.85}>
+                          {saveEntradasSaidasMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={15} color={colors.white} />}
+                          <Text style={s.saveItemTxt}>Salvar viagem</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )
                 })}
               </View>
-            ) : (
-              <View style={s.infoCard}><EmptyState text="Nenhum processo cadastrado" /></View>
-            )}
-            {editingSection === 'processos' && (
-              <TouchableOpacity style={s.saveBtn} onPress={() => saveProcessosMutation.mutate()} disabled={saveProcessosMutation.isPending} activeOpacity={0.85}>
-                {saveProcessosMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Ionicons name="save-outline" size={16} color={colors.white} />}
-                <Text style={s.saveBtnTxt}>Salvar processos</Text>
-              </TouchableOpacity>
             )}
 
             <SectionHeader
@@ -1265,6 +1382,234 @@ export default function ClienteDetalheScreen() {
             </View>
           </View>
         </ScrollView>
+
+        <Modal
+          visible={!!activeNewContatoId && !!activeNewContato}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (activeNewContatoId) removeLocalDraft(setContatoDrafts, activeNewContatoId)
+            setEditingItem(null)
+          }}
+        >
+          <View style={s.contactModalOverlay}>
+            <TouchableOpacity style={s.keyboardDismissLayer} activeOpacity={1} onPress={Keyboard.dismiss} />
+            <KeyboardAvoidingView
+              style={s.contactModalKeyboardView}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+            >
+              <View style={s.contactModalSheet}>
+                {activeNewContatoId && activeNewContato && (
+                  <>
+                    <View style={s.contactModalHeader}>
+                      <Text style={s.contactModalTitle}>Novo Contato</Text>
+                      <TouchableOpacity
+                        style={s.contactModalClose}
+                        onPress={() => {
+                          removeLocalDraft(setContatoDrafts, activeNewContatoId)
+                          setEditingItem(null)
+                        }}
+                      >
+                        <Ionicons name="close" size={15} color={colors.ink500} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <ScrollView
+                      style={s.contactModalScroll}
+                      contentContainerStyle={s.contactModalContent}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      <Text style={s.contactFormLabel}>Número</Text>
+                      <View style={s.contactNumberInputs}>
+                        <TouchableOpacity style={s.contactDdiInput} onPress={() => setDdiPickerFor((current) => current === activeNewContatoId ? null : activeNewContatoId)} activeOpacity={0.85}>
+                          <Text style={s.contactDdiTxt}>{DDI_OPTIONS.find((o) => o.value === activeNewContato.ddi)?.label ?? activeNewContato.ddi}</Text>
+                          <Ionicons name={ddiPickerFor === activeNewContatoId ? 'chevron-up' : 'chevron-down'} size={13} color={colors.ink500} />
+                        </TouchableOpacity>
+                        <TextInput
+                          value={activeNewContato.numero}
+                          onChangeText={(v: string) => setContatoDrafts((current) => ({ ...current, [activeNewContatoId]: { ...activeNewContato, numero: v } }))}
+                          placeholder="90 0000-0000"
+                          placeholderTextColor={colors.ink300}
+                          style={s.contactNumberInput}
+                          keyboardType="phone-pad"
+                          returnKeyType="done"
+                        />
+                      </View>
+                      {ddiPickerFor === activeNewContatoId && renderDdiDropdown(activeNewContatoId)}
+
+                      <Text style={s.contactFormLabel}>Responsável pelo número</Text>
+                      <View style={s.contactTypeGroup}>
+                        {(['pessoal', 'parente', 'terceiros'] as const).map((tipo) => (
+                        <TouchableOpacity
+                          key={tipo}
+                          style={[s.contactTypeBtn, activeNewContato.tipo_responsavel === tipo && s.contactTypeBtnActive]}
+                          onPress={() => setContatoDrafts((current) => ({
+                            ...current,
+                            [activeNewContatoId]: {
+                              ...activeNewContato,
+                              tipo_responsavel: tipo,
+                              nome_responsavel: tipo === 'pessoal' ? null : activeNewContato.nome_responsavel,
+                              relacao: tipo === 'pessoal' ? null : activeNewContato.relacao,
+                            },
+                          }))}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[s.contactTypeTxt, activeNewContato.tipo_responsavel === tipo && s.contactTypeTxtActive]}>
+                            {TIPO_RESPONSAVEL_LABEL[tipo]}
+                          </Text>
+                        </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      {activeNewContato.tipo_responsavel !== 'pessoal' && (
+                        <>
+                          <EditableField label="Nome do responsável" value={activeNewContato.nome_responsavel} editing onChange={(v) => setContatoDrafts((current) => ({ ...current, [activeNewContatoId]: { ...activeNewContato, nome_responsavel: v } }))} />
+                          <EditableField label="Relação" value={activeNewContato.relacao} editing onChange={(v) => setContatoDrafts((current) => ({ ...current, [activeNewContatoId]: { ...activeNewContato, relacao: v } }))} placeholder="Ex: Esposa, Filho, Amigo..." />
+                        </>
+                      )}
+
+                      <View style={s.contactCheckboxRow}>
+                        <TouchableOpacity
+                          style={s.contactCheckboxItem}
+                          onPress={() => setContatoDrafts((current) => ({ ...current, [activeNewContatoId]: { ...activeNewContato, tem_whatsapp: !activeNewContato.tem_whatsapp } }))}
+                          activeOpacity={0.85}
+                        >
+                          <View style={[s.contactCheckbox, activeNewContato.tem_whatsapp && s.contactCheckboxActive]}>
+                            {activeNewContato.tem_whatsapp && <Ionicons name="checkmark" size={12} color={colors.white} />}
+                          </View>
+                          <Text style={s.contactCheckboxTxt}>Tem WhatsApp</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.contactCheckboxItem}
+                          onPress={() => setContatoDrafts((current) => ({ ...current, [activeNewContatoId]: { ...activeNewContato, is_principal: !activeNewContato.is_principal } }))}
+                          activeOpacity={0.85}
+                        >
+                          <View style={[s.contactCheckbox, activeNewContato.is_principal && s.contactCheckboxActive]}>
+                            {activeNewContato.is_principal && <Ionicons name="checkmark" size={12} color={colors.white} />}
+                          </View>
+                          <Text style={s.contactCheckboxTxt}>Principal para contato</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </ScrollView>
+
+                    <View style={s.contactModalFooter}>
+                      <TouchableOpacity
+                        style={[s.contactCancelBtn, s.contactModalAction]}
+                        onPress={() => {
+                          removeLocalDraft(setContatoDrafts, activeNewContatoId)
+                          setEditingItem(null)
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={s.contactCancelTxt}>Cancelar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[s.contactSaveBtn, s.contactModalAction]} onPress={() => saveContatosMutation.mutate()} disabled={saveContatosMutation.isPending} activeOpacity={0.85}>
+                        {saveContatosMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Text style={s.contactSaveTxt}>Salvar</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={!!activeNewHabilitacaoId && !!activeNewHabilitacao}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (activeNewHabilitacaoId) removeLocalDraft(setHabilitacaoDrafts, activeNewHabilitacaoId)
+            setEditingItem(null)
+          }}
+        >
+          <View style={s.modalOverlay}>
+            <View style={s.modalSheet}>
+              {activeNewHabilitacaoId && activeNewHabilitacao && (
+                <>
+                  <View style={s.contactFormHeader}>
+                    <Text style={s.contactFormTitle}>Nova Habilitação</Text>
+                    <TouchableOpacity
+                      style={s.cancelMiniBtn}
+                      onPress={() => {
+                        removeLocalDraft(setHabilitacaoDrafts, activeNewHabilitacaoId)
+                        setEditingItem(null)
+                      }}
+                    >
+                      <Ionicons name="close" size={15} color={colors.ink500} />
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView style={s.modalBodyScroll} contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled">
+                    <EditableField label="País" value={activeNewHabilitacao.pais} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, pais: v } }))} />
+                    <EditableField label="Nome" value={activeNewHabilitacao.nome_habilitacao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, nome_habilitacao: v } }))} />
+                    <EditableField label="Categoria" value={activeNewHabilitacao.categoria} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, categoria: v } }))} />
+                    <EditableField label="Número" value={activeNewHabilitacao.numero} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, numero: v } }))} />
+                    <EditableField label="Emissão" value={activeNewHabilitacao.data_emissao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_emissao: v } }))} placeholder="AAAA-MM-DD" />
+                    <EditableField label="Validade" value={activeNewHabilitacao.data_vencimento} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_vencimento: v } }))} placeholder="AAAA-MM-DD" />
+                    <EditableField label="Situação" value={activeNewHabilitacao.situacao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, situacao: v as ClienteHabilitacaoInsert['situacao'] } }))} placeholder="positiva ou negativa" />
+                    <EditableField label="Observações" value={activeNewHabilitacao.observacoes} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, observacoes: v } }))} multiline />
+                  </ScrollView>
+                  <View style={s.contactFooter}>
+                    <TouchableOpacity style={s.contactCancelBtn} onPress={() => { removeLocalDraft(setHabilitacaoDrafts, activeNewHabilitacaoId); setEditingItem(null) }} activeOpacity={0.85}>
+                      <Text style={s.contactCancelTxt}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.contactSaveBtn} onPress={() => saveHabilitacoesMutation.mutate()} disabled={saveHabilitacoesMutation.isPending} activeOpacity={0.85}>
+                      {saveHabilitacoesMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Text style={s.contactSaveTxt}>Salvar</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={!!activeNewEntradaId && !!activeNewEntrada}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (activeNewEntradaId) removeLocalDraft(setEntradaSaidaDrafts, activeNewEntradaId)
+            setEditingItem(null)
+          }}
+        >
+          <View style={s.modalOverlay}>
+            <View style={s.modalSheet}>
+              {activeNewEntradaId && activeNewEntrada && (
+                <>
+                  <View style={s.contactFormHeader}>
+                    <Text style={s.contactFormTitle}>Nova Viagem</Text>
+                    <TouchableOpacity
+                      style={s.cancelMiniBtn}
+                      onPress={() => {
+                        removeLocalDraft(setEntradaSaidaDrafts, activeNewEntradaId)
+                        setEditingItem(null)
+                      }}
+                    >
+                      <Ionicons name="close" size={15} color={colors.ink500} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={s.contactFormBody}>
+                    <EditableField label="Tipo" value={activeNewEntrada.tipo} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, tipo: v as ClienteEntradaSaidaInsert['tipo'] } }))} placeholder="entrada ou saida" />
+                    <EditableField label="Data" value={activeNewEntrada.data_viagem} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, data_viagem: v } }))} placeholder="AAAA-MM-DD" />
+                    <EditableField label="Observação" value={activeNewEntrada.observacao} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, observacao: v } }))} multiline />
+                    <View style={s.contactFooter}>
+                      <TouchableOpacity style={s.contactCancelBtn} onPress={() => { removeLocalDraft(setEntradaSaidaDrafts, activeNewEntradaId); setEditingItem(null) }} activeOpacity={0.85}>
+                        <Text style={s.contactCancelTxt}>Cancelar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.contactSaveBtn} onPress={() => saveEntradasSaidasMutation.mutate()} disabled={saveEntradasSaidasMutation.isPending} activeOpacity={0.85}>
+                        {saveEntradasSaidasMutation.isPending ? <ActivityIndicator color={colors.white} /> : <Text style={s.contactSaveTxt}>Salvar</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+
         </KeyboardAvoidingView>
       )}
     </SafeAreaView>
@@ -1296,6 +1641,7 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
+  heroBtnSpacer: { width: 36, height: 36 },
   heroNavTitle: { flex: 1, fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
 
   heroProfile: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -1400,6 +1746,52 @@ const s = StyleSheet.create({
     gap: 7,
   },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.ink500, textTransform: 'uppercase', letterSpacing: 0.4 },
+  photoField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+  },
+  photoAvatarWrap: { position: 'relative' },
+  photoCameraBtn: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.white,
+    backgroundColor: colors.navy800,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoTitle: { fontSize: 13.5, fontWeight: '800', color: colors.ink900 },
+  photoHint: { fontSize: 11.5, color: colors.ink500, marginTop: 2, marginBottom: 8 },
+  photoPickerBtn: {
+    minHeight: 38,
+    alignSelf: 'flex-start',
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.navy100,
+    backgroundColor: colors.navy50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  photoPickerTxt: { fontSize: 12, fontWeight: '800', color: colors.navy800 },
+  formSubsection: {
+    paddingHorizontal: 13,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: colors.ink50,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+  },
+  formSubsectionTitle: { fontSize: 13, fontWeight: '800', color: colors.ink900 },
   fieldInput: {
     minHeight: 42,
     borderRadius: 11,
@@ -1443,6 +1835,214 @@ const s = StyleSheet.create({
     backgroundColor: colors.navy50,
   },
   lightActionTxt: { fontSize: 11.5, fontWeight: '800', color: colors.navy800 },
+
+  contactListCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    padding: 13,
+  },
+  contactListMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  contactTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+  contactNumber: { fontSize: 14, fontWeight: '800', color: colors.ink900 },
+  contactMeta: { fontSize: 12, color: colors.ink500, marginTop: 5 },
+  contactFormCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    overflow: 'hidden',
+  },
+  contactFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+  },
+  contactFormTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink900, letterSpacing: -0.3 },
+  contactFormBody: { padding: 16, gap: 13 },
+  contactFormLabel: { fontSize: 13, fontWeight: '800', color: colors.ink900 },
+  contactNumberInputs: { flexDirection: 'row', gap: 10 },
+  contactDdiInput: {
+    width: 96,
+    minHeight: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.navy600,
+    backgroundColor: colors.white,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  contactDdiTxt: { fontSize: 13, fontWeight: '800', color: colors.ink900 },
+  contactNumberInput: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    backgroundColor: colors.white,
+    paddingHorizontal: 13,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.ink900,
+  },
+  contactTypeGroup: {
+    flexDirection: 'row',
+    gap: 6,
+    padding: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    backgroundColor: colors.ink50,
+  },
+  contactTypeBtn: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  contactTypeBtnActive: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.navy100 },
+  contactTypeTxt: { fontSize: 11.5, fontWeight: '800', color: colors.ink500 },
+  contactTypeTxtActive: { color: colors.navy800 },
+  contactCheckboxRow: { gap: 10, marginTop: 2 },
+  contactCheckboxItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  contactCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.ink300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  contactCheckboxActive: { backgroundColor: colors.navy800, borderColor: colors.navy800 },
+  contactCheckboxTxt: { fontSize: 13, fontWeight: '700', color: colors.ink900 },
+  contactFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 6 },
+  contactCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactCancelTxt: { fontSize: 13, fontWeight: '800', color: colors.ink700 },
+  contactSaveBtn: {
+    minWidth: 92,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: colors.navy800,
+  },
+  contactSaveTxt: { fontSize: 13, fontWeight: '800', color: colors.white },
+
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 18,
+    backgroundColor: 'rgba(15,23,42,0.48)',
+  },
+  contactModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: Platform.OS === 'ios' ? 34 : 24,
+    backgroundColor: 'rgba(15,23,42,0.48)',
+  },
+  keyboardDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalKeyboardView: { width: '100%', maxHeight: '100%' },
+  contactModalKeyboardView: {
+    width: '100%',
+    maxHeight: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalSheet: {
+    maxHeight: '88%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+  },
+  contactModalSheet: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '94%',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+  },
+  contactModalHeader: {
+    minHeight: 68,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  contactModalTitle: { flex: 1, fontSize: 18, fontWeight: '900', color: colors.ink900, letterSpacing: -0.2 },
+  contactModalClose: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink50,
+  },
+  contactModalScroll: { flexShrink: 1, flexGrow: 0 },
+  contactModalContent: { padding: 18, gap: 14, paddingBottom: 20 },
+  contactModalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'ios' ? 18 : 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.ink100,
+    backgroundColor: colors.white,
+  },
+  contactModalAction: { flex: 1, minHeight: 54, borderRadius: 15 },
+  modalBodyScroll: { maxHeight: 440, padding: 16 },
+  ddiDropdown: {
+    marginTop: -6,
+    marginBottom: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+  },
+  ddiOption: {
+    minHeight: 52,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.ink100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  ddiOptionTxt: { fontSize: 14, fontWeight: '800', color: colors.ink900 },
+
   editItemCard: {
     backgroundColor: colors.white,
     borderRadius: 14,
@@ -1461,6 +2061,23 @@ const s = StyleSheet.create({
     borderBottomColor: colors.ink100,
   },
   editItemTitle: { flex: 1, fontSize: 13, fontWeight: '800', color: colors.ink900 },
+  itemHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  editMiniBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.navy50,
+  },
+  cancelMiniBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink100,
+  },
   deleteMiniBtn: {
     width: 30,
     height: 30,
@@ -1469,6 +2086,17 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FEF2F2',
   },
+  saveItemBtn: {
+    margin: 12,
+    borderRadius: 11,
+    paddingVertical: 12,
+    backgroundColor: colors.navy800,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  saveItemTxt: { fontSize: 12.5, fontWeight: '800', color: colors.white },
 
   saveBtn: {
     marginTop: -12,

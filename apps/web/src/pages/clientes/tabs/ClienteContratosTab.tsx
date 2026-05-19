@@ -59,6 +59,8 @@ export function ClienteContratosTab() {
       createContrato(db, {
         cliente_id: cliente.id,
         servico_id: null,
+        processo_id: null,
+        aditivo_de: null,
         titulo,
         corpo_html: corpoHtml,
         status: 'rascunho',
@@ -96,7 +98,7 @@ export function ClienteContratosTab() {
         <h2 className="text-sm font-medium text-muted-foreground">
           {contratos?.length ?? 0} contrato(s)
         </h2>
-        <Dialog open={addOpen} onOpenChange={(o) => { if (!o) handleClose(); else setAddOpen(true) }}>
+        <Dialog open={addOpen} onOpenChange={(o: boolean) => { if (!o) handleClose(); else setAddOpen(true) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
@@ -199,7 +201,7 @@ export function ClienteContratosTab() {
       )}
 
       {/* Cancel Confirm */}
-      <Dialog open={!!cancelId} onOpenChange={(o) => !o && setCancelId(null)}>
+      <Dialog open={!!cancelId} onOpenChange={(o: boolean) => !o && setCancelId(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Cancelar contrato</DialogTitle>

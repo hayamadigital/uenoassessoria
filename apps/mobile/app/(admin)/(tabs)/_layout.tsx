@@ -1,8 +1,11 @@
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import { useTranslation } from 'react-i18next'
 import { colors } from '@/theme'
 
 export default function AdminTabsLayout() {
+  const { t } = useTranslation('common')
+
   return (
     <Tabs
       screenOptions={{
@@ -23,7 +26,7 @@ export default function AdminTabsLayout() {
       <Tabs.Screen
         name="inicio"
         options={{
-          title: 'Início',
+          title: t('admin.tabs.home'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
           ),
@@ -32,7 +35,7 @@ export default function AdminTabsLayout() {
       <Tabs.Screen
         name="modulos"
         options={{
-          title: 'Módulos',
+          title: t('admin.tabs.modules'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'grid' : 'grid-outline'} size={24} color={color} />
           ),
@@ -41,7 +44,7 @@ export default function AdminTabsLayout() {
       <Tabs.Screen
         name="clientes"
         options={{
-          title: 'Clientes',
+          title: t('admin.tabs.clients'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'people' : 'people-outline'} size={24} color={color} />
           ),
@@ -50,7 +53,7 @@ export default function AdminTabsLayout() {
       <Tabs.Screen
         name="agenda/index"
         options={{
-          title: 'Calendário',
+          title: t('admin.tabs.calendar'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={24} color={color} />
           ),
@@ -59,7 +62,7 @@ export default function AdminTabsLayout() {
       <Tabs.Screen
         name="processos/index"
         options={{
-          title: 'Processos',
+          title: t('admin.tabs.processes'),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'layers' : 'layers-outline'} size={24} color={color} />
           ),

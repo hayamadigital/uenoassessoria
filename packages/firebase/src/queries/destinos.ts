@@ -25,12 +25,13 @@ export async function listDestinos(db: Firestore, onlyActive = false): Promise<D
 
 export async function createDestino(
   db: Firestore,
-  input: { nome: string; endereco: string; ordem?: number },
+  input: { nome: string; endereco: string; googleMapsUrl?: string | null; ordem?: number },
 ): Promise<DestinoFixo> {
   const now = new Date().toISOString()
   const ref = await addDoc(collection(db, 'destinos_fixos'), {
     nome: input.nome,
     endereco: input.endereco,
+    google_maps_url: input.googleMapsUrl ?? null,
     ordem: input.ordem ?? 0,
     is_active: true,
     created_at: now,
@@ -43,9 +44,14 @@ export async function createDestino(
 export async function updateDestino(
   db: Firestore,
   id: string,
-  input: { nome?: string; endereco?: string; is_active?: boolean; ordem?: number },
+  input: { nome?: string; endereco?: string; googleMapsUrl?: string | null; is_active?: boolean; ordem?: number },
 ): Promise<DestinoFixo> {
-  await updateDoc(doc(db, 'destinos_fixos', id), { ...input, updated_at: new Date().toISOString() })
+  const { googleMapsUrl, ...rest } = input
+  await updateDoc(doc(db, 'destinos_fixos', id), {
+    ...rest,
+    ...(googleMapsUrl !== undefined ? { google_maps_url: googleMapsUrl } : {}),
+    updated_at: new Date().toISOString(),
+  })
   const snap = await getDoc(doc(db, 'destinos_fixos', id))
   return toDestino(snap.id, snap.data()!)
 }

@@ -113,9 +113,9 @@ export function AgendamentoDetailPage() {
   useEffect(() => {
     if (agendamento && isEditing) {
       reset({
-        cliente_id: agendamento.cliente_id,
-        instrutor_id: agendamento.instrutor_id,
-        servico_id: agendamento.servico_id,
+        cliente_id: agendamento.cliente_id ?? '',
+        instrutor_id: agendamento.instrutor_id ?? '',
+        servico_id: agendamento.servico_id ?? '',
         data_hora_inicio_local: toDatetimeLocalJST(agendamento.data_hora_inicio),
         data_hora_fim_local: toDatetimeLocalJST(agendamento.data_hora_fim),
         local: agendamento.local ?? '',
@@ -194,24 +194,26 @@ export function AgendamentoDetailPage() {
   }
 
   const proximosStatus = statusTransitions[agendamento.status]
+  const isPessoal = agendamento.tipo_evento === 'pessoal'
+  const tituloPessoa = agendamento.cliente?.profile.full_name ?? 'Evento pessoal'
 
   return (
     <div>
       <PageHeader
         title="Agendamento"
-        subtitle={`${formatDateJST(agendamento.data_hora_inicio)} · ${agendamento.cliente.profile.full_name}`}
+        subtitle={`${formatDateJST(agendamento.data_hora_inicio)} · ${tituloPessoa}`}
         actions={
-          !isEditing ? (
+          !isEditing && !isPessoal ? (
             <Button variant="outline" onClick={() => setIsEditing(true)}>
               <Pencil className="mr-2 h-4 w-4" />
               Editar
             </Button>
-          ) : (
+          ) : isEditing ? (
             <Button variant="ghost" onClick={() => { setIsEditing(false); setServerError(null) }}>
               <X className="mr-2 h-4 w-4" />
               Cancelar edição
             </Button>
-          )
+          ) : null
         }
       />
 
@@ -352,21 +354,25 @@ export function AgendamentoDetailPage() {
                 <div>
                   <dt className="text-muted-foreground">Cliente</dt>
                   <dd className="font-medium mt-0.5">
-                    <Link
-                      to={`/clientes/${agendamento.cliente_id}/agendamentos`}
-                      className="text-primary hover:underline"
-                    >
-                      {agendamento.cliente.profile.full_name}
-                    </Link>
+                    {agendamento.cliente_id && agendamento.cliente ? (
+                      <Link
+                        to={`/clientes/${agendamento.cliente_id}/agendamentos`}
+                        className="text-primary hover:underline"
+                      >
+                        {agendamento.cliente.profile.full_name}
+                      </Link>
+                    ) : (
+                      'Evento pessoal'
+                    )}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Instrutor</dt>
-                  <dd className="font-medium mt-0.5">{agendamento.instrutor.full_name}</dd>
+                  <dd className="font-medium mt-0.5">{agendamento.instrutor?.full_name ?? '—'}</dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Serviço</dt>
-                  <dd className="font-medium mt-0.5">{agendamento.servico.nome}</dd>
+                  <dd className="font-medium mt-0.5">{agendamento.servico?.nome ?? 'Pessoal'}</dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Status</dt>

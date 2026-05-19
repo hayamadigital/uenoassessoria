@@ -346,7 +346,7 @@ export type PasswordChangeInput = z.infer<typeof passwordChangeSchema>
 export const inviteUserSchema = z.object({
   email: z.string().email('Email inválido'),
   full_name: z.string().min(2, 'Nome obrigatório'),
-  role: z.enum(['admin', 'instrutor', 'cliente']),
+  role: z.enum(['admin', 'instrutor']),
 })
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>

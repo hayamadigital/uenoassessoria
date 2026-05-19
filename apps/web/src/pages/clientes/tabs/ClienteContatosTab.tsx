@@ -149,29 +149,44 @@ export function ClienteContatosTab() {
         nome_responsavel: data.nome_responsavel || null,
         relacao: data.relacao || null,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+    onSuccess: async (created) => {
+      queryClient.setQueryData<ClienteContato[]>(
+        ['clientes', cliente.id, 'contatos'],
+        (current = []) => [created, ...current.filter((c) => c.id !== created.id)],
+      )
+      await queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+      await queryClient.refetchQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
       setAddOpen(false)
     },
   })
 
   const editMutation = useMutation({
     mutationFn: (data: ContatoInput) =>
-      updateContato(db, editContato!.id, {
+      updateContato(db, cliente.id, editContato!.id, {
         ...data,
         nome_responsavel: data.nome_responsavel || null,
         relacao: data.relacao || null,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+    onSuccess: async (updated) => {
+      queryClient.setQueryData<ClienteContato[]>(
+        ['clientes', cliente.id, 'contatos'],
+        (current = []) => current.map((c) => (c.id === updated.id ? updated : c)),
+      )
+      await queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+      await queryClient.refetchQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
       setEditContato(null)
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteContato(db, id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+    mutationFn: (id: string) => deleteContato(db, cliente.id, id),
+    onSuccess: async (_, removedId) => {
+      queryClient.setQueryData<ClienteContato[]>(
+        ['clientes', cliente.id, 'contatos'],
+        (current = []) => current.filter((c) => c.id !== removedId),
+      )
+      await queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
+      await queryClient.refetchQueries({ queryKey: ['clientes', cliente.id, 'contatos'] })
       setDeleteId(null)
     },
   })
@@ -249,7 +264,7 @@ export function ClienteContatosTab() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={!!editContato} onOpenChange={(o) => !o && setEditContato(null)}>
+      <Dialog open={!!editContato} onOpenChange={(o: boolean) => !o && setEditContato(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Contato</DialogTitle>
@@ -274,7 +289,7 @@ export function ClienteContatosTab() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+      <Dialog open={!!deleteId} onOpenChange={(o: boolean) => !o && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>

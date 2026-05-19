@@ -166,7 +166,7 @@ export function EditEnderecoDialog({
   const hasMapsKey = !!MAPS_API_KEY
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v: boolean) => !v && onClose()}>
       <DialogContent className={hasMapsKey ? 'max-w-2xl' : 'max-w-md'}>
         <DialogHeader>
           <DialogTitle>Ponto de Coleta — {clienteNome}</DialogTitle>

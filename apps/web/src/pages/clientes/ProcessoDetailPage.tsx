@@ -459,8 +459,8 @@ export function ProcessoDetailPage() {
   })
 
   const { data: templates = [] } = useQuery({
-    queryKey: ['etapa-templates', processo?.servico_id],
-    queryFn: () => listEtapaTemplatesByServico(db, processo!.servico_id),
+    queryKey: ['etapa-templates', processo?.servico_id, processo?.variacao_id],
+    queryFn: () => listEtapaTemplatesByServico(db, processo!.servico_id, processo!.variacao_id),
     enabled: !!processo?.servico_id,
   })
 
@@ -640,11 +640,14 @@ export function ProcessoDetailPage() {
   }
 
   function abrirNovoContratoComTemplate(tpl: { nome: string; corpo_html: string } | null) {
-    const titulo = `Contrato — ${processo!.servico.nome}`
+    const nomeServicoContrato = processo!.variacao
+      ? `${processo!.servico.nome} — ${processo!.variacao.nome}`
+      : processo!.servico.nome
+    const titulo = `Contrato — ${nomeServicoContrato}`
     const corpoHtml = tpl
       ? tpl.corpo_html
           .replaceAll('{{cliente_nome}}', '')
-          .replaceAll('{{servico_nome}}', processo!.servico.nome)
+          .replaceAll('{{servico_nome}}', nomeServicoContrato)
           .replaceAll('{{valor_jpy}}', processo!.valor_acordado_jpy?.toLocaleString('ja-JP') ?? '0')
           .replaceAll('{{data_inicio}}', processo!.data_inicio ?? '')
           .replaceAll('{{data_hoje}}', new Date().toLocaleDateString('pt-BR'))
@@ -780,10 +783,14 @@ export function ProcessoDetailPage() {
 
   if (!processo) return null
 
+  const processoServicoNome = processo.variacao
+    ? `${processo.servico.nome} — ${processo.variacao.nome}`
+    : processo.servico.nome
+
   return (
     <div>
       <PageHeader
-        title={processo.servico.nome}
+        title={processoServicoNome}
         subtitle={`Processo iniciado em ${processo.data_inicio ? formatDateJST(processo.data_inicio) : '—'}`}
         actions={
           <Badge variant={processo.status === 'ativo' ? 'default' : processo.status === 'concluido' ? 'success' : 'destructive'}>
@@ -815,7 +822,7 @@ export function ProcessoDetailPage() {
             >
               <div className="space-y-2">
                 <Label>Serviço</Label>
-                <Input value={processo.servico.nome} disabled />
+                <Input value={processoServicoNome} disabled />
               </div>
               <div className="space-y-2">
                 <Label>Data de Início</Label>
@@ -1052,7 +1059,7 @@ export function ProcessoDetailPage() {
       </Dialog>
 
       {/* Edit Etapa Dialog */}
-      <Dialog open={!!editEtapa} onOpenChange={(o) => !o && setEditEtapa(null)}>
+      <Dialog open={!!editEtapa} onOpenChange={(o: boolean) => !o && setEditEtapa(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Editar Etapa</DialogTitle>
@@ -1076,7 +1083,7 @@ export function ProcessoDetailPage() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+      <Dialog open={!!deleteId} onOpenChange={(o: boolean) => !o && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>
@@ -1224,7 +1231,7 @@ export function ProcessoDetailPage() {
                         setContratoCorpo(
                           tpl.corpo_html
                             .replaceAll('{{cliente_nome}}', '')
-                            .replaceAll('{{servico_nome}}', processo!.servico.nome)
+                            .replaceAll('{{servico_nome}}', processoServicoNome)
                             .replaceAll('{{valor_jpy}}', processo!.valor_acordado_jpy?.toLocaleString('ja-JP') ?? '0')
                             .replaceAll('{{data_inicio}}', processo!.data_inicio ?? '')
                             .replaceAll('{{data_hoje}}', new Date().toLocaleDateString('pt-BR'))
@@ -1257,7 +1264,7 @@ export function ProcessoDetailPage() {
       </Dialog>
 
       {/* Enviar Confirm */}
-      <Dialog open={enviarContratoOpen} onOpenChange={(o) => { setEnviarContratoOpen(o); if (!o) setEnviarTarget(null) }}>
+      <Dialog open={enviarContratoOpen} onOpenChange={(o: boolean) => { setEnviarContratoOpen(o); if (!o) setEnviarTarget(null) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Enviar para assinatura</DialogTitle>

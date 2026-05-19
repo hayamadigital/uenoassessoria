@@ -46,5 +46,203 @@
   "yesterday": "Ontem",
   "tomorrow": "Amanhã",
   "ago": "atrás",
-  "just_now": "agora mesmo"
+  "just_now": "agora mesmo",
+  "admin": {
+    "tabs": {
+      "home": "Início",
+      "modules": "Módulos",
+      "clients": "Clientes",
+      "calendar": "Calendário",
+      "processes": "Processos"
+    },
+    "status": {
+      "prospect": "Prospect",
+      "contato": "Contato",
+      "documentacao": "Documentação",
+      "agendado": "Agendado",
+      "em_andamento": "Em andamento",
+      "aprovado": "Aprovado",
+      "concluido": "Concluído",
+      "cancelado": "Cancelado"
+    },
+    "task_status": {
+      "atrasado": "Atrasado",
+      "em_andamento": "Em andamento",
+      "pendente": "Pendente"
+    },
+    "filters": {
+      "completed": "Concluídos",
+      "pending": "Pendentes"
+    },
+    "home": {
+      "admin_panel": "Painel administrativo",
+      "greeting": "Olá, Equipe Ueno",
+      "active_clients": "Clientes ativos",
+      "in_progress_count": "+{{count}} em andamento",
+      "ongoing_processes": "Processos em curso",
+      "view_details": "veja detalhes",
+      "appointments_today": "Agendamentos hoje",
+      "open_calendar": "abrir calendário",
+      "month_approvals": "Aprovações no mês",
+      "month_goal": "meta: 12",
+      "urgent_tasks": "TAREFAS URGENTES",
+      "view_all": "Ver tudo",
+      "no_pending_tasks": "Nenhuma tarefa pendente",
+      "process_funnel": "FUNIL DE PROCESSOS",
+      "funnel": {
+        "contracting": "Contratação",
+        "documentation": "Documentação",
+        "analysis": "Análise",
+        "department": "Departamento",
+        "approval": "Aprovação"
+      }
+    },
+    "settings": {
+      "title": "Configurações",
+      "menu_hero_title": "Seções de configuração",
+      "menu_hero_desc": "Abra cada área para editar perfil, segurança, usuários, preferências e locais.",
+      "profile": {
+        "title": "Meu perfil",
+        "subtitle": "Foto, nome, contato e dados pessoais"
+      },
+      "security": {
+        "title": "Segurança",
+        "subtitle": "Senha, sessão e recuperação"
+      },
+      "users": {
+        "title": "Usuários",
+        "subtitle": "Convites e status de acesso"
+      },
+      "preferences": {
+        "title": "Preferências",
+        "subtitle": "Idioma e comportamento do painel"
+      },
+      "locations": {
+        "title": "Locais",
+        "subtitle": "Destinos fixos e rotas"
+      },
+      "logout": {
+        "title": "Sair",
+        "subtitle": "Encerrar a sessão do admin e voltar para o login."
+      }
+    },
+    "preferences": {
+      "title": "Preferências",
+      "hero_title": "Idioma do painel",
+      "hero_desc": "Escolha o idioma do admin e da sua experiência no app.",
+      "section_label": "Idioma",
+      "save": "Salvar preferências",
+      "saved": "Preferências atualizadas."
+    },
+    "modules": {
+      "materials": "Matérias",
+      "materials_sub": "simulados e materiais",
+      "catalog": "Catálogo",
+      "catalog_sub": "serviços disponíveis",
+      "reviews": "Avaliações",
+      "reviews_sub": "★ feedbacks",
+      "faq": "FAQ",
+      "faq_sub": "perguntas frequentes",
+      "finance": "Financeiro",
+      "finance_sub": "faturamento e previsão",
+      "platform_content": "Conteúdo da plataforma",
+      "web_editing_title": "Edição completa na web",
+      "web_editing_sub": "Crie e edite módulos no painel desktop.",
+      "overview": "VISÃO GERAL",
+      "simulated_count_one": "{{count}} simulado",
+      "simulated_count_other": "{{count}} simulados",
+      "average_rating": "{{rating}} ★ média",
+      "published_count_one": "{{count}} publicada",
+      "published_count_other": "{{count}} publicadas",
+      "registered_services": "SERVIÇOS CADASTRADOS",
+      "no_services": "Nenhum serviço cadastrado",
+      "variations": "Variações",
+      "tests": "Simulados",
+      "questions": "Questões",
+      "with_image": "Com imagem",
+      "question_bank": "BANCO DE QUESTÕES",
+      "no_questions": "Nenhuma questão cadastrada",
+      "multiple_choice": "Múltipla escolha",
+      "frequently_asked": "Perguntas Frequentes",
+      "published": "Publicadas",
+      "drafts": "Rascunhos",
+      "draft": "Rascunho",
+      "registered_questions": "PERGUNTAS CADASTRADAS",
+      "no_faqs": "Nenhuma pergunta cadastrada",
+      "full_management_web": "Gerenciamento completo disponível na versão web",
+      "documents": "Documentos",
+      "files_templates": "Arquivos e Modelos",
+      "videos": "Vídeos",
+      "all_documents": "TODOS OS DOCUMENTOS",
+      "no_documents": "Nenhum documento cadastrado",
+      "overall_average": "MÉDIA GERAL",
+      "received_feedback": "FEEDBACKS RECEBIDOS",
+      "no_reviews": "Nenhuma avaliação ainda",
+      "reply": "Responder",
+      "admin_response": "Resposta da assessoria",
+      "review_type": {
+        "servico": "Serviço",
+        "material": "Material",
+        "simulado": "Simulado"
+      }
+    },
+    "clients": {
+      "management": "Gerenciamento",
+      "search_placeholder": "Buscar por nome ou CPF",
+      "no_clients": "Nenhum cliente encontrado",
+      "client": "Cliente"
+    },
+    "processes": {
+      "tracking": "Acompanhamento",
+      "active_count_one": "{{count}} ativo",
+      "active_count_other": "{{count}} ativos",
+      "no_processes": "Nenhum processo encontrado",
+      "needs_attention": "ATENÇÃO NECESSÁRIA",
+      "process_progress": "Progresso do processo",
+      "message": "Mensagem",
+      "open_process": "Abrir processo"
+    },
+    "calendar": {
+      "confirmed": "Confirmados",
+      "appointment_count_one": "{{count}} agendamento",
+      "appointment_count_other": "{{count}} agendamentos",
+      "no_appointments_day": "Sem agendamentos neste dia",
+      "personal_event": "Evento pessoal",
+      "commitment_no_client": "Compromisso sem cliente",
+      "personal": "Pessoal",
+      "confirm": "Confirmar",
+      "finish": "Concluir",
+      "missed": "Faltou",
+      "new_event": "Novo evento",
+      "add_to_calendar": "Adicionar no calendário",
+      "event_type": "Tipo de evento",
+      "location": "Local",
+      "location_placeholder": "Ex: Centro de Exame, estação, online...",
+      "note": "Observação",
+      "internal_notes": "Notas internas do evento",
+      "instructor": "Instrutor",
+      "active_contracted_service": "Serviço contratado ativo",
+      "service": "Serviço",
+      "no_active_service": "Este cliente não tem serviço ativo contratado.",
+      "select_client_services": "Selecione um cliente para carregar os serviços.",
+      "save_failed": "Não foi possível salvar",
+      "try_again": "Tente novamente em instantes.",
+      "invalid_datetime_title": "Data ou hora inválida",
+      "invalid_datetime_message": "Use data no formato AAAA-MM-DD e hora no formato HH:mm.",
+      "incomplete_title": "Dados incompletos",
+      "incomplete_message": "Selecione cliente, instrutor e serviço contratado.",
+      "status": {
+        "agendado": "Agendado",
+        "confirmado": "Confirmado",
+        "em_andamento": "Em andamento",
+        "concluido": "Concluído",
+        "cancelado": "Cancelado",
+        "faltou": "Faltou"
+      }
+    },
+    "stub": {
+      "title": "Em desenvolvimento",
+      "subtitle": "Esta seção será implementada em breve."
+    }
+  }
 }

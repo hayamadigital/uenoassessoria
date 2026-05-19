@@ -1,32 +1,35 @@
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listMateriais } from '@ueno/firebase/queries/materiais'
 import { listServicos } from '@ueno/firebase/queries/servicos'
 import { listAvaliacoes } from '@ueno/firebase/queries/avaliacoes'
+import { listFaqs } from '@ueno/firebase/queries/faq'
 import { colors } from '@/theme'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 
 type Modulo = {
   id: string
-  label: string
-  sub: string
+  labelKey: string
+  subKey: string
   icon: keyof typeof Ionicons.glyphMap
   color: string
 }
 
 const MODULOS: Modulo[] = [
-  { id: 'materias', label: 'Matérias', sub: 'simulados e materiais', icon: 'library-outline', color: colors.navy800 },
-  { id: 'catalogo', label: 'Catálogo', sub: 'serviços disponíveis', icon: 'layers-outline', color: '#0F766E' },
-  { id: 'avaliacoes', label: 'Avaliações', sub: '★ feedbacks', icon: 'star-outline', color: colors.warn },
-  { id: 'faq', label: 'FAQ', sub: 'perguntas frequentes', icon: 'help-circle-outline', color: '#7E22CE' },
+  { id: 'materias', labelKey: 'admin.modules.materials', subKey: 'admin.modules.materials_sub', icon: 'library-outline', color: colors.navy800 },
+  { id: 'catalogo', labelKey: 'admin.modules.catalog', subKey: 'admin.modules.catalog_sub', icon: 'layers-outline', color: '#0F766E' },
+  { id: 'avaliacoes', labelKey: 'admin.modules.reviews', subKey: 'admin.modules.reviews_sub', icon: 'star-outline', color: colors.warn },
+  { id: 'faq', labelKey: 'admin.modules.faq', subKey: 'admin.modules.faq_sub', icon: 'help-circle-outline', color: '#7E22CE' },
+  { id: 'financeiro', labelKey: 'admin.modules.finance', subKey: 'admin.modules.finance_sub', icon: 'wallet-outline', color: '#0891B2' },
 ]
 
 export default function ModulosAdminScreen() {
+  const { t } = useTranslation('common')
+
   const { data: materiais } = useQuery({
     queryKey: ['materiais-admin'],
     queryFn: () => listMateriais(db),
@@ -42,33 +45,35 @@ export default function ModulosAdminScreen() {
     queryFn: () => listAvaliacoes(db),
   })
 
+  const { data: faqs } = useQuery({
+    queryKey: ['faq'],
+    queryFn: () => listFaqs(db),
+  })
+
   const mediaAv = avaliacoes && avaliacoes.length > 0
     ? (avaliacoes.reduce((s, a) => s + a.nota, 0) / avaliacoes.length).toFixed(1)
     : '—'
 
+  const faqsPublicadas = (faqs ?? []).filter((f) => f.is_active).length
+
   const moduloCounts: Record<string, { n: number; sub: string }> = {
     materias: {
       n: materiais?.length ?? 0,
-      sub: `${(materiais ?? []).filter((m) => m.tipo === 'simulado').length} simulados`,
+      sub: t('admin.modules.simulated_count', { count: (materiais ?? []).filter((m) => m.tipo === 'simulado').length }),
     },
-    catalogo: { n: servicos?.length ?? 0, sub: 'serviços disponíveis' },
-    avaliacoes: { n: avaliacoes?.length ?? 0, sub: `${mediaAv} ★ média` },
-    faq: { n: 0, sub: 'perguntas frequentes' },
+    catalogo: { n: servicos?.length ?? 0, sub: t('admin.modules.catalog_sub') },
+    avaliacoes: { n: avaliacoes?.length ?? 0, sub: t('admin.modules.average_rating', { rating: mediaAv }) },
+    faq: { n: faqs?.length ?? 0, sub: t('admin.modules.published_count', { count: faqsPublicadas }) },
+    financeiro: { n: 0, sub: t('admin.modules.finance_sub') },
   }
-
-  const recentActivity = [
-    { label: 'Catálogo atualizado', desc: 'Preços revisados', time: 'há 1h', icon: 'layers-outline' as const, color: '#0F766E' },
-    { label: 'Matéria revisada', desc: 'Simulados e materiais de estudo', time: 'há 3h', icon: 'library-outline' as const, color: colors.navy800 },
-    { label: 'FAQ publicado', desc: 'Como agendar aula prática?', time: 'ontem', icon: 'help-circle-outline' as const, color: '#7E22CE' },
-  ]
 
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
         <View style={s.header}>
-          <Text style={s.headerSub}>Conteúdo da plataforma</Text>
-          <Text style={s.headerTitle}>Módulos</Text>
+          <Text style={s.headerSub}>{t('admin.modules.platform_content')}</Text>
+          <Text style={s.headerTitle}>{t('admin.tabs.modules')}</Text>
         </View>
 
         {/* Web hint banner */}
@@ -77,12 +82,12 @@ export default function ModulosAdminScreen() {
             <Ionicons name="globe-outline" size={20} color={colors.navy800} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.bannerTitle}>Edição completa na web</Text>
-            <Text style={s.bannerSub}>Crie e edite módulos no painel desktop.</Text>
+            <Text style={s.bannerTitle}>{t('admin.modules.web_editing_title')}</Text>
+            <Text style={s.bannerSub}>{t('admin.modules.web_editing_sub')}</Text>
           </View>
         </View>
 
-        <Text style={s.sectionLabel}>VISÃO GERAL</Text>
+        <Text style={s.sectionLabel}>{t('admin.modules.overview')}</Text>
 
         <View style={s.grid}>
           {MODULOS.map((m) => {
@@ -100,29 +105,12 @@ export default function ModulosAdminScreen() {
                   </View>
                   <Ionicons name="chevron-forward" size={14} color={colors.ink300} />
                 </View>
-                <Text style={s.moduleLabel}>{m.label}</Text>
+                <Text style={s.moduleLabel}>{t(m.labelKey)}</Text>
                 <Text style={s.moduleCount}>{count.n}</Text>
                 <Text style={s.moduleSub}>{count.sub}</Text>
               </TouchableOpacity>
             )
           })}
-        </View>
-
-        <Text style={[s.sectionLabel, { marginTop: 4 }]}>ATIVIDADE RECENTE</Text>
-
-        <View style={s.activityCard}>
-          {recentActivity.map((r, i) => (
-            <View key={i} style={[s.activityRow, i < recentActivity.length - 1 && s.activityBorder]}>
-              <View style={[s.activityIcon, { backgroundColor: r.color + '18' }]}>
-                <Ionicons name={r.icon} size={15} color={r.color} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.activityTitle}>{r.label}</Text>
-                <Text style={s.activityDesc} numberOfLines={1}>{r.desc}</Text>
-              </View>
-              <Text style={s.activityTime}>{r.time}</Text>
-            </View>
-          ))}
         </View>
 
       </ScrollView>
@@ -171,14 +159,4 @@ const s = StyleSheet.create({
   moduleCount: { fontSize: 22, fontWeight: '700', letterSpacing: -0.66, color: colors.ink900, marginTop: 2 },
   moduleSub: { fontSize: 10.5, color: colors.ink400, marginTop: 2 },
 
-  activityCard: {
-    backgroundColor: colors.white, borderRadius: 16, borderWidth: 1, borderColor: colors.ink100,
-    overflow: 'hidden', marginHorizontal: 16,
-  },
-  activityRow: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, paddingHorizontal: 14 },
-  activityBorder: { borderBottomWidth: 1, borderBottomColor: colors.ink100 },
-  activityIcon: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  activityTitle: { fontSize: 12.5, fontWeight: '600', color: colors.ink900 },
-  activityDesc: { fontSize: 11, color: colors.ink500, marginTop: 1 },
-  activityTime: { fontSize: 10.5, color: colors.ink400 },
 })

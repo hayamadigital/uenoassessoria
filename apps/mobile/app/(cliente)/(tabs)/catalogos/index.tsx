@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
+import { router } from 'expo-router'
 import { db } from '@/lib/firebase'
 import { listServicos } from '@ueno/firebase/queries/servicos'
 import { colors } from '@/theme'
@@ -27,9 +28,18 @@ const FILTROS: { label: string; value: Categoria }[] = [
   { label: 'Intérprete', value: 'interprete' },
 ]
 
+function formatPrecoServico(servico: Servico) {
+  if (servico.usa_variacoes) return 'Variações'
+  if (servico.preco_variavel && servico.preco_min_jpy != null && servico.preco_max_jpy != null) {
+    return `¥ ${servico.preco_min_jpy.toLocaleString('ja-JP')} - ¥ ${servico.preco_max_jpy.toLocaleString('ja-JP')}`
+  }
+  return servico.preco_jpy != null
+    ? `¥ ${servico.preco_jpy.toLocaleString('ja-JP')}`
+    : 'Sob consulta'
+}
+
 export default function CatalogoScreen() {
   const [filtro, setFiltro] = useState<Categoria>('todos')
-  const [selected, setSelected] = useState<Servico | null>(null)
 
   const { data: servicos, isLoading } = useQuery({
     queryKey: ['servicos'],
@@ -89,53 +99,48 @@ export default function CatalogoScreen() {
                 key={serv.id}
                 servico={serv}
                 color={SERVICO_COLORS[i % SERVICO_COLORS.length]}
-                onPress={() => setSelected(serv)}
+                onView={() => router.push(`/(cliente)/servicos/${serv.id}` as any)}
               />
             ))}
           </View>
         )}
       </ScrollView>
 
-      {/* Bottom sheet detalhe */}
-      {selected && (
-        <View style={s.sheet}>
-          <View style={s.sheetHandle} />
-          <ScrollView>
-            <View style={{ padding: 20 }}>
-              <View style={s.sheetHeader}>
-                <Text style={s.sheetTitle}>{selected.nome}</Text>
-                <TouchableOpacity onPress={() => setSelected(null)}>
-                  <Ionicons name="close-circle" size={26} color={colors.ink300} />
-                </TouchableOpacity>
-              </View>
-              <Text style={s.sheetDesc}>{selected.descricao}</Text>
-              {selected.preco_jpy != null && (
-                <View style={s.sheetPriceRow}>
-                  <View>
-                    <Text style={s.sheetPriceLabel}>A PARTIR DE</Text>
-                    <Text style={s.sheetPrice}>¥ {selected.preco_jpy.toLocaleString('ja-JP')}</Text>
-                  </View>
-                  <TouchableOpacity style={s.sheetBtn} activeOpacity={0.85}>
-                    <Text style={s.sheetBtnTxt}>Contratar</Text>
-                    <Ionicons name="chevron-forward" size={14} color="white" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </ScrollView>
-        </View>
-      )}
     </SafeAreaView>
   )
 }
 
-function ServicoCard({ servico, color, onPress }: { servico: Servico; color: string; onPress: () => void }) {
+function ServicoCard({
+  servico,
+  color,
+  onView,
+}: {
+  servico: Servico
+  color: string
+  onView: () => void
+}) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const imageUri = servico.imagem_url?.trim()
+
   return (
-    <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.88}>
-      {/* Banner placeholder */}
+    <TouchableOpacity style={s.card} onPress={onView} activeOpacity={0.88}>
       <View style={[s.cardBanner, { backgroundColor: color + '18' }]}>
-        <Ionicons name="car-outline" size={36} color={color} />
-        <Text style={[s.cardBannerTxt, { color: color + '80' }]}>Imagem do serviço</Text>
+        {imageUri && !imageFailed ? (
+          <>
+            <Image
+              source={{ uri: imageUri }}
+              style={s.cardBannerImage}
+              resizeMode="cover"
+              onError={() => setImageFailed(true)}
+            />
+            <View style={s.cardBannerOverlay} />
+          </>
+        ) : (
+          <>
+            <Ionicons name="car-outline" size={36} color={color} />
+            <Text style={[s.cardBannerTxt, { color: color + '80' }]}>Imagem do serviço</Text>
+          </>
+        )}
       </View>
       <View style={{ padding: 16 }}>
         <Text style={s.cardTitle}>{servico.nome}</Text>
@@ -143,15 +148,12 @@ function ServicoCard({ servico, color, onPress }: { servico: Servico; color: str
         <View style={s.cardBottom}>
           <View>
             <Text style={s.cardPriceLabel}>A PARTIR DE</Text>
-            {servico.preco_jpy != null
-              ? <Text style={s.cardPrice}>¥ {servico.preco_jpy.toLocaleString('ja-JP')}</Text>
-              : <Text style={s.cardPrice}>Sob consulta</Text>
-            }
+            <Text style={s.cardPrice}>{formatPrecoServico(servico)}</Text>
           </View>
-          <TouchableOpacity style={[s.cardBtn, { backgroundColor: color }]} onPress={onPress} activeOpacity={0.85}>
-            <Text style={s.cardBtnTxt}>Contratar</Text>
+          <View style={[s.cardBtn, { backgroundColor: color }]}>
+            <Text style={s.cardBtnTxt}>Ver serviço</Text>
             <Ionicons name="chevron-forward" size={14} color="white" />
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -194,7 +196,9 @@ const s = StyleSheet.create({
     shadowColor: colors.navy900, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
     overflow: 'hidden',
   },
-  cardBanner: { height: 96, alignItems: 'center', justifyContent: 'center', gap: 8, flexDirection: 'row' },
+  cardBanner: { height: 112, alignItems: 'center', justifyContent: 'center', gap: 8, flexDirection: 'row', overflow: 'hidden', position: 'relative' },
+  cardBannerImage: { width: '100%', height: '100%' },
+  cardBannerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(9, 24, 41, 0.06)' },
   cardBannerTxt: { fontSize: 12, fontWeight: '500' },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.ink900, letterSpacing: -0.3, marginBottom: 6, lineHeight: 20 },
   cardDesc: { fontSize: 12.5, color: colors.ink500, lineHeight: 18, marginBottom: 14 },

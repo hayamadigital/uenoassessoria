@@ -96,7 +96,13 @@ export function MeuPerfilTab() {
   const mutation = useMutation({
     mutationFn: async (data: ProfileUpdateInput) => {
       if (!session) throw new Error('Sessão inválida')
-      const { email: _email, ...updatePayload } = data
+      const updatePayload = {
+        full_name: data.full_name,
+        preferred_lang: data.preferred_lang,
+        phone: data.phone?.trim() ? data.phone : null,
+        whatsapp: data.whatsapp?.trim() ? data.whatsapp : null,
+        endereco_jp: data.endereco_jp?.trim() ? data.endereco_jp : null,
+      }
       return updateProfile(db, session.userId, updatePayload)
     },
     onSuccess: (updatedProfile) => {
@@ -198,7 +204,7 @@ export function MeuPerfilTab() {
               <Label>Idioma do Perfil</Label>
               <Select
                 value={preferredLang}
-                onValueChange={(val) => setValue('preferred_lang', val as 'pt-BR' | 'en', { shouldDirty: true })}
+                onValueChange={(val: string) => setValue('preferred_lang', val as 'pt-BR' | 'en', { shouldDirty: true })}
               >
                 <SelectTrigger>
                   <SelectValue />

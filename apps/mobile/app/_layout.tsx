@@ -49,9 +49,9 @@ function AuthInit() {
           }
           setSession(session)
           await i18n.changeLanguage(session.preferredLang)
-          if (session.role === 'admin') router.replace('/(admin)/inicio')
+          if (session.role === 'admin') router.replace('/(admin)/(tabs)/inicio')
           else if (session.role === 'instrutor') router.replace('/(instrutor)/hoje')
-          else router.replace('/(cliente)/inicio')
+          else router.replace('/(cliente)/(tabs)/inicio')
         } catch (e: any) {
           console.error('[Auth] getProfile error:', e?.message)
           Alert.alert(
@@ -73,13 +73,26 @@ function AuthInit() {
   return null
 }
 
+function LanguageSync() {
+  const preferredLang = useAuthStore((state) => state.session?.preferredLang)
+
+  useEffect(() => {
+    if (preferredLang && i18n.language !== preferredLang) {
+      void i18n.changeLanguage(preferredLang)
+    }
+  }, [preferredLang])
+
+  return null
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <AuthInit />
+        <LanguageSync />
         <StatusBar style="auto" />
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack key={i18n.language} screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(admin)" />
           <Stack.Screen name="(instrutor)" />

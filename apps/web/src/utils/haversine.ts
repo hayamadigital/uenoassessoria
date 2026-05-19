@@ -65,7 +65,7 @@ export function recomendarDistribuicao(
     // Assign up to capacity
     const toAssign = unassigned.slice(0, veiculo.capacidade)
     for (const c of toAssign) {
-      result[veiculo.id].push(c.id)
+      result[veiculo.id]!.push(c.id)
       assigned.add(c.id)
     }
   }

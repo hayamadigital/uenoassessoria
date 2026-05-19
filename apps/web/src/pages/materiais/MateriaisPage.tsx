@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,7 @@ import {
   type NovoSimuladoInput,
 } from '@ueno/utils/validators'
 import type { Material, CategoriaMaterial, TipoMaterial, Questao } from '@ueno/firebase'
+import { includesText, isWithinDateRange, matchesActiveFilter, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 // ── Helpers ───────────────────────────────────────────────────
 function shuffleArray<T>(arr: T[]): T[] {
@@ -654,13 +656,10 @@ function NovoSimuladoDialog({
   })
 
   const modoSelecao = watch('modo_selecao')
-  const categoriaId = watch('categoria_id')
-
   const { data: questoesDisponiveis = [], isLoading: loadingQuestoes } = useQuery({
-    queryKey: ['questoes-selecao', categoriaId, searchQuestao],
+    queryKey: ['questoes-selecao', searchQuestao],
     queryFn: () =>
       listQuestoes(db, {
-        ...(categoriaId && { categoriaId }),
         ...(searchQuestao && { search: searchQuestao }),
       }),
     enabled: step === 2 && config?.modo_selecao === 'manual',
@@ -672,11 +671,9 @@ function NovoSimuladoDialog({
     isError: hasRandomQuestoesError,
     error: randomQuestoesError,
   } = useQuery({
-    queryKey: ['questoes-sorteio', config?.categoria_id ?? 'todas'],
+    queryKey: ['questoes-sorteio', 'todas'],
     queryFn: () =>
-      listQuestoes(db, {
-        ...(config?.categoria_id && { categoriaId: config.categoria_id }),
-      }),
+      listQuestoes(db),
     enabled: step === 2 && config?.modo_selecao === 'aleatorio',
   })
 
@@ -738,9 +735,7 @@ function NovoSimuladoDialog({
     const todas =
       questoesAleatoriasList.length > 0
         ? questoesAleatoriasList
-        : await listQuestoes(db, {
-            ...(config?.categoria_id && { categoriaId: config.categoria_id }),
-          })
+        : await listQuestoes(db)
     const sorteadas = shuffleArray(todas).slice(0, config!.total_questoes)
     setRandomPreview(sorteadas)
     setSelectedIds(sorteadas.map((q) => q.id))
@@ -828,7 +823,7 @@ function NovoSimuladoDialog({
             </div>
             <p className="text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
               {modoSelecao === 'aleatorio'
-                ? 'As questões serão sorteadas da categoria selecionada. Você poderá revisar e ressortear antes de confirmar.'
+                ? 'As questões serão sorteadas do banco geral. Você poderá revisar e ressortear antes de confirmar.'
                 : 'Na próxima etapa você selecionará as questões manualmente por busca.'}
             </p>
             <div className="flex items-center gap-2">
@@ -1119,6 +1114,16 @@ function MaterialRow({
 export function MateriaisPage() {
   const queryClient = useQueryClient()
   const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null)
+  const [busca, setBusca] = useState('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
+  const [tipoFiltro, setTipoFiltro] = useState<TipoMaterial | ''>('')
+  const [visibilidadeFiltro, setVisibilidadeFiltro] = useState<'all' | 'public' | 'private'>('all')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'titulo' | 'tipo' | 'categoria' | 'visibilidade' | 'created_at'>>({
+    key: 'titulo',
+    direction: 'asc',
+  })
   // null = dialog fechado | undefined = livre (sem pré-seleção) | string = pré-selecionada
   const [novoMaterialCategoria, setNovoMaterialCategoria] = useState<string | undefined | null>(null)
   const [novoSimuladoCategoria, setNovoSimuladoCategoria] = useState<string | undefined | null>(null)
@@ -1137,9 +1142,36 @@ export function MateriaisPage() {
     queryFn: () => listMateriais(db),
   })
 
-  const materiais = categoriaAtiva
-    ? todosMateriais.filter((m) => m.categoria_id === categoriaAtiva)
-    : todosMateriais
+  const materiais = useMemo(() => {
+    const rows = todosMateriais.filter((material) => {
+      if (categoriaAtiva && material.categoria_id !== categoriaAtiva) return false
+      if (!matchesActiveFilter(material.is_active !== false, activeFilter)) return false
+      if (tipoFiltro && material.tipo !== tipoFiltro) return false
+      if (visibilidadeFiltro === 'public' && !material.is_public) return false
+      if (visibilidadeFiltro === 'private' && material.is_public) return false
+      const categoria = categorias.find((c) => c.id === material.categoria_id)
+      if (!includesText(
+        [
+          material.titulo,
+          material.descricao,
+          TIPO_LABELS[material.tipo],
+          categoria?.nome,
+          material.is_public ? 'publico' : 'privado',
+          material.is_active !== false ? 'ativo' : 'inativo',
+        ].join(' '),
+        busca,
+      )) return false
+      return isWithinDateRange(material.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      titulo: (material) => material.titulo,
+      tipo: (material) => TIPO_LABELS[material.tipo],
+      categoria: (material) => categorias.find((c) => c.id === material.categoria_id)?.nome,
+      visibilidade: (material) => material.is_public,
+      created_at: (material) => material.created_at,
+    })
+  }, [activeFilter, busca, categoriaAtiva, categorias, createdFrom, createdTo, sort, tipoFiltro, todosMateriais, visibilidadeFiltro])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteMaterial(db, id),
@@ -1182,6 +1214,36 @@ export function MateriaisPage() {
       />
 
       <div className="p-8 space-y-6">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative min-w-56 flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por título, descrição ou categoria..."
+              className="pl-9"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+          <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={activeFilter} onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="all">Ativos e inativos</option>
+          </select>
+          <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value as TipoMaterial | '')}>
+            <option value="">Todos os tipos</option>
+            {Object.entries(TIPO_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+          <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={visibilidadeFiltro} onChange={(e) => setVisibilidadeFiltro(e.target.value as 'all' | 'public' | 'private')}>
+            <option value="all">Públicos e privados</option>
+            <option value="public">Públicos</option>
+            <option value="private">Privados</option>
+          </select>
+          <input type="date" className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={createdFrom} onChange={(e) => setCreatedFrom(e.target.value)} title="Criado de" />
+          <input type="date" className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={createdTo} onChange={(e) => setCreatedTo(e.target.value)} title="Criado até" />
+        </div>
+
         {/* Abas de categoria */}
         <div className="flex gap-1 flex-wrap border-b pb-2">
           <button
@@ -1248,10 +1310,10 @@ export function MateriaisPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b bg-muted/40">
                       <tr>
-                        <th className="px-4 py-3 text-left font-medium">Título</th>
-                        <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                        <th className="px-4 py-3 text-left font-medium">Categoria</th>
-                        <th className="px-4 py-3 text-left font-medium">Visibilidade</th>
+                        <SortableTh sort={sort} sortKey="titulo" onSort={(key) => setSort(nextSort(sort, key))}>Título</SortableTh>
+                        <SortableTh sort={sort} sortKey="tipo" onSort={(key) => setSort(nextSort(sort, key))}>Tipo</SortableTh>
+                        <SortableTh sort={sort} sortKey="categoria" onSort={(key) => setSort(nextSort(sort, key))}>Categoria</SortableTh>
+                        <SortableTh sort={sort} sortKey="visibilidade" onSort={(key) => setSort(nextSort(sort, key))}>Visibilidade</SortableTh>
                         <th className="px-4 py-3" />
                       </tr>
                     </thead>
@@ -1282,10 +1344,10 @@ export function MateriaisPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b bg-muted/40">
                       <tr>
-                        <th className="px-4 py-3 text-left font-medium">Título</th>
-                        <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                        <th className="px-4 py-3 text-left font-medium">Categoria</th>
-                        <th className="px-4 py-3 text-left font-medium">Visibilidade</th>
+                        <SortableTh sort={sort} sortKey="titulo" onSort={(key) => setSort(nextSort(sort, key))}>Título</SortableTh>
+                        <SortableTh sort={sort} sortKey="tipo" onSort={(key) => setSort(nextSort(sort, key))}>Tipo</SortableTh>
+                        <SortableTh sort={sort} sortKey="categoria" onSort={(key) => setSort(nextSort(sort, key))}>Categoria</SortableTh>
+                        <SortableTh sort={sort} sortKey="visibilidade" onSort={(key) => setSort(nextSort(sort, key))}>Visibilidade</SortableTh>
                         <th className="px-4 py-3" />
                       </tr>
                     </thead>

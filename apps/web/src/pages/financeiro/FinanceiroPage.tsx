@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, CheckCircle, X, User } from 'lucide-react'
+import { Plus, CheckCircle, X, User, Search } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,7 @@ import { listServicos } from '@ueno/firebase/queries/servicos'
 import { formatDateJST } from '@ueno/utils/date'
 import { z } from 'zod'
 import type { StatusPagamento, MetodoPagamento, CategoriaPagamento } from '@ueno/firebase'
+import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 const registrarSchema = z.object({
   cliente_id: z.string().uuid('Selecione um cliente'),
@@ -84,6 +86,16 @@ export function FinanceiroPage() {
   const queryClient = useQueryClient()
   const [mes, setMes] = useState(getMesAtual())
   const [statusFiltro, setStatusFiltro] = useState<StatusPagamento | ''>('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
+  const [busca, setBusca] = useState('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<CategoriaPagamento | ''>('')
+  const [metodoFiltro, setMetodoFiltro] = useState<MetodoPagamento | ''>('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'cliente' | 'descricao' | 'categoria' | 'valor' | 'metodo' | 'vencimento' | 'pagamento' | 'status' | 'created_at'>>({
+    key: 'vencimento',
+    direction: 'asc',
+  })
   const [addOpen, setAddOpen] = useState(false)
 
   const { data: dashboard, isLoading: loadingDash } = useQuery({
@@ -174,6 +186,40 @@ export function FinanceiroPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financeiro'] }),
   })
 
+  const pagamentosFiltrados = useMemo(() => {
+    const rows = (pagamentos ?? []).filter((p) => {
+      const isActive = p.status !== 'cancelado' && p.status !== 'estornado'
+      if (activeFilter === 'active' && !isActive) return false
+      if (activeFilter === 'inactive' && isActive) return false
+      if (categoriaFiltro && p.categoria !== categoriaFiltro) return false
+      if (metodoFiltro && p.metodo !== metodoFiltro) return false
+      if (!includesText(
+        [
+          p.cliente?.profile?.full_name,
+          p.descricao,
+          p.notas,
+          p.categoria ? categoriaLabel[p.categoria] : '',
+          metodoLabel[p.metodo],
+          statusLabel[p.status],
+        ].join(' '),
+        busca,
+      )) return false
+      return isWithinDateRange(p.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      cliente: (p) => p.cliente?.profile?.full_name,
+      descricao: (p) => p.descricao,
+      categoria: (p) => p.categoria ? categoriaLabel[p.categoria] : '',
+      valor: (p) => p.valor_jpy,
+      metodo: (p) => metodoLabel[p.metodo],
+      vencimento: (p) => p.data_vencimento,
+      pagamento: (p) => p.data_pagamento,
+      status: (p) => statusLabel[p.status],
+      created_at: (p) => p.created_at,
+    })
+  }, [activeFilter, busca, categoriaFiltro, createdFrom, createdTo, metodoFiltro, pagamentos, sort])
+
   return (
     <div>
       <PageHeader
@@ -190,12 +236,30 @@ export function FinanceiroPage() {
       <div className="space-y-6 p-8">
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-56 flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente ou descrição..."
+              className="pl-9"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
           <Input
             type="month"
             value={mes}
             onChange={(e) => setMes(e.target.value)}
             className="w-40"
           />
+          <select
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="all">Ativos e inativos</option>
+          </select>
           <select
             value={statusFiltro}
             onChange={(e) => setStatusFiltro(e.target.value as StatusPagamento | '')}
@@ -207,6 +271,40 @@ export function FinanceiroPage() {
             <option value="cancelado">Cancelado</option>
             <option value="estornado">Estornado</option>
           </select>
+          <select
+            value={categoriaFiltro}
+            onChange={(e) => setCategoriaFiltro(e.target.value as CategoriaPagamento | '')}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Todas as categorias</option>
+            {Object.entries(categoriaLabel).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+          <select
+            value={metodoFiltro}
+            onChange={(e) => setMetodoFiltro(e.target.value as MetodoPagamento | '')}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Todos os métodos</option>
+            {Object.entries(metodoLabel).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={createdFrom}
+            onChange={(e) => setCreatedFrom(e.target.value)}
+            title="Criado de"
+          />
+          <input
+            type="date"
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={createdTo}
+            onChange={(e) => setCreatedTo(e.target.value)}
+            title="Criado até"
+          />
         </div>
 
         {/* KPI cards */}
@@ -236,7 +334,7 @@ export function FinanceiroPage() {
         {/* Tabela */}
         {loadingPags ? (
           <div className="flex justify-center py-10"><Spinner /></div>
-        ) : pagamentos?.length === 0 ? (
+        ) : pagamentosFiltrados.length === 0 ? (
           <div className="rounded-md border border-dashed py-16 text-center text-sm text-muted-foreground">
             Nenhuma cobrança encontrada para este período.
           </div>
@@ -245,19 +343,19 @@ export function FinanceiroPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                  <th className="px-4 py-3 text-left font-medium">Descrição</th>
-                  <th className="px-4 py-3 text-left font-medium">Categoria</th>
-                  <th className="px-4 py-3 text-left font-medium">Valor</th>
-                  <th className="px-4 py-3 text-left font-medium">Método</th>
-                  <th className="px-4 py-3 text-left font-medium">Vencimento</th>
-                  <th className="px-4 py-3 text-left font-medium">Pago em</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <SortableTh sort={sort} sortKey="cliente" onSort={(key) => setSort(nextSort(sort, key))}>Cliente</SortableTh>
+                  <SortableTh sort={sort} sortKey="descricao" onSort={(key) => setSort(nextSort(sort, key))}>Descrição</SortableTh>
+                  <SortableTh sort={sort} sortKey="categoria" onSort={(key) => setSort(nextSort(sort, key))}>Categoria</SortableTh>
+                  <SortableTh sort={sort} sortKey="valor" onSort={(key) => setSort(nextSort(sort, key))}>Valor</SortableTh>
+                  <SortableTh sort={sort} sortKey="metodo" onSort={(key) => setSort(nextSort(sort, key))}>Método</SortableTh>
+                  <SortableTh sort={sort} sortKey="vencimento" onSort={(key) => setSort(nextSort(sort, key))}>Vencimento</SortableTh>
+                  <SortableTh sort={sort} sortKey="pagamento" onSort={(key) => setSort(nextSort(sort, key))}>Pago em</SortableTh>
+                  <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {pagamentos?.map((p) => (
+                {pagamentosFiltrados.map((p) => (
                   <tr key={p.id} className="hover:bg-muted/20">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -325,7 +423,7 @@ export function FinanceiroPage() {
       </div>
 
       {/* Dialog */}
-      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) { setAddOpen(false); reset() } else setAddOpen(true) }}>
+      <Dialog open={addOpen} onOpenChange={(o: boolean) => { if (!o) { setAddOpen(false); reset() } else setAddOpen(true) }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Nova Cobrança</DialogTitle>

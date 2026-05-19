@@ -28,9 +28,11 @@ function toAgendamento(id: string, data: Record<string, unknown>): Agendamento {
 
 async function enrichAgendamento(db: Firestore, ag: Agendamento): Promise<AgendamentoWithRelations> {
   const [cliente, instrutor, servico] = await Promise.all([
-    getCliente(db, ag.cliente_id),
-    getProfile(db, ag.instrutor_id),
-    getDoc(doc(db, 'servicos', ag.servico_id)).then((s) => ({ id: s.id, ...s.data()! })),
+    ag.cliente_id ? getCliente(db, ag.cliente_id) : Promise.resolve(null),
+    ag.instrutor_id ? getProfile(db, ag.instrutor_id) : Promise.resolve(null),
+    ag.servico_id
+      ? getDoc(doc(db, 'servicos', ag.servico_id)).then((s) => (s.exists() ? { id: s.id, ...s.data()! } : null))
+      : Promise.resolve(null),
   ])
   return { ...ag, cliente, instrutor, servico } as AgendamentoWithRelations
 }

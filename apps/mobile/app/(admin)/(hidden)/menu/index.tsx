@@ -1,13 +1,16 @@
 import { View, Text, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 
 export default function Stub() {
+  const { t } = useTranslation('common')
+
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.center}>
         <Text style={s.icon}>🚧</Text>
-        <Text style={s.title}>Em desenvolvimento</Text>
-        <Text style={s.sub}>Esta seção será implementada em breve.</Text>
+        <Text style={s.title}>{t('admin.stub.title')}</Text>
+        <Text style={s.sub}>{t('admin.stub.subtitle')}</Text>
       </View>
     </SafeAreaView>
   )

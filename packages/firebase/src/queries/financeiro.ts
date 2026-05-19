@@ -22,6 +22,9 @@ import type {
   StatusPagamento,
   StatusParcela,
   Profile,
+  Gasto,
+  GastoInsert,
+  FinalidadeGasto,
 } from '../types'
 
 export interface PagamentoFilters {
@@ -115,7 +118,7 @@ export async function listPagamentosWithClientes(
   const clienteIds = [...new Set(pagamentos.map((p) => p.cliente_id))]
   const clientes = await Promise.all(clienteIds.map((cid) => getCliente(db, cid)))
   const clienteMap = Object.fromEntries(clientes.map((c) => [c.id, c]))
-  return pagamentos.map((p) => ({ ...p, cliente: clienteMap[p.cliente_id] }))
+  return pagamentos.map((p) => ({ ...p, cliente: clienteMap[p.cliente_id]! }))
 }
 
 // ── Parcelas ───────────────────────────────────────────────────────
@@ -173,6 +176,112 @@ export async function deleteParcela(
   id: string,
 ): Promise<void> {
   await deleteDoc(doc(db, 'pagamentos', pagamentoId, 'parcelas', id))
+}
+
+export interface ResumoMensal extends DashboardFinanceiro {
+  mes: string // YYYY-MM
+}
+
+export interface PrevisaoMes {
+  mes: string // YYYY-MM
+  total_previsto: number
+  quantidade: number
+}
+
+export async function getResumoMultiplosMeses(
+  db: Firestore,
+  meses: string[], // YYYY-MM[]
+): Promise<ResumoMensal[]> {
+  return Promise.all(
+    meses.map(async (mes) => {
+      const dash = await getDashboardFinanceiro(db, mes)
+      return { mes, ...dash }
+    }),
+  )
+}
+
+export async function listPagamentosByMes(
+  db: Firestore,
+  mes: string, // YYYY-MM
+): Promise<Pagamento[]> {
+  const inicio = `${mes}-01`
+  const nextMonth = new Date(new Date(`${mes}-01`).setMonth(new Date(`${mes}-01`).getMonth() + 1))
+  const fim = nextMonth.toISOString().slice(0, 10)
+
+  const snap = await getDocs(
+    query(
+      collection(db, 'pagamentos'),
+      where('created_at', '>=', inicio),
+      where('created_at', '<', fim),
+      orderBy('created_at', 'desc'),
+    ),
+  )
+  return snap.docs.map((d) => toPagamento(d.id, d.data()))
+}
+
+export async function getPrevisaoProximosMeses(
+  db: Firestore,
+  meses: string[], // YYYY-MM[] — meses futuros
+): Promise<PrevisaoMes[]> {
+  return Promise.all(
+    meses.map(async (mes) => {
+      const inicio = `${mes}-01`
+      const nextMonth = new Date(new Date(`${mes}-01`).setMonth(new Date(`${mes}-01`).getMonth() + 1))
+      const fim = nextMonth.toISOString().slice(0, 10)
+
+      const snap = await getDocs(
+        query(
+          collection(db, 'pagamentos'),
+          where('data_vencimento', '>=', inicio),
+          where('data_vencimento', '<', fim),
+          where('status', '==', 'pendente'),
+        ),
+      )
+      const rows = snap.docs.map((d) => d.data() as { valor_jpy: number })
+      return {
+        mes,
+        total_previsto: rows.reduce((acc, r) => acc + (r.valor_jpy ?? 0), 0),
+        quantidade: rows.length,
+      }
+    }),
+  )
+}
+
+// ── Gastos ─────────────────────────────────────────────────────────
+
+function toGasto(id: string, data: Record<string, unknown>): Gasto {
+  return { id, ...data } as Gasto
+}
+
+export async function listGastos(
+  db: Firestore,
+  mes?: string, // YYYY-MM — se omitido, retorna todos
+): Promise<Gasto[]> {
+  const constraints: Parameters<typeof query>[1][] = [orderBy('data', 'desc')]
+
+  if (mes) {
+    const inicio = `${mes}-01`
+    const nextMonth = new Date(new Date(`${mes}-01`).setMonth(new Date(`${mes}-01`).getMonth() + 1))
+    const fim = nextMonth.toISOString().slice(0, 10)
+    constraints.push(where('data', '>=', inicio))
+    constraints.push(where('data', '<', fim))
+  }
+
+  const snap = await getDocs(query(collection(db, 'gastos'), ...constraints))
+  return snap.docs.map((d) => toGasto(d.id, d.data()))
+}
+
+export async function createGasto(db: Firestore, input: GastoInsert): Promise<Gasto> {
+  const ref = await addDoc(collection(db, 'gastos'), {
+    ...input,
+    created_at: new Date().toISOString(),
+  })
+  const snap = await getDoc(ref)
+  return toGasto(snap.id, snap.data()!)
+}
+
+export async function deleteGasto(db: Firestore, id: string): Promise<void> {
+  await deleteDoc(doc(db, 'gastos', id))
 }
 
 export async function listAdminProfiles(

@@ -10,7 +10,7 @@ import {
   orderBy,
   type Firestore,
 } from 'firebase/firestore'
-import type { Avaliacao, AvaliacaoComDetalhes, AvaliacaoInsert, AvaliacaoTipo } from '../types'
+import type { Avaliacao, AvaliacaoComDetalhes, AvaliacaoInsert, AvaliacaoTipo, TipoMaterial } from '../types'
 
 export interface FiltrosAvaliacao {
   tipo?: AvaliacaoTipo
@@ -61,7 +61,7 @@ async function enrichAvaliacao(db: Firestore, av: Avaliacao): Promise<AvaliacaoC
     cliente_nome: profileSnap?.data()?.full_name as string ?? null,
     cliente_avatar_url: profileSnap?.data()?.avatar_url as string ?? null,
     material_titulo: materialSnap?.data()?.titulo as string ?? null,
-    material_tipo: materialSnap?.data()?.tipo as AvaliacaoTipo ?? null,
+    material_tipo: (materialSnap?.data()?.tipo as TipoMaterial | undefined) ?? null,
     servico_nome: servicoNome,
   }
 }

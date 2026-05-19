@@ -32,6 +32,7 @@ const statusRotaVariant: Record<
 
 function formatDayLabel(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) return dateStr
   const date = new Date(year, month - 1, day)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -45,8 +46,8 @@ function formatDayLabel(dateStr: string): string {
 
 export function RotasPage() {
   const dias = getProximosDiasJST(7)
-  const dataInicio = dias[0]
-  const dataFim = dias[dias.length - 1]
+  const dataInicio = dias[0]!
+  const dataFim = dias[dias.length - 1]!
 
   const { data: etapasPorDia, isLoading: loadingEtapas } = useQuery({
     queryKey: ['etapas-dias-range', dataInicio, dataFim],
@@ -67,7 +68,7 @@ export function RotasPage() {
   if (rotasDia) {
     for (const rota of rotasDia) {
       if (!rotasByData[rota.data]) rotasByData[rota.data] = []
-      rotasByData[rota.data].push(rota)
+      rotasByData[rota.data]!.push(rota)
     }
   }
 

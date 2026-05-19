@@ -42,6 +42,9 @@ function todayJST(): string {
 
 function addDaysToDateStr(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error(`Invalid date: ${dateStr}`)
+  }
   const d = new Date(year, month - 1, day)
   d.setDate(d.getDate() + days)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -75,7 +78,7 @@ export async function getRotaDia(
     ),
   )
   if (snap.empty) return null
-  const rotaDoc = snap.docs[0]
+  const rotaDoc = snap.docs[0]!
   return buildRotaWithParadas(db, rotaDoc.id, rotaDoc.data() as RotaDia)
 }
 
@@ -215,7 +218,10 @@ export async function getOrCreateRotaDia(
       orderBy('created_at'),
     ),
   )
-  if (!existing.empty) return toRota(existing.docs[0].id, existing.docs[0].data())
+  if (!existing.empty) {
+    const rotaDoc = existing.docs[0]!
+    return toRota(rotaDoc.id, rotaDoc.data())
+  }
   return createRotaDia(db, { instrutor_id: instrutorId, data, status: 'planejado' } as RotaDiaInsert)
 }
 
@@ -357,7 +363,7 @@ export async function getDiasComEtapasRange(
     const dataAgendada = d.data().data_agendada as string | null
     if (!dataAgendada) continue
     const key = dateStrFromUTCInJST(dataAgendada)
-    if (key in countByDay) countByDay[key]++
+    if (key in countByDay) countByDay[key] = (countByDay[key] ?? 0) + 1
   }
 
   return days.map((d) => ({ data: d, total: countByDay[d] ?? 0 }))

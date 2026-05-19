@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -8,7 +8,6 @@ import {
   Plus,
   Search,
   Pencil,
-  Trash2,
   ImageIcon,
   AlertCircle,
   Check,
@@ -27,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -43,10 +43,13 @@ import {
   listPendingErroReportCounts,
   listErroReports,
   updateErroReport,
+  listSimuladosByQuestao,
+  listSimuladoUsageCounts,
 } from '@ueno/firebase/queries/questoes'
 import { listCategoriasMaterial } from '@ueno/firebase/queries/materiais'
 import { questaoSchema, type QuestaoInput } from '@ueno/utils/validators'
-import type { QuestaoWithDetails, CategoriaMaterial, QuestaoErroReportWithDetails } from '@ueno/firebase'
+import type { QuestaoWithDetails, CategoriaMaterial, TipoOpcaoQuestao } from '@ueno/firebase'
+import { includesText, isWithinDateRange, nextSort, sortBy, type SortState } from '@/utils/table'
 
 // ── Opções padrão booleano ────────────────────────────────────
 const OPCOES_BOOLEANO = [
@@ -54,14 +57,16 @@ const OPCOES_BOOLEANO = [
   { texto: 'Falso', is_correta: false, ordem: 1 },
 ]
 
+function questaoIdentifier(id: string) {
+  return id.slice(0, 8).toUpperCase()
+}
+
 // ── Dialog de criação/edição de questão ──────────────────────
 function QuestaoDialog({
   questao,
-  categorias,
   onClose,
 }: {
   questao?: QuestaoWithDetails
-  categorias: CategoriaMaterial[]
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -82,7 +87,7 @@ function QuestaoDialog({
           enunciado: questao.enunciado,
           explicacao: questao.explicacao ?? '',
           tipo_opcao: questao.tipo_opcao,
-          categoria_id: questao.categoria_id ?? undefined,
+          categoria_id: '',
           opcoes: questao.opcoes.map((op) => ({
             id: op.id,
             texto: op.texto,
@@ -99,7 +104,7 @@ function QuestaoDialog({
           enunciado: '',
           explicacao: '',
           tipo_opcao: 'booleano',
-          categoria_id: undefined,
+          categoria_id: '',
           opcoes: OPCOES_BOOLEANO,
           imagens: [],
         },
@@ -160,6 +165,12 @@ function QuestaoDialog({
     enabled: isEdit,
   })
 
+  const { data: simuladosDaQuestao = [], isLoading: loadingSimuladosDaQuestao } = useQuery({
+    queryKey: ['questao-simulados', questao?.id],
+    queryFn: () => listSimuladosByQuestao(db, questao!.id),
+    enabled: isEdit,
+  })
+
   const updateReportMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: 'corrigido' | 'descartado' }) =>
       updateErroReport(db, id, status),
@@ -177,7 +188,7 @@ function QuestaoDialog({
           enunciado: data.enunciado,
           explicacao: data.explicacao || null,
           tipo_opcao: data.tipo_opcao,
-          categoria_id: data.categoria_id || null,
+          categoria_id: null,
           criado_por: null,
         },
         data.opcoes,
@@ -198,7 +209,7 @@ function QuestaoDialog({
           enunciado: data.enunciado,
           explicacao: data.explicacao || null,
           tipo_opcao: data.tipo_opcao,
-          categoria_id: data.categoria_id || null,
+          categoria_id: null,
         },
         data.opcoes,
         data.imagens,
@@ -265,6 +276,41 @@ function QuestaoDialog({
           </div>
         )}
 
+        {isEdit && (
+          <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+            <div className="text-sm font-medium">Simulados que usam esta questão</div>
+            {loadingSimuladosDaQuestao ? (
+              <div className="py-2">
+                <Spinner />
+              </div>
+            ) : simuladosDaQuestao.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Esta questão ainda não está vinculada a nenhum simulado.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {simuladosDaQuestao.map((simulado) => (
+                  <Link
+                    key={simulado.simulado_id}
+                    to={`/materiais/${simulado.simulado_id}`}
+                    className="flex items-center justify-between gap-3 rounded border bg-background px-3 py-2 text-sm hover:bg-muted/30"
+                  >
+                    <span className="font-medium line-clamp-1">{simulado.titulo}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {simulado.ordem !== null && (
+                        <span className="text-xs text-muted-foreground">#{simulado.ordem + 1}</span>
+                      )}
+                      <Badge variant={simulado.is_public ? 'success' : 'outline'}>
+                        {simulado.is_public ? 'Público' : 'Privado'}
+                      </Badge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 py-2">
           {/* Enunciado */}
           <div className="space-y-2">
@@ -281,22 +327,8 @@ function QuestaoDialog({
             )}
           </div>
 
-          {/* Categoria + Tipo */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Categoria</Label>
-              <select
-                {...register('categoria_id')}
-                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Sem categoria</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Tipo */}
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <Label>
                 Tipo de opção <span className="text-destructive">*</span>
@@ -506,6 +538,150 @@ function ConfirmDeleteDialog({
   )
 }
 
+function QuestaoFlyout({
+  questao,
+  pendingErrors,
+  usageCount,
+  onClose,
+  onEdit,
+}: {
+  questao: QuestaoWithDetails
+  pendingErrors: number
+  usageCount: number
+  onClose: () => void
+  onEdit: () => void
+}) {
+  const { data: simulados = [], isLoading } = useQuery({
+    queryKey: ['questao-simulados', questao.id],
+    queryFn: () => listSimuladosByQuestao(db, questao.id),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/25"
+        onClick={onClose}
+        aria-label="Fechar detalhes"
+      />
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col border-l bg-background shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b px-6 py-5">
+          <div className="min-w-0">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="font-mono text-xs rounded bg-muted px-2 py-1 text-muted-foreground">
+                {questaoIdentifier(questao.id)}
+              </span>
+              {pendingErrors > 0 ? (
+                <Badge variant="destructive" className="gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {pendingErrors}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-muted-foreground">
+                  <CircleCheck className="h-3 w-3" />
+                  Sem alertas
+                </Badge>
+              )}
+            </div>
+            <h2 className="text-lg font-semibold leading-tight">Detalhes da questão</h2>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <section className="space-y-2">
+            <Label>Enunciado</Label>
+            <p className="rounded-md border bg-muted/20 p-3 text-sm leading-relaxed">
+              {questao.enunciado}
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <Label>Opções</Label>
+            <div className="space-y-2">
+              {questao.opcoes.map((opcao, index) => (
+                <div
+                  key={opcao.id}
+                  className={`flex items-start gap-3 rounded-md border px-3 py-2 text-sm ${
+                    opcao.is_correta ? 'border-green-300 bg-green-50 text-green-900' : 'bg-background'
+                  }`}
+                >
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 leading-relaxed">{opcao.texto}</span>
+                  {opcao.is_correta && (
+                    <Badge variant="success" className="shrink-0">
+                      Correta
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {questao.explicacao && (
+            <section className="space-y-2">
+              <Label>Explicação</Label>
+              <p className="rounded-md border bg-muted/20 p-3 text-sm leading-relaxed">
+                {questao.explicacao}
+              </p>
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <Label>Simulados que usam esta questão</Label>
+              <Badge variant="outline">{usageCount}</Badge>
+            </div>
+            {isLoading ? (
+              <div className="py-3">
+                <Spinner />
+              </div>
+            ) : simulados.length === 0 ? (
+              <p className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                Esta questão ainda não está vinculada a nenhum simulado.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {simulados.map((simulado) => (
+                  <Link
+                    key={simulado.simulado_id}
+                    to={`/materiais/${simulado.simulado_id}`}
+                    className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted/30"
+                  >
+                    <span className="font-medium line-clamp-1">{simulado.titulo}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {simulado.ordem !== null && (
+                        <span className="text-xs text-muted-foreground">#{simulado.ordem + 1}</span>
+                      )}
+                      <Badge variant={simulado.is_public ? 'success' : 'outline'}>
+                        {simulado.is_public ? 'Público' : 'Privado'}
+                      </Badge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t px-6 py-4">
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+          <Button onClick={onEdit}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </Button>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
 // ── Helpers: CSV ──────────────────────────────────────────────
 function parseCSVRow(line: string): string[] {
   const result: string[] = []
@@ -692,9 +868,6 @@ function ImportarPlanilhaDialog({
     let erros = 0
     for (const row of validRows) {
       try {
-        const categoria = categorias.find(
-          (c) => c.nome.toLowerCase() === row.categoria_nome.toLowerCase(),
-        )
         const opcoes =
           row.tipo_opcao === 'booleano'
             ? [
@@ -720,7 +893,7 @@ function ImportarPlanilhaDialog({
             enunciado: row.enunciado,
             explicacao: row.explicacao || null,
             tipo_opcao: row.tipo_opcao,
-            categoria_id: categoria?.id ?? null,
+            categoria_id: null,
             criado_por: null,
           },
           opcoes,
@@ -961,10 +1134,18 @@ export function QuestoesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [search, setSearch] = useState('')
-  const [categoriaFilter, setCategoriaFilter] = useState('')
-  const [tipoFilter, setTipoFilter] = useState('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState('')
+  const [tipoFiltro, setTipoFiltro] = useState<TipoOpcaoQuestao | ''>('')
+  const [alertaFiltro, setAlertaFiltro] = useState<'all' | 'pending' | 'none'>('all')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'id' | 'enunciado' | 'tipo' | 'categoria' | 'simulados' | 'alerta' | 'created_at'>>({
+    key: 'created_at',
+    direction: 'desc',
+  })
   const [showCreate, setShowCreate] = useState(false)
   const [showImportar, setShowImportar] = useState(false)
+  const [selectedQuestao, setSelectedQuestao] = useState<QuestaoWithDetails | undefined>()
   const [editQuestao, setEditQuestao] = useState<QuestaoWithDetails | undefined>()
   const [deleteQuestao_, setDeleteQuestao] = useState<QuestaoWithDetails | undefined>()
 
@@ -977,18 +1158,21 @@ export function QuestoesPage() {
   })
 
   const { data: questoes = [], isLoading } = useQuery({
-    queryKey: ['questoes', search, categoriaFilter, tipoFilter],
+    queryKey: ['questoes', search],
     queryFn: () =>
       listQuestoes(db, {
         ...(search && { search }),
-        ...(categoriaFilter && { categoriaId: categoriaFilter }),
-        ...(tipoFilter && { tipoOpcao: tipoFilter }),
       }),
   })
 
   const { data: pendingCounts = {} } = useQuery({
     queryKey: ['questoes-pending-errors'],
     queryFn: () => listPendingErroReportCounts(db),
+  })
+
+  const { data: usageCounts = {} } = useQuery({
+    queryKey: ['questoes-simulado-usage-counts'],
+    queryFn: () => listSimuladoUsageCounts(db),
   })
 
   // Auto-open via ?edit= param
@@ -1007,17 +1191,40 @@ export function QuestoesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questoes'] })
       queryClient.invalidateQueries({ queryKey: ['questoes-pending-errors'] })
+      queryClient.invalidateQueries({ queryKey: ['questoes-simulado-usage-counts'] })
       setDeleteQuestao(undefined)
     },
   })
 
   const totalPendingErrors = Object.values(pendingCounts).reduce((a, b) => a + b, 0)
+  const questoesFiltradas = useMemo(() => {
+    const rows = questoes.filter((questao) => {
+      const pendingErrors = pendingCounts[questao.id] ?? 0
+      const categoria = categorias.find((c) => c.id === questao.categoria_id)
+      if (categoriaFiltro && questao.categoria_id !== categoriaFiltro) return false
+      if (tipoFiltro && questao.tipo_opcao !== tipoFiltro) return false
+      if (alertaFiltro === 'pending' && pendingErrors === 0) return false
+      if (alertaFiltro === 'none' && pendingErrors > 0) return false
+      if (!includesText([questao.id, questao.enunciado, categoria?.nome, questao.tipo_opcao].join(' '), search)) return false
+      return isWithinDateRange(questao.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      id: (questao) => questao.id,
+      enunciado: (questao) => questao.enunciado,
+      tipo: (questao) => questao.tipo_opcao,
+      categoria: (questao) => categorias.find((c) => c.id === questao.categoria_id)?.nome,
+      simulados: (questao) => usageCounts[questao.id] ?? 0,
+      alerta: (questao) => pendingCounts[questao.id] ?? 0,
+      created_at: (questao) => questao.created_at,
+    })
+  }, [alertaFiltro, categorias, categoriaFiltro, createdFrom, createdTo, pendingCounts, questoes, search, sort, tipoFiltro, usageCounts])
 
   return (
     <div>
       <PageHeader
         title="Banco de Questões"
-        subtitle={`${questoes.length} questão(ões) cadastrada(s)${totalPendingErrors > 0 ? ` · ${totalPendingErrors} erro(s) pendente(s)` : ''}`}
+        subtitle={`${questoesFiltradas.length} questão(ões) exibida(s)${totalPendingErrors > 0 ? ` · ${totalPendingErrors} erro(s) pendente(s)` : ''}`}
         actions={
           <div className="flex items-center gap-2">
             <Link to="/materiais">
@@ -1044,33 +1251,54 @@ export function QuestoesPage() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar no enunciado..."
+              placeholder="Buscar por ID ou enunciado..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
           <select
-            value={categoriaFilter}
-            onChange={(e) => setCategoriaFilter(e.target.value)}
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={categoriaFiltro}
+            onChange={(e) => setCategoriaFiltro(e.target.value)}
           >
             <option value="">Todas as categorias</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
+            {categorias.map((categoria) => (
+              <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>
             ))}
           </select>
           <select
-            value={tipoFilter}
-            onChange={(e) => setTipoFilter(e.target.value)}
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={tipoFiltro}
+            onChange={(e) => setTipoFiltro(e.target.value as TipoOpcaoQuestao | '')}
           >
             <option value="">Todos os tipos</option>
-            <option value="booleano">Verdadeiro/Falso</option>
+            <option value="booleano">Booleano</option>
             <option value="multipla">Múltipla escolha</option>
           </select>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={alertaFiltro}
+            onChange={(e) => setAlertaFiltro(e.target.value as 'all' | 'pending' | 'none')}
+          >
+            <option value="all">Com e sem alerta</option>
+            <option value="pending">Com alerta</option>
+            <option value="none">Sem alerta</option>
+          </select>
+          <input
+            type="date"
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={createdFrom}
+            onChange={(e) => setCreatedFrom(e.target.value)}
+            title="Criado de"
+          />
+          <input
+            type="date"
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={createdTo}
+            onChange={(e) => setCreatedTo(e.target.value)}
+            title="Criado até"
+          />
         </div>
 
         {/* Tabela */}
@@ -1083,82 +1311,59 @@ export function QuestoesPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Enunciado</th>
-                  <th className="px-4 py-3 text-left font-medium">Tipo</th>
-                  <th className="px-4 py-3 text-left font-medium">Categoria</th>
-                  <th className="px-4 py-3 text-left font-medium">Imagens</th>
-                  <th className="px-4 py-3 text-left font-medium">Erros</th>
-                  <th className="px-4 py-3" />
+                  <SortableTh sort={sort} sortKey="id" onSort={(key) => setSort(nextSort(sort, key))}>ID</SortableTh>
+                  <SortableTh sort={sort} sortKey="enunciado" onSort={(key) => setSort(nextSort(sort, key))}>Pergunta (Enunciado)</SortableTh>
+                  <SortableTh sort={sort} sortKey="simulados" onSort={(key) => setSort(nextSort(sort, key))}>Simulados</SortableTh>
+                  <SortableTh sort={sort} sortKey="alerta" onSort={(key) => setSort(nextSort(sort, key))} className="text-center">Alerta</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {questoes.length === 0 ? (
+                {questoesFiltradas.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={4}
                       className="px-4 py-8 text-center text-muted-foreground"
                     >
                       Nenhuma questão encontrada.
                     </td>
                   </tr>
                 ) : null}
-                {questoes.map((q) => {
+                {questoesFiltradas.map((q) => {
                   const pendingErrors = pendingCounts[q.id] ?? 0
-                  const categoria = categorias.find((c) => c.id === q.categoria_id)
+                  const usageCount = usageCounts[q.id] ?? 0
                   return (
-                    <tr key={q.id} className="hover:bg-muted/20">
+                    <tr
+                      key={q.id}
+                      className="cursor-pointer hover:bg-muted/20"
+                      onClick={() => setSelectedQuestao(q)}
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs rounded bg-muted px-2 py-1 text-muted-foreground">
+                          {questaoIdentifier(q.id)}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 max-w-xs">
                         <span className="line-clamp-2 leading-snug">{q.enunciado}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={q.tipo_opcao === 'booleano' ? 'secondary' : 'outline'}>
-                          {q.tipo_opcao === 'booleano' ? 'V / F' : 'Múltipla'}
-                        </Badge>
+                        <Badge variant="outline">{usageCount}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {categoria?.nome ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {q.imagens.length > 0 ? (
-                          <span className="flex items-center gap-1">
-                            <ImageIcon className="h-3 w-3" />
-                            {q.imagens.length}
+                      <td className="px-4 py-3 text-center">
+                        {pendingErrors > 0 ? (
+                          <span
+                            className="inline-flex items-center justify-center rounded-full bg-destructive/10 p-2 text-destructive"
+                            title={`${pendingErrors} alerta(s) pendente(s)`}
+                          >
+                            <AlertCircle className="h-4 w-4" />
                           </span>
                         ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {pendingErrors > 0 ? (
-                          <Badge variant="destructive" className="gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {pendingErrors}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setEditQuestao(q)}
-                            title="Editar"
+                          <span
+                            className="inline-flex items-center justify-center rounded-full bg-muted p-2 text-muted-foreground"
+                            title="Sem alertas pendentes"
                           >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteQuestao(q)}
-                            title="Excluir"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                            <CircleCheck className="h-4 w-4" />
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )
@@ -1177,7 +1382,6 @@ export function QuestoesPage() {
       {(showCreate || editQuestao) && (
         <QuestaoDialog
           {...(editQuestao ? { questao: editQuestao } : {})}
-          categorias={categorias}
           onClose={() => {
             setShowCreate(false)
             setEditQuestao(undefined)
@@ -1191,6 +1395,19 @@ export function QuestoesPage() {
           onConfirm={() => deleteMutation.mutate(deleteQuestao_.id)}
           onClose={() => setDeleteQuestao(undefined)}
           isLoading={deleteMutation.isPending}
+        />
+      )}
+
+      {selectedQuestao && (
+        <QuestaoFlyout
+          questao={selectedQuestao}
+          pendingErrors={pendingCounts[selectedQuestao.id] ?? 0}
+          usageCount={usageCounts[selectedQuestao.id] ?? 0}
+          onClose={() => setSelectedQuestao(undefined)}
+          onEdit={() => {
+            setEditQuestao(selectedQuestao)
+            setSelectedQuestao(undefined)
+          }}
         />
       )}
     </div>

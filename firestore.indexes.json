@@ -203,6 +203,13 @@
         { "fieldPath": "tipo_opcao", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "avisos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "data_publicacao", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

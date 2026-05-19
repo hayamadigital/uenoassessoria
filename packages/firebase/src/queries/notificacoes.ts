@@ -93,8 +93,9 @@ export async function upsertPushToken(
     query(collection(db, 'push_tokens'), where('token', '==', input.token)),
   )
   if (!snap.empty) {
-    await updateDoc(snap.docs[0].ref, input)
-    return { id: snap.docs[0].id, ...input, created_at: (snap.docs[0].data() as { created_at: string }).created_at }
+    const tokenDoc = snap.docs[0]!
+    await updateDoc(tokenDoc.ref, input)
+    return { id: tokenDoc.id, ...input, created_at: (tokenDoc.data() as { created_at: string }).created_at }
   }
   const now = new Date().toISOString()
   const ref = await addDoc(collection(db, 'push_tokens'), { ...input, created_at: now })

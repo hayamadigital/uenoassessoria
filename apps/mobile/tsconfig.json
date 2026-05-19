@@ -4,6 +4,9 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
+      "react-native": [
+        "./src/types/react-native"
+      ],
       "@/*": [
         "./src/*"
       ]

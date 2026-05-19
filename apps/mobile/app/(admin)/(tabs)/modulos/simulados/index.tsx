@@ -3,12 +3,15 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listMateriais } from '@ueno/firebase/queries/materiais'
 import { listQuestoes } from '@ueno/firebase/queries/questoes'
 import { colors } from '@/theme'
 
 export default function SimuladosAdminScreen() {
+  const { t } = useTranslation('common')
+
   const { data: materiais, isLoading: loadingMat } = useQuery({
     queryKey: ['admin-simulados-list'],
     queryFn: () => listMateriais(db),
@@ -30,12 +33,12 @@ export default function SimuladosAdminScreen() {
           <Ionicons name="chevron-back" size={18} color={colors.ink700} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerSub}>Módulos · Simulados</Text>
-          <Text style={s.headerTitle}>Questões</Text>
+          <Text style={s.headerSub}>{t('admin.tabs.modules')} · {t('admin.modules.tests')}</Text>
+          <Text style={s.headerTitle}>{t('admin.modules.questions')}</Text>
         </View>
         <TouchableOpacity style={s.actionBtn}>
           <Ionicons name="add" size={16} color={colors.white} />
-          <Text style={s.actionBtnTxt}>Nova</Text>
+          <Text style={s.actionBtnTxt}>{t('new')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -44,9 +47,9 @@ export default function SimuladosAdminScreen() {
         {/* Stats */}
         <View style={s.statsRow}>
           {[
-            { n: questoes?.length ?? 0, l: 'Questões', c: colors.navy800 },
-            { n: simulados.length, l: 'Simulados', c: '#0891B2' },
-            { n: (questoes ?? []).filter((q) => (q.imagens?.length ?? 0) > 0).length, l: 'Com imagem', c: '#0F766E' },
+            { n: questoes?.length ?? 0, l: t('admin.modules.questions'), c: colors.navy800 },
+            { n: simulados.length, l: t('admin.modules.tests'), c: '#0891B2' },
+            { n: (questoes ?? []).filter((q) => (q.imagens?.length ?? 0) > 0).length, l: t('admin.modules.with_image'), c: '#0F766E' },
           ].map(({ n, l, c }) => (
             <View key={l} style={s.statCard}>
               <Text style={[s.statN, { color: c }]}>{n}</Text>
@@ -55,14 +58,14 @@ export default function SimuladosAdminScreen() {
           ))}
         </View>
 
-        <Text style={s.sectionLabel}>BANCO DE QUESTÕES</Text>
+        <Text style={s.sectionLabel}>{t('admin.modules.question_bank')}</Text>
 
         {isLoading ? (
           <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
         ) : (questoes ?? []).length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="book-outline" size={32} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Nenhuma questão cadastrada</Text>
+            <Text style={s.emptyTxt}>{t('admin.modules.no_questions')}</Text>
           </View>
         ) : (
           <View style={{ gap: 9 }}>
@@ -82,13 +85,13 @@ export default function SimuladosAdminScreen() {
                       </>
                     ) : (
                       <View style={[s.chip, { backgroundColor: colors.navy800 + '18' }]}>
-                        <Text style={[s.chipTxt, { color: colors.navy800 }]}>Múltipla escolha</Text>
+                        <Text style={[s.chipTxt, { color: colors.navy800 }]}>{t('admin.modules.multiple_choice')}</Text>
                       </View>
                     )}
                     {(q.imagens?.length ?? 0) > 0 && (
                       <View style={s.imgBadge}>
                         <Ionicons name="image-outline" size={10} color={colors.ink500} />
-                        <Text style={s.imgBadgeTxt}>Com imagem</Text>
+                        <Text style={s.imgBadgeTxt}>{t('admin.modules.with_image')}</Text>
                       </View>
                     )}
                   </View>

@@ -124,8 +124,8 @@ export function ClienteAgendamentosTab() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">{ag.servico.nome}</td>
-                    <td className="px-4 py-3">{ag.instrutor.full_name}</td>
+                    <td className="px-4 py-3">{ag.servico?.nome ?? '—'}</td>
+                    <td className="px-4 py-3">{ag.instrutor?.full_name ?? '—'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{ag.local ?? '—'}</td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant[ag.status]}>

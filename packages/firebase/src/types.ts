@@ -317,6 +317,7 @@ export interface DestinoFixo {
   id: string
   nome: string
   endereco: string
+  google_maps_url: string | null
   is_active: boolean
   ordem: number
   created_at: string
@@ -689,3 +690,29 @@ export interface FAQ {
 }
 
 export type FAQInsert = Omit<FAQ, 'id' | 'created_at' | 'updated_at'>
+
+// ─────────────────────────────────────────────
+// Collection: /avisos/{id}
+// ─────────────────────────────────────────────
+
+export type TipoAviso = 'logistica' | 'promocao' | 'data_comemorativa' | 'geral'
+
+export type StatusAviso = 'agendado' | 'ativo' | 'encerrado'
+
+export interface Aviso {
+  id: string
+  titulo: string
+  descricao: string
+  tipo: TipoAviso
+  banner_url: string
+  imagens_carrossel: string[]
+  data_publicacao: string   // ISO string
+  data_encerramento: string // ISO string
+  broadcast: boolean
+  tipos_processo: string[]  // ignored when broadcast=true
+  created_at: string
+  updated_at: string
+  created_by: string
+}
+
+export type AvisoInsert = Omit<Aviso, 'id' | 'created_at' | 'updated_at'>

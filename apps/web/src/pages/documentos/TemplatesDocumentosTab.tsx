@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,7 @@ import {
 } from '@ueno/firebase/queries/documentos'
 import { listServicos } from '@ueno/firebase/queries/servicos'
 import type { DocumentoTemplate } from '@ueno/firebase'
+import { includesText, isWithinDateRange, nextSort, sortBy, type SortState } from '@/utils/table'
 
 const templateSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
@@ -140,6 +142,14 @@ export function TemplatesDocumentosTab() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<DocumentoTemplate | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DocumentoTemplate | null>(null)
+  const [busca, setBusca] = useState('')
+  const [obrigatorioFiltro, setObrigatorioFiltro] = useState<'all' | 'required' | 'optional'>('all')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'ordem' | 'nome' | 'descricao' | 'obrigatorio' | 'created_at'>>({
+    key: 'ordem',
+    direction: 'asc',
+  })
 
   const formOpen = createOpen || !!editingTemplate
 
@@ -193,24 +203,74 @@ export function TemplatesDocumentosTab() {
   })
 
   const servicosOptions = servicos ?? []
+  const templatesFiltrados = useMemo(() => {
+    const rows = (templates ?? []).filter((template) => {
+      if (obrigatorioFiltro === 'required' && !template.obrigatorio) return false
+      if (obrigatorioFiltro === 'optional' && template.obrigatorio) return false
+      if (!includesText([template.nome, template.descricao, template.obrigatorio ? 'obrigatorio' : 'opcional'].join(' '), busca)) return false
+      return isWithinDateRange(template.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      ordem: (template) => template.ordem,
+      nome: (template) => template.nome,
+      descricao: (template) => template.descricao,
+      obrigatorio: (template) => template.obrigatorio,
+      created_at: (template) => template.created_at,
+    })
+  }, [busca, createdFrom, createdTo, obrigatorioFiltro, sort, templates])
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {templates?.length ?? 0} template(s) cadastrado(s)
+          {templatesFiltrados.length} template(s) exibido(s)
         </p>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Novo Template
         </Button>
       </div>
+      <div className="flex flex-wrap gap-3">
+        <div className="relative min-w-56 flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou descrição..."
+            className="pl-9"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+        </div>
+        <select
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          value={obrigatorioFiltro}
+          onChange={(e) => setObrigatorioFiltro(e.target.value as 'all' | 'required' | 'optional')}
+        >
+          <option value="all">Obrigatórios e opcionais</option>
+          <option value="required">Obrigatórios</option>
+          <option value="optional">Opcionais</option>
+        </select>
+        <input
+          type="date"
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          value={createdFrom}
+          onChange={(e) => setCreatedFrom(e.target.value)}
+          title="Criado de"
+        />
+        <input
+          type="date"
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          value={createdTo}
+          onChange={(e) => setCreatedTo(e.target.value)}
+          title="Criado até"
+        />
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-10">
           <Spinner />
         </div>
-      ) : templates?.length === 0 ? (
+      ) : templatesFiltrados.length === 0 ? (
         <div className="rounded-md border border-dashed py-16 text-center text-sm text-muted-foreground">
           Nenhum template cadastrado.
         </div>
@@ -219,15 +279,15 @@ export function TemplatesDocumentosTab() {
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
               <tr>
-                <th className="w-12 px-4 py-3 text-left font-medium">#</th>
-                <th className="px-4 py-3 text-left font-medium">Nome</th>
-                <th className="px-4 py-3 text-left font-medium">Descrição</th>
-                <th className="px-4 py-3 text-left font-medium">Obrigatório</th>
+                <SortableTh sort={sort} sortKey="ordem" onSort={(key) => setSort(nextSort(sort, key))} className="w-12">#</SortableTh>
+                <SortableTh sort={sort} sortKey="nome" onSort={(key) => setSort(nextSort(sort, key))}>Nome</SortableTh>
+                <SortableTh sort={sort} sortKey="descricao" onSort={(key) => setSort(nextSort(sort, key))}>Descrição</SortableTh>
+                <SortableTh sort={sort} sortKey="obrigatorio" onSort={(key) => setSort(nextSort(sort, key))}>Obrigatório</SortableTh>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y">
-              {templates?.map((t) => (
+              {templatesFiltrados.map((t) => (
                 <tr key={t.id} className="hover:bg-muted/20">
                   <td className="px-4 py-3 text-muted-foreground">{t.ordem}</td>
                   <td className="px-4 py-3 font-medium">{t.nome}</td>
@@ -270,7 +330,7 @@ export function TemplatesDocumentosTab() {
       )}
 
       {/* Create Dialog */}
-      <Dialog open={createOpen} onOpenChange={(o) => { if (!o) setCreateOpen(false) }}>
+      <Dialog open={createOpen} onOpenChange={(o: boolean) => { if (!o) setCreateOpen(false) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Novo Template</DialogTitle>
@@ -286,7 +346,7 @@ export function TemplatesDocumentosTab() {
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editingTemplate} onOpenChange={(o) => { if (!o) setEditingTemplate(null) }}>
+      <Dialog open={!!editingTemplate} onOpenChange={(o: boolean) => { if (!o) setEditingTemplate(null) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Template</DialogTitle>
@@ -312,7 +372,7 @@ export function TemplatesDocumentosTab() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}>
+      <Dialog open={!!deleteTarget} onOpenChange={(o: boolean) => { if (!o) setDeleteTarget(null) }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>

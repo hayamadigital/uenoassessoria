@@ -12,6 +12,16 @@ import {
   type Firestore,
 } from 'firebase/firestore'
 import type { ClienteProcessoInsert, ClienteProcessoWithServico } from '../types'
+import { getServicoVariacao } from './servico_variacoes'
+
+async function resolveVariacao(db: Firestore, variacaoId: unknown) {
+  if (!variacaoId) return null
+  try {
+    return await getServicoVariacao(db, variacaoId as string)
+  } catch {
+    return null
+  }
+}
 
 export async function listProcessosByCliente(
   db: Firestore,
@@ -29,10 +39,13 @@ export async function listProcessosByCliente(
     snap.docs.map(async (d) => {
       const data = d.data()
       const servicoSnap = await getDoc(doc(db, 'servicos', data.servico_id as string))
+      const variacao = await resolveVariacao(db, data.variacao_id)
       return {
         id: d.id,
+        variacao_id: null,
         ...data,
         servico: { id: servicoSnap.id, ...servicoSnap.data() },
+        variacao,
       } as ClienteProcessoWithServico
     }),
   )
@@ -43,7 +56,14 @@ export async function getProcesso(db: Firestore, id: string): Promise<ClientePro
   if (!snap.exists()) throw new Error('Processo not found')
   const data = snap.data()
   const servicoSnap = await getDoc(doc(db, 'servicos', data.servico_id as string))
-  return { id: snap.id, ...data, servico: { id: servicoSnap.id, ...servicoSnap.data() } } as ClienteProcessoWithServico
+  const variacao = await resolveVariacao(db, data.variacao_id)
+  return {
+    id: snap.id,
+    variacao_id: null,
+    ...data,
+    servico: { id: servicoSnap.id, ...servicoSnap.data() },
+    variacao,
+  } as ClienteProcessoWithServico
 }
 
 export async function createProcesso(
@@ -51,6 +71,18 @@ export async function createProcesso(
   input: ClienteProcessoInsert,
 ): Promise<ClienteProcessoWithServico> {
   const now = new Date().toISOString()
+  const servicoSnap = await getDoc(doc(db, 'servicos', input.servico_id))
+  if (!servicoSnap.exists()) throw new Error('Serviço não encontrado')
+  const servico = servicoSnap.data()
+  if (servico.usa_variacoes && !input.variacao_id) {
+    throw new Error('Selecione a variação para abrir este processo.')
+  }
+  if (input.variacao_id) {
+    const variacao = await getServicoVariacao(db, input.variacao_id)
+    if (variacao.servico_id !== input.servico_id) {
+      throw new Error('A variação selecionada não pertence ao serviço.')
+    }
+  }
   const ref = await addDoc(collection(db, 'cliente_processos'), { ...input, created_at: now, updated_at: now })
   return getProcesso(db, ref.id)
 }

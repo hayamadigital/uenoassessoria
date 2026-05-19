@@ -49,3 +49,13 @@ export function assinaturaPath(clienteId: string, fileName: string) {
 export function avatarPath(uid: string, fileName: string) {
   return `avatares/${uid}/${fileName}`
 }
+
+export function avisoBannerPath(avisoId: string, fileName: string) {
+  const ext = fileName.split('.').pop() ?? 'jpg'
+  return `avisos/${avisoId}/banner/${Date.now()}.${ext}`
+}
+
+export function avisoCarrosselPath(avisoId: string, fileName: string) {
+  const ext = fileName.split('.').pop() ?? 'jpg'
+  return `avisos/${avisoId}/carrossel/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+}

@@ -47,7 +47,7 @@ export async function listClientes(
       }
       return true
     })
-    .map((c) => ({ ...c, profile: profileMap[c.profile_id] }))
+    .map((c) => ({ ...c, profile: profileMap[c.profile_id]! }))
 }
 
 export async function getCliente(db: Firestore, id: string): Promise<ClienteWithProfile> {
@@ -66,7 +66,8 @@ export async function getClienteByProfileId(
     query(collection(db, 'clientes'), where('profile_id', '==', profileId)),
   )
   if (snap.empty) throw new Error('Cliente not found')
-  const cliente = toCliente(snap.docs[0].id, snap.docs[0].data())
+  const clienteDoc = snap.docs[0]!
+  const cliente = toCliente(clienteDoc.id, clienteDoc.data())
   const profile = await getProfile(db, cliente.profile_id)
   return { ...cliente, profile }
 }

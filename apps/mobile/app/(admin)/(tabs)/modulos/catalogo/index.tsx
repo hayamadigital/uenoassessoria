@@ -3,11 +3,21 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listServicos } from '@ueno/firebase/queries/servicos'
 import { colors } from '@/theme'
 
+function formatPrecoServico(sv: { preco_variavel?: boolean; preco_jpy?: number | null; preco_min_jpy?: number | null; preco_max_jpy?: number | null }) {
+  if (sv.preco_variavel && sv.preco_min_jpy != null && sv.preco_max_jpy != null) {
+    return `¥ ${sv.preco_min_jpy.toLocaleString()} - ¥ ${sv.preco_max_jpy.toLocaleString()}`
+  }
+  return sv.preco_jpy ? `¥ ${sv.preco_jpy.toLocaleString()}` : null
+}
+
 export default function CatalogoAdminScreen() {
+  const { t } = useTranslation('common')
+
   const { data: servicos, isLoading } = useQuery({
     queryKey: ['admin-servicos-all'],
     queryFn: () => listServicos(db, false),
@@ -23,12 +33,12 @@ export default function CatalogoAdminScreen() {
           <Ionicons name="chevron-back" size={18} color={colors.ink700} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerSub}>Módulos · Catálogo</Text>
-          <Text style={s.headerTitle}>Serviços</Text>
+          <Text style={s.headerSub}>{t('admin.tabs.modules')} · {t('admin.modules.catalog')}</Text>
+          <Text style={s.headerTitle}>{t('admin.calendar.service')}</Text>
         </View>
         <TouchableOpacity style={s.actionBtn}>
           <Ionicons name="add" size={16} color={colors.white} />
-          <Text style={s.actionBtnTxt}>Novo</Text>
+          <Text style={s.actionBtnTxt}>{t('new')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -37,8 +47,8 @@ export default function CatalogoAdminScreen() {
         <View style={s.statsRow}>
           {[
             { n: servicos?.length ?? 0, l: 'Total', c: '#0F766E' },
-            { n: ativos, l: 'Ativos', c: colors.ok },
-            { n: inativos, l: 'Inativos', c: colors.ink400 },
+            { n: ativos, l: t('active'), c: colors.ok },
+            { n: inativos, l: t('inactive'), c: colors.ink400 },
           ].map(({ n, l, c }) => (
             <View key={l} style={s.statCard}>
               <Text style={[s.statN, { color: c }]}>{n}</Text>
@@ -47,14 +57,14 @@ export default function CatalogoAdminScreen() {
           ))}
         </View>
 
-        <Text style={s.sectionLabel}>SERVIÇOS CADASTRADOS</Text>
+        <Text style={s.sectionLabel}>{t('admin.modules.registered_services')}</Text>
 
         {isLoading ? (
           <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
         ) : (servicos ?? []).length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="layers-outline" size={32} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Nenhum serviço cadastrado</Text>
+            <Text style={s.emptyTxt}>{t('admin.modules.no_services')}</Text>
           </View>
         ) : (
           <View style={{ gap: 10 }}>
@@ -68,7 +78,7 @@ export default function CatalogoAdminScreen() {
                     <Text style={s.serviceName} numberOfLines={1}>{sv.nome}</Text>
                     <View style={[s.statusChip, { backgroundColor: sv.is_active ? '#16A34A18' : colors.ink100 }]}>
                       <Text style={[s.statusChipTxt, { color: sv.is_active ? colors.ok : colors.ink400 }]}>
-                        {sv.is_active ? 'Ativo' : 'Inativo'}
+                        {sv.is_active ? t('active') : t('inactive')}
                       </Text>
                     </View>
                   </View>
@@ -76,16 +86,21 @@ export default function CatalogoAdminScreen() {
                     <Text style={s.serviceDesc} numberOfLines={2}>{sv.descricao}</Text>
                   ) : null}
                   <View style={s.serviceMeta}>
-                    {sv.preco_jpy ? (
+                    {sv.usa_variacoes ? (
+                      <View style={s.priceTag}>
+                        <Ionicons name="layers-outline" size={11} color={colors.navy800} />
+                        <Text style={s.priceTxt}>{t('admin.modules.variations')}</Text>
+                      </View>
+                    ) : formatPrecoServico(sv) ? (
                       <View style={s.priceTag}>
                         <Ionicons name="cash-outline" size={11} color={colors.navy800} />
-                        <Text style={s.priceTxt}>¥ {sv.preco_jpy.toLocaleString()}</Text>
+                        <Text style={s.priceTxt}>{formatPrecoServico(sv)}</Text>
                       </View>
                     ) : null}
-                    {sv.duracao_estimada ? (
+                    {sv.duracao_texto ? (
                       <View style={s.priceTag}>
                         <Ionicons name="time-outline" size={11} color={colors.ink500} />
-                        <Text style={[s.priceTxt, { color: colors.ink500 }]}>{sv.duracao_estimada}</Text>
+                        <Text style={[s.priceTxt, { color: colors.ink500 }]}>{sv.duracao_texto}</Text>
                       </View>
                     ) : null}
                   </View>

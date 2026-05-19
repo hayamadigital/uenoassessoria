@@ -16,7 +16,7 @@
     "email": "Email",
     "phone": "Phone",
     "whatsapp": "WhatsApp",
-    "endereco_jp": "Address in Japan",
+    "endereco_jp": "Location",
     "preferred_lang": "Profile Language",
     "save": "Save Changes",
     "success": "Profile updated successfully."

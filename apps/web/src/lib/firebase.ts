@@ -13,4 +13,4 @@ if (Object.values(firebaseConfig).some((v) => !v)) {
   throw new Error('Missing Firebase environment variables. Check VITE_FIREBASE_* in .env.local')
 }
 
-export const { db, auth, storage } = createFirebaseClient(firebaseConfig)
+export const { db, auth, storage, functions } = createFirebaseClient(firebaseConfig)

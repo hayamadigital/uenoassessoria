@@ -9,13 +9,15 @@ import { listPagamentos } from '@ueno/firebase/queries/financeiro'
 import { getClienteDocumentos } from '@ueno/firebase/queries/documentos'
 import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import { listContratos } from '@ueno/firebase/queries/contratos'
+import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import { colors } from '@/theme'
 import { format, isValid, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-type RelatedKind = 'financeiro' | 'documentos' | 'agendamentos' | 'contratos'
+type RelatedKind = 'processos' | 'financeiro' | 'documentos' | 'agendamentos' | 'contratos'
 
 const KIND_META: Record<RelatedKind, { title: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+  processos: { title: 'Processo', subtitle: 'Serviços e andamento', icon: 'layers-outline', color: colors.navy800 },
   financeiro: { title: 'Financeiro', subtitle: 'Pagamentos e pendências', icon: 'wallet-outline', color: colors.ok },
   documentos: { title: 'Documentos', subtitle: 'Arquivos relacionados', icon: 'document-text-outline', color: '#0891B2' },
   agendamentos: { title: 'Agendamentos', subtitle: 'Histórico e próximos horários', icon: 'calendar-outline', color: '#7C3AED' },
@@ -64,7 +66,7 @@ function Row({
 
 export default function ClienteRelacionadosScreen() {
   const { clienteId, tipo } = useLocalSearchParams<{ clienteId: string; tipo: RelatedKind }>()
-  const kind: RelatedKind = ['financeiro', 'documentos', 'agendamentos', 'contratos'].includes(tipo)
+  const kind: RelatedKind = ['processos', 'financeiro', 'documentos', 'agendamentos', 'contratos'].includes(tipo)
     ? tipo
     : 'financeiro'
   const meta = KIND_META[kind]
@@ -79,6 +81,12 @@ export default function ClienteRelacionadosScreen() {
     queryKey: ['admin-cliente-pagamentos', clienteId],
     queryFn: () => listPagamentos(db, { cliente_id: clienteId }),
     enabled: !!clienteId && kind === 'financeiro',
+  })
+
+  const { data: processos, isLoading: loadingProcessos } = useQuery({
+    queryKey: ['admin-cliente-processos', clienteId],
+    queryFn: () => listProcessosByCliente(db, clienteId),
+    enabled: !!clienteId && kind === 'processos',
   })
 
   const { data: documentos, isLoading: loadingDocumentos } = useQuery({
@@ -99,9 +107,17 @@ export default function ClienteRelacionadosScreen() {
     enabled: !!clienteId && kind === 'contratos',
   })
 
-  const isLoading = loadingPagamentos || loadingDocumentos || loadingAgendamentos || loadingContratos
+  const isLoading = loadingPagamentos || loadingDocumentos || loadingAgendamentos || loadingContratos || loadingProcessos
   const rows =
-    kind === 'financeiro'
+    kind === 'processos'
+      ? (processos ?? []).map((p) => ({
+          id: p.id,
+          title: p.servico?.nome ?? 'Processo',
+          subtitle: `${safeDate(p.data_inicio ?? p.created_at)} · ${p.status}`,
+          right: p.valor_acordado_jpy ? formatJpy(p.valor_acordado_jpy) : undefined,
+          color: p.status === 'ativo' ? colors.navy800 : p.status === 'concluido' ? colors.ok : colors.err,
+        }))
+      : kind === 'financeiro'
       ? (pagamentos ?? []).map((p) => ({
           id: p.id,
           title: p.descricao,

@@ -119,7 +119,7 @@ export function ClienteJapaoVistoTab() {
 
   const editMutation = useMutation({
     mutationFn: (data: EntradaSaidaInput) =>
-      updateEntradaSaida(db, editItem!.id, { ...data, observacao: data.observacao || null }),
+      updateEntradaSaida(db, cliente.id, editItem!.id, { ...data, observacao: data.observacao || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'entradas-saidas'] })
       setEditItem(null)
@@ -127,7 +127,7 @@ export function ClienteJapaoVistoTab() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteEntradaSaida(db, id),
+    mutationFn: (id: string) => deleteEntradaSaida(db, cliente.id, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'entradas-saidas'] })
       setDeleteId(null)
@@ -209,7 +209,7 @@ export function ClienteJapaoVistoTab() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={!!editItem} onOpenChange={(o) => !o && setEditItem(null)}>
+      <Dialog open={!!editItem} onOpenChange={(o: boolean) => !o && setEditItem(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Registro</DialogTitle>
@@ -230,7 +230,7 @@ export function ClienteJapaoVistoTab() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+      <Dialog open={!!deleteId} onOpenChange={(o: boolean) => !o && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>

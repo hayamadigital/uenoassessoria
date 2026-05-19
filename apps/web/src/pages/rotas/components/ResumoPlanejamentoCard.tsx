@@ -73,7 +73,7 @@ export function ResumoPlanejamentoCard({
             if (p.distanciaKm == null) return null
             const destino =
               i < paradas.length - 1
-                ? paradas[i + 1].clienteNome
+                ? paradas[i + 1]?.clienteNome
                 : pontoDestinoNome
             return (
               <div key={p.id} className="text-xs grid grid-cols-[1fr_auto_auto] gap-x-4 px-1">

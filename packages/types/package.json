@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@ueno/firebase": "*"
+  },
   "devDependencies": {
     "typescript": "^5.7.2"
   }

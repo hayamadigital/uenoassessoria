@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { httpsCallable } from 'firebase/functions'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -43,7 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { db } from '@/lib/firebase'
+import { db, functions } from '@/lib/firebase'
 import { useAuthStore } from '@/stores/auth.store'
 import {
   getClientesComEtapasParaData,
@@ -106,6 +107,7 @@ interface VeiculoLocal {
 function formatDayTitle(dateStr: string): string {
   if (!dateStr) return '—'
   const [year, month, day] = dateStr.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) return dateStr
   const d = new Date(year, month - 1, day)
   return format(d, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
 }
@@ -459,20 +461,17 @@ export function RotasPlanejamentoPage() {
     updateVeiculo(veiculoLocalId, { isOtimizando: true, erroMsg: null })
 
     try {
-      const { data: resultado, error } = await db.functions.invoke<OtimizacaoRotaResultado>(
-        'otimizar-rota',
-        {
-          body: {
-            ponto_partida: veiculo.pontoPartida.endereco,
-            ponto_destino: pontoDestino,
-            paradas: veiculo.paradas.map((p) => ({ id: p.id, endereco: p.endereco })),
-          },
-        },
-      )
+      const otimizarRota = httpsCallable<
+        { ponto_partida: string; ponto_destino: string; paradas: Array<{ id: string; endereco: string }> },
+        OtimizacaoRotaResultado
+      >(functions, 'otimizar-rota')
+      const { data: resultado } = await otimizarRota({
+        ponto_partida: veiculo.pontoPartida.endereco,
+        ponto_destino: pontoDestino,
+        paradas: veiculo.paradas.map((p) => ({ id: p.id, endereco: p.endereco })),
+      })
 
-      if (error || !resultado) throw new Error(String(error ?? 'Erro desconhecido'))
-
-      const ordenadas = resultado.ordem_otimizada.map((id, i) => {
+      const ordenadas = resultado.ordem_otimizada.map((id: string, i: number) => {
         const p = veiculo.paradas.find((x) => x.id === id)!
         return {
           ...p,
@@ -539,8 +538,8 @@ export function RotasPlanejamentoPage() {
       for (let i = 0; i < veiculo.paradas.length; i++) {
         const local = veiculo.paradas[i]
         const dbId = novasParadas[i]?.id
-        if (!dbId) continue
-        await updateEnderecoParada(db, dbId, local.endereco, local.tipo, local.pontoNome)
+        if (!dbId || !local) continue
+        await updateEnderecoParada(db, rotaId, dbId, local.endereco, local.tipo, local.pontoNome)
       }
 
       // Ponto de partida
@@ -753,7 +752,7 @@ export function RotasPlanejamentoPage() {
                           <Label className="text-xs">Responsável</Label>
                           <Select
                             value={veiculo.instrutorId}
-                            onValueChange={(val) => {
+                            onValueChange={(val: string) => {
                               const resp = responsaveis.find((r) => r.id === val)
                               updateVeiculo(veiculo.localId, {
                                 instrutorId: val,
@@ -800,7 +799,7 @@ export function RotasPlanejamentoPage() {
                           <Label className="text-xs">Destino Final</Label>
                           <Select
                             value={veiculo.destinoId ?? ''}
-                            onValueChange={(val) =>
+                            onValueChange={(val: string) =>
                               updateVeiculo(veiculo.localId, { destinoId: val || null })
                             }
                           >
@@ -851,7 +850,7 @@ export function RotasPlanejamentoPage() {
                           <DndContext
                             sensors={sensors}
                             collisionDetection={closestCenter}
-                            onDragEnd={(e) => handleDragEnd(veiculo.localId, e)}
+                            onDragEnd={(e: DragEndEvent) => handleDragEnd(veiculo.localId, e)}
                           >
                             <SortableContext
                               items={veiculo.paradas.map((p) => p.id)}

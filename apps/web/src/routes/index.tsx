@@ -93,6 +93,15 @@ const ContratoTemplatesTab = lazy(() =>
 const FaqPage = lazy(() =>
   import('@/pages/faq/FaqPage').then((m) => ({ default: m.FaqPage })),
 )
+const AvisosPage = lazy(() =>
+  import('@/pages/avisos/AvisosPage').then((m) => ({ default: m.AvisosPage })),
+)
+const NovoAvisoPage = lazy(() =>
+  import('@/pages/avisos/NovoAvisoPage').then((m) => ({ default: m.NovoAvisoPage })),
+)
+const EditarAvisoPage = lazy(() =>
+  import('@/pages/avisos/EditarAvisoPage').then((m) => ({ default: m.EditarAvisoPage })),
+)
 
 // ── Cliente pages lazy ───────────────────────────────────────
 const NovoClientePage = lazy(() =>
@@ -227,6 +236,11 @@ export const router = createBrowserRouter([
       { path: 'rotas/:data', element: <RotasPlanejamentoPage /> },
       { path: 'notificacoes', element: <NotificacoesPage /> },
       { path: 'faq', element: <FaqPage /> },
+      // ── Avisos ─────────────────────────────────────────────
+      // IMPORTANT: /avisos/novo must come before /avisos/:id
+      { path: 'avisos', element: <AvisosPage /> },
+      { path: 'avisos/novo', element: <NovoAvisoPage /> },
+      { path: 'avisos/:id/editar', element: <EditarAvisoPage /> },
       {
         path: 'configuracoes',
         element: <ConfiguracoesPage />,

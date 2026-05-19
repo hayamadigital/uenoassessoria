@@ -30,11 +30,11 @@ export default function Index() {
 
   switch (session.role) {
     case 'admin':
-      return <Redirect href="/(admin)" />
+      return <Redirect href="/(admin)/(tabs)/inicio" />
     case 'instrutor':
       return <Redirect href="/(instrutor)/hoje" />
     case 'cliente':
-      return <Redirect href="/(cliente)/inicio" />
+      return <Redirect href="/(cliente)/(tabs)/inicio" />
     default:
       return <Redirect href="/(auth)/login" />
   }

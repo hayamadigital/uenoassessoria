@@ -3,11 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listMateriais } from '@ueno/firebase/queries/materiais'
 import { colors } from '@/theme'
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { enUS, ptBR } from 'date-fns/locale'
 
 const TIPO_COLOR: Record<string, string> = {
   pdf: '#0891B2',
@@ -26,6 +27,7 @@ const TIPO_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 }
 
 export default function DocumentosAdminScreen() {
+  const { t, i18n } = useTranslation('common')
   const { data: materiais, isLoading } = useQuery({
     queryKey: ['admin-materiais-docs'],
     queryFn: () => listMateriais(db),
@@ -42,12 +44,12 @@ export default function DocumentosAdminScreen() {
           <Ionicons name="chevron-back" size={18} color={colors.ink700} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerSub}>Módulos · Documentos</Text>
-          <Text style={s.headerTitle}>Arquivos e Modelos</Text>
+          <Text style={s.headerSub}>{t('admin.tabs.modules')} · {t('admin.modules.documents')}</Text>
+          <Text style={s.headerTitle}>{t('admin.modules.files_templates')}</Text>
         </View>
         <TouchableOpacity style={s.actionBtn}>
           <Ionicons name="add" size={16} color={colors.white} />
-          <Text style={s.actionBtnTxt}>Novo</Text>
+          <Text style={s.actionBtnTxt}>{t('new')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -56,7 +58,7 @@ export default function DocumentosAdminScreen() {
         <View style={s.statsRow}>
           {[
             { n: pdfs.length, l: 'PDFs', c: '#0891B2' },
-            { n: (materiais ?? []).filter((m) => m.tipo === 'video').length, l: 'Vídeos', c: colors.err },
+            { n: (materiais ?? []).filter((m) => m.tipo === 'video').length, l: t('admin.modules.videos'), c: colors.err },
             { n: outros.length, l: 'Links / Texto', c: '#0F766E' },
           ].map(({ n, l, c }) => (
             <View key={l} style={s.statCard}>
@@ -66,14 +68,14 @@ export default function DocumentosAdminScreen() {
           ))}
         </View>
 
-        <Text style={s.sectionLabel}>TODOS OS DOCUMENTOS</Text>
+        <Text style={s.sectionLabel}>{t('admin.modules.all_documents')}</Text>
 
         {isLoading ? (
           <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
         ) : todos.length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="document-text-outline" size={32} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Nenhum documento cadastrado</Text>
+            <Text style={s.emptyTxt}>{t('admin.modules.no_documents')}</Text>
           </View>
         ) : (
           <View style={{ gap: 9 }}>
@@ -81,7 +83,7 @@ export default function DocumentosAdminScreen() {
               const c = TIPO_COLOR[m.tipo] ?? colors.ink500
               const ic = TIPO_ICON[m.tipo] ?? 'document-outline'
               const dt = m.created_at
-                ? format(new Date(m.created_at), "d 'de' MMM", { locale: ptBR })
+                ? format(new Date(m.created_at), i18n.language === 'en' ? 'd MMM' : "d 'de' MMM", { locale: i18n.language === 'en' ? enUS : ptBR })
                 : '—'
               return (
                 <View key={m.id} style={s.docCard}>
@@ -97,7 +99,7 @@ export default function DocumentosAdminScreen() {
                       <Text style={s.docDate}>{dt}</Text>
                       {!m.is_active && (
                         <View style={[s.typeBadge, { backgroundColor: colors.ink100 }]}>
-                          <Text style={[s.typeBadgeTxt, { color: colors.ink400 }]}>Inativo</Text>
+                          <Text style={[s.typeBadgeTxt, { color: colors.ink400 }]}>{t('inactive')}</Text>
                         </View>
                       )}
                     </View>

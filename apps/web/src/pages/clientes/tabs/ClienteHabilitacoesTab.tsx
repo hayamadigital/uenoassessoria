@@ -153,7 +153,7 @@ export function ClienteHabilitacoesTab() {
 
   const editMutation = useMutation({
     mutationFn: (data: HabilitacaoInput) =>
-      updateHabilitacao(db, editHab!.id, {
+      updateHabilitacao(db, cliente.id, editHab!.id, {
         ...data,
         categoria: data.categoria || null,
         nome_habilitacao: data.nome_habilitacao || null,
@@ -169,7 +169,7 @@ export function ClienteHabilitacoesTab() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteHabilitacao(db, id),
+    mutationFn: (id: string) => deleteHabilitacao(db, cliente.id, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clientes', cliente.id, 'habilitacoes'] })
       setDeleteId(null)
@@ -261,7 +261,7 @@ export function ClienteHabilitacoesTab() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={!!editHab} onOpenChange={(o) => !o && setEditHab(null)}>
+      <Dialog open={!!editHab} onOpenChange={(o: boolean) => !o && setEditHab(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Editar Habilitação</DialogTitle>
@@ -287,7 +287,7 @@ export function ClienteHabilitacoesTab() {
       </Dialog>
 
       {/* Delete Confirm */}
-      <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+      <Dialog open={!!deleteId} onOpenChange={(o: boolean) => !o && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirmar exclusão</DialogTitle>

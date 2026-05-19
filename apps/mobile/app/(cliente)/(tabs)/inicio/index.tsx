@@ -1,20 +1,23 @@
 import { useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, ScrollView, FlatList, ImageBackground, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
+import { LinearGradient } from 'expo-linear-gradient'
 import { db } from '@/lib/firebase'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
 import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import { listEtapasByProcesso } from '@ueno/firebase/queries/etapas'
 import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import { countUnreadNotificacoes } from '@ueno/firebase/queries/notificacoes'
+import { listAvisosAtivos } from '@ueno/firebase/queries/avisos'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
 import { colors } from '@/theme'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import type { Aviso, TipoAviso } from '@ueno/firebase'
 
 const FAQ_ITEMS = [
   { t: 'Documentação', q: 'Quais documentos preciso traduzir para o gaimen kirikae?' },
@@ -32,6 +35,20 @@ const QUICK = [
 ]
 
 const ETAPA_LABELS = ['Contratação', 'Documentos', 'Análise', 'Departamento', 'Aprovação']
+
+const TIPO_AVISO_COLORS: Record<TipoAviso, [string, string]> = {
+  logistica:         ['#DC2626', '#F59E0B'],
+  promocao:          ['#7C3AED', '#3B82F6'],
+  data_comemorativa: ['#1D4ED8', '#7C3AED'],
+  geral:             ['#0F766E', '#0891B2'],
+}
+
+const TIPO_AVISO_LABEL: Record<TipoAviso, string> = {
+  logistica: 'LOGÍSTICA',
+  promocao: 'PROMOÇÃO',
+  data_comemorativa: 'DATA COMEMORATIVA',
+  geral: 'AVISO',
+}
 
 export default function InicioScreen() {
   const { session } = useAuthStore()
@@ -69,6 +86,14 @@ export default function InicioScreen() {
     enabled: !!session,
   })
 
+  const nomeServico = (activeProcesso as any)?.servico?.nome as string | undefined
+
+  const { data: avisos = [] } = useQuery({
+    queryKey: ['avisos-ativos', nomeServico],
+    queryFn: () => listAvisosAtivos(db, nomeServico),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const now = new Date()
   const proxAgendamento = agendamentos
     ?.filter((a) => new Date(a.data_hora_inicio) > now)
@@ -101,6 +126,26 @@ export default function InicioScreen() {
             {unread > 0 && <View style={s.bellDot} />}
           </TouchableOpacity>
         </View>
+
+        {/* Avisos */}
+        {avisos.length > 0 && (
+          <View style={{ marginBottom: 20 }}>
+            <Text style={s.sectionLabel}>AVISOS</Text>
+            <FlatList
+              data={avisos}
+              keyExtractor={(a) => a.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <AvisoBannerCard
+                  aviso={item}
+                  onPress={() => router.push(`/(cliente)/avisos/${item.id}` as any)}
+                />
+              )}
+              contentContainerStyle={{ paddingRight: 4 }}
+            />
+          </View>
+        )}
 
         {/* Processo ativo hero */}
         {activeProcesso ? (
@@ -288,4 +333,36 @@ const s = StyleSheet.create({
   },
   faqTag: { fontSize: 9.5, color: colors.ink400, fontWeight: '600', letterSpacing: 0.5, marginBottom: 2 },
   faqQ: { fontSize: 13, fontWeight: '500', color: colors.ink900, lineHeight: 18 },
+})
+
+function AvisoBannerCard({ aviso, onPress }: { aviso: Aviso; onPress: () => void }) {
+  const [c0, c1] = TIPO_AVISO_COLORS[aviso.tipo]
+  return (
+    <TouchableOpacity style={bs.card} activeOpacity={0.88} onPress={onPress}>
+      <ImageBackground
+        source={{ uri: aviso.banner_url }}
+        style={bs.img}
+        imageStyle={{ borderRadius: 12 }}
+      >
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.65)']}
+          style={bs.gradient}
+        >
+          <View style={[bs.tag, { backgroundColor: c0 }]}>
+            <Text style={bs.tagTxt}>{TIPO_AVISO_LABEL[aviso.tipo]}</Text>
+          </View>
+          <Text style={bs.cardTitle} numberOfLines={2}>{aviso.titulo}</Text>
+        </LinearGradient>
+      </ImageBackground>
+    </TouchableOpacity>
+  )
+}
+
+const bs = StyleSheet.create({
+  card: { width: 160, height: 80, borderRadius: 12, overflow: 'hidden', marginRight: 10 },
+  img: { width: 160, height: 80 },
+  gradient: { flex: 1, justifyContent: 'flex-end', padding: 8, borderRadius: 12 },
+  tag: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginBottom: 3 },
+  tagTxt: { fontSize: 7.5, fontWeight: '700', color: 'white', letterSpacing: 0.3 },
+  cardTitle: { fontSize: 11, fontWeight: '700', color: 'white', lineHeight: 14 },
 })

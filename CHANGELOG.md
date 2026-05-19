@@ -5,6 +5,13 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-05-19] — Mobile Admin (Modal de Usuários)
+
+### Mobile (admin)
+- `apps/mobile/app/(admin)/(hidden)/configuracoes/usuarios.tsx` — modal de convidar usuário ajustada para subir com o teclado e manter os campos visíveis
+
+---
+
 ## [2026-05-09] — Mobile Admin + Web Materiais + Firebase Core
 
 ### Mobile (admin)

@@ -90,7 +90,8 @@ export async function getContratoByProcesso(
     ),
   )
   if (snap.empty) return null
-  return toContrato(snap.docs[0].id, snap.docs[0].data())
+  const contratoDoc = snap.docs[0]!
+  return toContrato(contratoDoc.id, contratoDoc.data())
 }
 
 export async function listContratosByProcesso(

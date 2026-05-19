@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UserPlus } from 'lucide-react'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,35 +28,33 @@ import { Spinner } from '@/components/ui/spinner'
 import { db } from '@/lib/firebase'
 import {
   listProfiles,
+  listAdminsEInstrutores,
   activateProfile,
   deactivateProfile,
 } from '@ueno/firebase/queries/perfis'
 import { inviteUserSchema, type InviteUserInput } from '@ueno/utils/validators'
 import { cn } from '@/lib/cn'
-import type { UserRole } from '@ueno/firebase'
-
-const roleLabels: Record<UserRole, string> = {
+const roleLabels = {
   admin: 'Admin',
   instrutor: 'Instrutor',
-  cliente: 'Cliente',
-}
-
-const roleFilters: { label: string; value: UserRole | '' }[] = [
+} as const
+const roleFilters: { label: string; value: 'admin' | 'instrutor' | '' }[] = [
   { label: 'Todos', value: '' },
   { label: 'Admin', value: 'admin' },
   { label: 'Instrutor', value: 'instrutor' },
-  { label: 'Cliente', value: 'cliente' },
 ]
 
 export function UsuariosTab() {
   const queryClient = useQueryClient()
-  const [roleFilter, setRoleFilter] = useState<UserRole | ''>('')
+  const [roleFilter, setRoleFilter] = useState<'admin' | 'instrutor' | ''>('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['profiles', roleFilter],
-    queryFn: () => listProfiles(db, roleFilter || undefined),
+    queryFn: () =>
+      roleFilter ? listProfiles(db, roleFilter) : listAdminsEInstrutores(db),
   })
 
   const toggleMutation = useMutation({
@@ -75,26 +74,30 @@ export function UsuariosTab() {
     formState: { errors, isSubmitting },
   } = useForm<InviteUserInput>({
     resolver: zodResolver(inviteUserSchema),
-    defaultValues: { role: 'cliente' },
+    defaultValues: { role: 'instrutor' },
   })
 
   const selectedRole = watch('role')
 
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteUserInput) => {
-      const { error } = await db.functions.invoke('invite-user', {
-        body: { email: data.email, full_name: data.full_name, role: data.role },
+      const inviteUser = httpsCallable<
+        { email: string; full_name: string; role: 'admin' | 'instrutor' },
+        { user_id: string; reset_link?: string }
+      >(getFunctions(), 'inviteUser')
+
+      const { data: response } = await inviteUser({
+        email: data.email,
+        full_name: data.full_name,
+        role: data.role,
       })
-      if (error) throw error
+      return response
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] })
       setInviteSuccess(true)
-      resetForm()
-      setTimeout(() => {
-        setDialogOpen(false)
-        setInviteSuccess(false)
-      }, 1500)
+      setInviteLink(response.reset_link ?? null)
+      resetForm({ role: 'instrutor' })
     },
   })
 
@@ -150,7 +153,9 @@ export function UsuariosTab() {
                       <td className="px-4 py-3 font-medium">{profile.full_name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{profile.email}</td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline">{roleLabels[profile.role]}</Badge>
+                        <Badge variant="outline">
+                          {roleLabels[profile.role as keyof typeof roleLabels] ?? profile.role}
+                        </Badge>
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={profile.is_active ? 'success' : 'secondary'}>
@@ -197,52 +202,97 @@ export function UsuariosTab() {
           <DialogHeader>
             <DialogTitle>Convidar Novo Usuário</DialogTitle>
             <DialogDescription>
-              O usuário receberá um email com o link para definir sua senha.
+              O usuário receberá um link de acesso para definir sua senha.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit((data) => inviteMutation.mutate(data))}>
             <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="invite_email">Email</Label>
-                <Input id="invite_email" type="email" {...register('email')} />
-                {errors.email && (
-                  <p className="text-xs text-destructive">{errors.email.message}</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="invite_name">Nome Completo</Label>
-                <Input id="invite_name" {...register('full_name')} />
-                {errors.full_name && (
-                  <p className="text-xs text-destructive">{errors.full_name.message}</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Perfil</Label>
-                <Select
-                  value={selectedRole}
-                  onValueChange={(val) =>
-                    setValue('role', val as 'admin' | 'instrutor' | 'cliente')
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="instrutor">Instrutor</SelectItem>
-                    <SelectItem value="cliente">Cliente</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {inviteSuccess && (
-                <p className="text-sm text-green-600">Convite enviado com sucesso!</p>
-              )}
-              {inviteMutation.isError && (
-                <p className="text-sm text-destructive">
-                  {inviteMutation.error instanceof Error
-                    ? inviteMutation.error.message
-                    : 'Erro ao enviar convite'}
-                </p>
+              {inviteLink ? (
+                <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Convite gerado com sucesso</p>
+                    <p className="text-xs text-muted-foreground">
+                      Como o e-mail automático ainda não está ativo, copie ou abra o link abaixo.
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Link de acesso
+                    </p>
+                    <p className="break-all text-sm text-foreground">{inviteLink}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => navigator.clipboard.writeText(inviteLink)}
+                    >
+                      Copiar link
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => window.open(inviteLink, '_blank', 'noopener,noreferrer')}
+                    >
+                      Abrir link
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setDialogOpen(false)
+                        setInviteSuccess(false)
+                        setInviteLink(null)
+                        resetForm({ role: 'instrutor' })
+                      }}
+                    >
+                      Fechar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite_email">Email</Label>
+                    <Input id="invite_email" type="email" {...register('email')} />
+                    {errors.email && (
+                      <p className="text-xs text-destructive">{errors.email.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite_name">Nome Completo</Label>
+                    <Input id="invite_name" {...register('full_name')} />
+                    {errors.full_name && (
+                      <p className="text-xs text-destructive">{errors.full_name.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Perfil</Label>
+                    <Select
+                      value={selectedRole}
+                      onValueChange={(val) =>
+                        setValue('role', val as 'admin' | 'instrutor')
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="instrutor">Instrutor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {inviteSuccess && (
+                    <p className="text-sm text-green-600">Convite gerado com sucesso!</p>
+                  )}
+                  {inviteMutation.isError && (
+                    <p className="text-sm text-destructive">
+                      {inviteMutation.error instanceof Error
+                        ? inviteMutation.error.message
+                        : 'Erro ao enviar convite'}
+                    </p>
+                  )}
+                </>
               )}
             </div>
             <DialogFooter>
@@ -253,13 +303,16 @@ export function UsuariosTab() {
                   setDialogOpen(false)
                   resetForm()
                   setInviteSuccess(false)
+                  setInviteLink(null)
                 }}
               >
                 Cancelar
               </Button>
-              <Button type="submit" isLoading={isSubmitting || inviteMutation.isPending}>
-                Enviar Convite
-              </Button>
+              {!inviteLink && (
+                <Button type="submit" isLoading={isSubmitting || inviteMutation.isPending}>
+                  Gerar Convite
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </DialogContent>

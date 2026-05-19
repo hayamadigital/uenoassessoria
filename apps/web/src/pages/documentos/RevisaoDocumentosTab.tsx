@@ -1,16 +1,18 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, X, Eye, User, FileText } from 'lucide-react'
+import { CheckCircle, X, Eye, User, FileText, Search } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { db } from '@/lib/firebase'
+import { db, storage } from '@/lib/firebase'
 import {
   listPendingDocumentosWithClientes,
   listDocumentoTemplates,
@@ -21,6 +23,7 @@ import { listClientes } from '@ueno/firebase/queries/clientes'
 import { formatDateJST } from '@ueno/utils/date'
 import { useAuthStore } from '@/stores/auth.store'
 import type { ClienteDocumentoWithTemplateAndCliente } from '@ueno/firebase'
+import { includesText, nextSort, sortBy, type SortState } from '@/utils/table'
 
 export function RevisaoDocumentosTab() {
   const queryClient = useQueryClient()
@@ -32,8 +35,13 @@ export function RevisaoDocumentosTab() {
 
   const [filterClienteId, setFilterClienteId] = useState('')
   const [filterTemplateId, setFilterTemplateId] = useState('')
+  const [busca, setBusca] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
+  const [sort, setSort] = useState<SortState<'cliente' | 'documento' | 'template' | 'created_at' | 'arquivo'>>({
+    key: 'created_at',
+    direction: 'desc',
+  })
 
   const { data: documentos, isLoading } = useQuery({
     queryKey: ['documentos', 'pending'],
@@ -52,19 +60,20 @@ export function RevisaoDocumentosTab() {
 
   const { data: signedUrl, isLoading: loadingUrl } = useQuery({
     queryKey: ['documento-signed-url', previewDoc?.arquivo_url],
-    queryFn: () => getDocumentoSignedUrl(db, previewDoc!.arquivo_url!),
+    queryFn: () => getDocumentoSignedUrl(storage, previewDoc!.arquivo_url!),
     enabled: !!previewDoc?.arquivo_url,
     staleTime: 1000 * 60 * 50,
   })
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => updateDocumentoStatus(db, id, 'aprovado', revisorId),
-    onMutate: async (id) => {
+    mutationFn: (doc: ClienteDocumentoWithTemplateAndCliente) =>
+      updateDocumentoStatus(db, doc.cliente_id, doc.id, 'aprovado', revisorId),
+    onMutate: async (doc) => {
       await queryClient.cancelQueries({ queryKey: ['documentos', 'pending'] })
       const previous = queryClient.getQueryData<ClienteDocumentoWithTemplateAndCliente[]>(['documentos', 'pending'])
       queryClient.setQueryData<ClienteDocumentoWithTemplateAndCliente[]>(
         ['documentos', 'pending'],
-        (old) => old?.filter((d) => d.id !== id) ?? [],
+        (old) => old?.filter((d) => d.id !== doc.id) ?? [],
       )
       return { previous }
     },
@@ -77,14 +86,14 @@ export function RevisaoDocumentosTab() {
   })
 
   const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      updateDocumentoStatus(db, id, 'reprovado', revisorId, reason),
-    onMutate: async ({ id }) => {
+    mutationFn: ({ doc, reason }: { doc: ClienteDocumentoWithTemplateAndCliente; reason: string }) =>
+      updateDocumentoStatus(db, doc.cliente_id, doc.id, 'reprovado', revisorId, reason),
+    onMutate: async ({ doc }) => {
       await queryClient.cancelQueries({ queryKey: ['documentos', 'pending'] })
       const previous = queryClient.getQueryData<ClienteDocumentoWithTemplateAndCliente[]>(['documentos', 'pending'])
       queryClient.setQueryData<ClienteDocumentoWithTemplateAndCliente[]>(
         ['documentos', 'pending'],
-        (old) => old?.filter((d) => d.id !== id) ?? [],
+        (old) => old?.filter((d) => d.id !== doc.id) ?? [],
       )
       return { previous }
     },
@@ -100,13 +109,31 @@ export function RevisaoDocumentosTab() {
     },
   })
 
-  const filtered = (documentos ?? []).filter((doc) => {
-    if (filterClienteId && doc.cliente_id !== filterClienteId) return false
-    if (filterTemplateId && doc.template_id !== filterTemplateId) return false
-    if (filterDateFrom && doc.created_at < filterDateFrom) return false
-    if (filterDateTo && doc.created_at > filterDateTo + 'T23:59:59') return false
-    return true
-  })
+  const filtered = useMemo(() => {
+    const rows = (documentos ?? []).filter((doc) => {
+      if (filterClienteId && doc.cliente_id !== filterClienteId) return false
+      if (filterTemplateId && doc.template_id !== filterTemplateId) return false
+      if (filterDateFrom && doc.created_at < filterDateFrom) return false
+      if (filterDateTo && doc.created_at > filterDateTo + 'T23:59:59') return false
+      return includesText(
+        [
+          doc.cliente?.profile?.full_name,
+          doc.nome_custom,
+          doc.template?.nome,
+          doc.arquivo_nome,
+        ].join(' '),
+        busca,
+      )
+    })
+
+    return sortBy(rows, sort, {
+      cliente: (doc) => doc.cliente?.profile?.full_name,
+      documento: (doc) => doc.nome_custom ?? doc.template?.nome,
+      template: (doc) => doc.template?.nome,
+      created_at: (doc) => doc.created_at,
+      arquivo: (doc) => doc.arquivo_nome,
+    })
+  }, [busca, documentos, filterClienteId, filterDateFrom, filterDateTo, filterTemplateId, sort])
 
   const isPreviewable = (tipo: string | null) =>
     tipo?.includes('pdf') || tipo?.includes('image')
@@ -115,6 +142,15 @@ export function RevisaoDocumentosTab() {
     <div className="space-y-4">
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-56 flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por cliente, documento ou arquivo..."
+            className="pl-9"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+        </div>
         <select
           value={filterClienteId}
           onChange={(e) => setFilterClienteId(e.target.value)}
@@ -153,13 +189,14 @@ export function RevisaoDocumentosTab() {
           className="h-10 rounded-md border border-input bg-background px-3 text-sm"
           placeholder="Até"
         />
-        {(filterClienteId || filterTemplateId || filterDateFrom || filterDateTo) && (
+        {(filterClienteId || filterTemplateId || filterDateFrom || filterDateTo || busca) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setFilterClienteId('')
               setFilterTemplateId('')
+              setBusca('')
               setFilterDateFrom('')
               setFilterDateTo('')
             }}
@@ -184,11 +221,11 @@ export function RevisaoDocumentosTab() {
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                <th className="px-4 py-3 text-left font-medium">Documento</th>
-                <th className="px-4 py-3 text-left font-medium">Template</th>
-                <th className="px-4 py-3 text-left font-medium">Enviado em</th>
-                <th className="px-4 py-3 text-left font-medium">Arquivo</th>
+                <SortableTh sort={sort} sortKey="cliente" onSort={(key) => setSort(nextSort(sort, key))}>Cliente</SortableTh>
+                <SortableTh sort={sort} sortKey="documento" onSort={(key) => setSort(nextSort(sort, key))}>Documento</SortableTh>
+                <SortableTh sort={sort} sortKey="template" onSort={(key) => setSort(nextSort(sort, key))}>Template</SortableTh>
+                <SortableTh sort={sort} sortKey="created_at" onSort={(key) => setSort(nextSort(sort, key))}>Enviado em</SortableTh>
+                <SortableTh sort={sort} sortKey="arquivo" onSort={(key) => setSort(nextSort(sort, key))}>Arquivo</SortableTh>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -251,7 +288,7 @@ export function RevisaoDocumentosTab() {
                           size="sm"
                           variant="outline"
                           isLoading={approveMutation.isPending}
-                          onClick={() => approveMutation.mutate(doc.id)}
+                          onClick={() => approveMutation.mutate(doc)}
                         >
                           <CheckCircle className="mr-1.5 h-3.5 w-3.5 text-green-600" />
                           Aprovar
@@ -298,7 +335,7 @@ export function RevisaoDocumentosTab() {
                               isLoading={rejectMutation.isPending}
                               disabled={!rejectReason.trim()}
                               onClick={() =>
-                                rejectMutation.mutate({ id: doc.id, reason: rejectReason.trim() })
+                                rejectMutation.mutate({ doc, reason: rejectReason.trim() })
                               }
                             >
                               Confirmar
@@ -326,7 +363,7 @@ export function RevisaoDocumentosTab() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog open={!!previewDoc} onOpenChange={(o) => { if (!o) setPreviewDoc(null) }}>
+      <Dialog open={!!previewDoc} onOpenChange={(o: boolean) => { if (!o) setPreviewDoc(null) }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>

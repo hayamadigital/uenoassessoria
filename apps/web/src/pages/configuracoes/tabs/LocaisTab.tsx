@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps'
-import { MapPin, Pencil, Plus, ExternalLink, AlertCircle } from 'lucide-react'
+import { MapPin, Pencil, Plus, ExternalLink, AlertCircle, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import { db } from '@/lib/firebase'
 import {
   listDestinos,
@@ -26,6 +27,7 @@ import {
   toggleDestinoAtivo,
 } from '@ueno/firebase/queries/destinos'
 import type { DestinoFixo } from '@ueno/firebase'
+import { includesText, isWithinDateRange, matchesActiveFilter, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const DEFAULT_CENTER = { lat: 35.1815, lng: 136.9066 } // Nagoya
@@ -87,6 +89,14 @@ export function LocaisTab() {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editando, setEditando] = useState<DestinoFixo | null>(null)
+  const [busca, setBusca] = useState('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'nome' | 'endereco' | 'status' | 'created_at'>>({
+    key: 'nome',
+    direction: 'asc',
+  })
 
   // Map state for dialog
   const [mapCenter, setMapCenter] = useState<LatLng>(DEFAULT_CENTER)
@@ -101,6 +111,21 @@ export function LocaisTab() {
     queryKey: ['destinos'],
     queryFn: () => listDestinos(db),
   })
+
+  const destinosFiltrados = useMemo(() => {
+    const rows = destinos.filter((destino) => {
+      if (!matchesActiveFilter(destino.is_active, activeFilter)) return false
+      if (!includesText([destino.nome, destino.endereco, destino.is_active ? 'ativo' : 'inativo'].join(' '), busca)) return false
+      return isWithinDateRange(destino.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      nome: (destino) => destino.nome,
+      endereco: (destino) => destino.endereco,
+      status: (destino) => destino.is_active,
+      created_at: (destino) => destino.created_at,
+    })
+  }, [activeFilter, busca, createdFrom, createdTo, destinos, sort])
 
   const {
     register,
@@ -214,11 +239,45 @@ export function LocaisTab() {
           </Button>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <div className="relative min-w-56 flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou endereço..."
+                className="pl-9"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+            </div>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+            >
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+              <option value="all">Ativos e inativos</option>
+            </select>
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={createdFrom}
+              onChange={(e) => setCreatedFrom(e.target.value)}
+              title="Criado de"
+            />
+            <input
+              type="date"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={createdTo}
+              onChange={(e) => setCreatedTo(e.target.value)}
+              title="Criado até"
+            />
+          </div>
           {isLoading ? (
             <div className="flex justify-center py-8">
               <Spinner />
             </div>
-          ) : destinos.length === 0 ? (
+          ) : destinosFiltrados.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               Nenhum local cadastrado.
             </p>
@@ -226,14 +285,14 @@ export function LocaisTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 font-medium">Nome</th>
-                  <th className="pb-2 font-medium">Endereço</th>
-                  <th className="pb-2 font-medium w-24">Status</th>
+                  <SortableTh sort={sort} sortKey="nome" onSort={(key) => setSort(nextSort(sort, key))} className="px-0 pb-2">Nome</SortableTh>
+                  <SortableTh sort={sort} sortKey="endereco" onSort={(key) => setSort(nextSort(sort, key))} className="px-0 pb-2">Endereço</SortableTh>
+                  <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))} className="w-24 px-0 pb-2">Status</SortableTh>
                   <th className="pb-2 w-28" />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {destinos.map((d) => (
+                {destinosFiltrados.map((d) => (
                   <tr key={d.id} className="py-3">
                     <td className="py-3 font-medium">
                       <div className="flex items-center gap-2">
@@ -289,7 +348,7 @@ export function LocaisTab() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) handleCloseDialog() }}>
+      <Dialog open={dialogOpen} onOpenChange={(open: boolean) => { if (!open) handleCloseDialog() }}>
         <DialogContent className={MAPS_API_KEY ? 'max-w-lg' : 'max-w-md'}>
           <DialogHeader>
             <DialogTitle>{editando ? 'Editar Local' : 'Adicionar Local'}</DialogTitle>

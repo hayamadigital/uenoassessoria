@@ -21,6 +21,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { listProcessosByCliente, createProcesso } from '@ueno/firebase/queries/processos'
 import { listServicos } from '@ueno/firebase/queries/servicos'
+import { listVariacoesByServico } from '@ueno/firebase/queries/servico_variacoes'
 import { listEtapaTemplatesByServico } from '@ueno/firebase/queries/etapa_templates'
 import { getContratoTemplateForServico } from '@ueno/firebase/queries/contrato_templates'
 import { createContrato } from '@ueno/firebase/queries/contratos'
@@ -57,6 +58,18 @@ const statusVariant: Record<
   cancelado: 'destructive',
 }
 
+function formatPreco(item: {
+  preco_variavel?: boolean
+  preco_jpy?: number | null
+  preco_min_jpy?: number | null
+  preco_max_jpy?: number | null
+}) {
+  if (item.preco_variavel && item.preco_min_jpy != null && item.preco_max_jpy != null) {
+    return `¥${item.preco_min_jpy.toLocaleString('ja-JP')} - ¥${item.preco_max_jpy.toLocaleString('ja-JP')}`
+  }
+  return item.preco_jpy != null ? `¥${item.preco_jpy.toLocaleString('ja-JP')}` : '—'
+}
+
 export function ClienteProcessoTab() {
   const { id } = useParams<{ id: string }>()
   const { cliente } = useOutletContext<Context>()
@@ -86,20 +99,41 @@ export function ClienteProcessoTab() {
   })
 
   const selectedServicoId = watch('servico_id')
+  const selectedVariacaoId = watch('variacao_id')
+  const selectedServico = servicos?.find((s) => s.id === selectedServicoId)
+
+  const { data: variacoes = [] } = useQuery({
+    queryKey: ['servico-variacoes', selectedServicoId, 'active'],
+    queryFn: () => listVariacoesByServico(db, selectedServicoId!, true),
+    enabled: !!selectedServicoId && !!selectedServico?.usa_variacoes,
+  })
 
   useEffect(() => {
     if (!selectedServicoId || !servicos) return
     const servico = servicos.find((s) => s.id === selectedServicoId)
     if (servico) {
-      setValue('valor_acordado_jpy', servico.preco_jpy)
+      if (servico.usa_variacoes) {
+        setValue('variacao_id', '')
+        setValue('valor_acordado_jpy', undefined)
+      } else {
+        setValue('variacao_id', '')
+        setValue('valor_acordado_jpy', servico.preco_variavel ? undefined : servico.preco_jpy ?? undefined)
+      }
     }
   }, [selectedServicoId, servicos, setValue])
+
+  useEffect(() => {
+    if (!selectedVariacaoId) return
+    const variacao = variacoes.find((v) => v.id === selectedVariacaoId)
+    if (variacao) setValue('valor_acordado_jpy', variacao.preco_variavel ? undefined : variacao.preco_jpy ?? undefined)
+  }, [selectedVariacaoId, variacoes, setValue])
 
   const mutation = useMutation({
     mutationFn: async (data: ProcessoInput) => {
       const processo = await createProcesso(db, {
         cliente_id: cliente.id,
         servico_id: data.servico_id,
+        variacao_id: data.variacao_id || null,
         data_inicio: data.data_inicio || null,
         valor_acordado_jpy: data.valor_acordado_jpy ?? null,
         notas: data.notas || null,
@@ -107,7 +141,7 @@ export function ClienteProcessoTab() {
       })
 
       // Auto-criar etapas a partir dos templates do serviço
-      const etapaTemplates = await listEtapaTemplatesByServico(db, data.servico_id)
+      const etapaTemplates = await listEtapaTemplatesByServico(db, data.servico_id, data.variacao_id || null)
       if (etapaTemplates.length > 0) {
         await Promise.all(
           etapaTemplates.map((t) =>
@@ -130,9 +164,13 @@ export function ClienteProcessoTab() {
       const contratoTemplate = await getContratoTemplateForServico(db, data.servico_id)
       if (contratoTemplate) {
         const servicoSelecionado = servicos?.find((s) => s.id === data.servico_id)
+        const variacaoSelecionada = variacoes.find((v) => v.id === data.variacao_id)
+        const servicoNomeContrato = variacaoSelecionada
+          ? `${servicoSelecionado?.nome ?? ''} — ${variacaoSelecionada.nome}`
+          : servicoSelecionado?.nome ?? ''
         const corpoHtml = applyTemplateVars(contratoTemplate.corpo_html, {
           cliente_nome: cliente.profile.full_name,
-          servico_nome: servicoSelecionado?.nome ?? '',
+          servico_nome: servicoNomeContrato,
           valor_jpy: data.valor_acordado_jpy?.toString() ?? '0',
           data_inicio: data.data_inicio ?? '',
           data_hoje: new Date().toLocaleDateString('pt-BR'),
@@ -141,7 +179,8 @@ export function ClienteProcessoTab() {
           cliente_id: cliente.id,
           servico_id: data.servico_id,
           processo_id: processo.id,
-          titulo: `Contrato — ${servicoSelecionado?.nome ?? 'Serviço'}`,
+          aditivo_de: null,
+          titulo: `Contrato — ${servicoNomeContrato || 'Serviço'}`,
           corpo_html: corpoHtml,
           status: 'rascunho',
           assinado_em: null,
@@ -202,6 +241,33 @@ export function ClienteProcessoTab() {
                   <p className="text-xs text-destructive">{errors.servico_id.message}</p>
                 )}
               </div>
+              {selectedServico?.usa_variacoes && (
+                <div className="space-y-2">
+                  <Label>
+                    Variação <span className="text-destructive">*</span>
+                  </Label>
+                  <select
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    {...register('variacao_id')}
+                  >
+                    <option value="">Selecionar variação</option>
+                    {variacoes.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.nome} · {formatPreco(v)}
+                        {v.duracao_texto ? ` · ${v.duracao_texto}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.variacao_id && (
+                    <p className="text-xs text-destructive">{errors.variacao_id.message}</p>
+                  )}
+                  {variacoes.length === 0 && (
+                    <p className="text-xs text-destructive">
+                      Este serviço ainda não possui variações ativas.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Data de Início</Label>
                 <Input type="date" {...register('data_inicio')} />
@@ -231,6 +297,7 @@ export function ClienteProcessoTab() {
                 type="submit"
                 form="processo-form"
                 isLoading={isSubmitting || mutation.isPending}
+                disabled={!!selectedServico?.usa_variacoes && !selectedVariacaoId}
               >
                 Criar Processo
               </Button>
@@ -263,7 +330,9 @@ export function ClienteProcessoTab() {
             <tbody className="divide-y">
               {processos?.map((p) => (
                 <tr key={p.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-3 font-medium">{p.servico.nome}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {p.variacao ? `${p.servico.nome} — ${p.variacao.nome}` : p.servico.nome}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {p.data_inicio ? formatDateJST(p.data_inicio) : '—'}
                   </td>

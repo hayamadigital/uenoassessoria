@@ -1,8 +1,29 @@
 import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import { useQuery } from '@tanstack/react-query'
+import { db } from '@/lib/firebase'
+import { useAuthStore } from '@/stores/auth.store'
+import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
+import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import { colors } from '@/theme'
 
 export default function TabsLayout() {
+  const { session } = useAuthStore()
+
+  const { data: cliente } = useQuery({
+    queryKey: ['cliente', 'me', session?.userId],
+    queryFn: () => getClienteByProfileId(db, session!.userId),
+    enabled: !!session,
+  })
+
+  const { data: processos } = useQuery({
+    queryKey: ['processos', cliente?.id, 'tabs'],
+    queryFn: () => listProcessosByCliente(db, cliente!.id),
+    enabled: !!cliente,
+  })
+
+  const hasServicoAdquirido = (processos?.length ?? 0) > 0
+
   return (
     <Tabs
       screenOptions={{
@@ -45,6 +66,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={24} color={color} />
           ),
+          href: hasServicoAdquirido ? undefined : null,
         }}
       />
       <Tabs.Screen

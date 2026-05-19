@@ -93,7 +93,7 @@ function Timeline({ processoId }: { processoId: string }) {
             <View style={{ flex: 1, paddingTop: 1 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <Text style={[s.tlTitle, { color: done || cur ? colors.ink900 : colors.ink400, fontWeight: cur ? '700' : '600' }]}>
-                  {e.titulo}
+                  {e.nome}
                 </Text>
                 {e.data_agendada && (
                   <Text style={s.tlDate}>{format(new Date(e.data_agendada), 'dd MMM', { locale: ptBR })}</Text>

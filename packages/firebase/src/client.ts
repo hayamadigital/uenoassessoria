@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from 'firebase/app'
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
 import { getAuth } from 'firebase/auth'
 import { getStorage } from 'firebase/storage'
@@ -23,11 +23,15 @@ function getFirebaseApp(config: FirebaseConfig) {
   return initializeApp(config)
 }
 
-export function createFirebaseClient(config: FirebaseConfig) {
+export function createFirebaseClient(
+  config: FirebaseConfig,
+  options?: { createAuth?: (app: FirebaseApp) => ReturnType<typeof getAuth> },
+) {
   const app = getFirebaseApp(config)
+  const auth = options?.createAuth ? options.createAuth(app) : getAuth(app)
   return {
     db: getFirestore(app),
-    auth: getAuth(app),
+    auth,
     storage: getStorage(app),
     functions: getFunctions(app),
   }

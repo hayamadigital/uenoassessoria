@@ -145,7 +145,7 @@ export default function RegisterScreen() {
                   keyboardType="numeric"
                   maxLength={10}
                   onBlur={onBlur}
-                  onChangeText={(text) => {
+                  onChangeText={(text: string) => {
                     const digits = text.replace(/\D/g, '')
                     let formatted = digits
                     if (digits.length > 2) formatted = digits.slice(0, 2) + '/' + digits.slice(2)

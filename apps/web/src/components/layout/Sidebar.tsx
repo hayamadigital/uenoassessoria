@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   HelpCircle,
+  Megaphone,
 } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
@@ -28,6 +29,7 @@ const navItems = [
   { href: '/documentos', icon: FileText, label: 'Documentos' },
   { href: '/financeiro', icon: CreditCard, label: 'Financeiro' },
   { href: '/materiais', icon: BookOpen, label: 'Materiais' },
+  { href: '/avisos', icon: Megaphone, label: 'Avisos' },
   { href: '/servicos', icon: Briefcase, label: 'Serviços' },
   { href: '/contratos', icon: ScrollText, label: 'Contratos' },
   { href: '/avaliacoes', icon: Star, label: 'Avaliações' },

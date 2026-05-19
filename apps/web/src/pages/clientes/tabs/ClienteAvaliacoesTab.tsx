@@ -39,8 +39,8 @@ const tipoVariant: Record<
 }
 
 function getNomeObjeto(av: AvaliacaoComDetalhes): string | null {
-  if (av.tipo === 'servico') return av.agendamentos?.servicos?.nome ?? null
-  return av.materiais?.titulo ?? null
+  if (av.tipo === 'servico') return av.servico_nome
+  return av.material_titulo
 }
 
 function StarRating({ nota, onChange }: { nota: number; onChange?: (n: number) => void }) {
@@ -122,7 +122,7 @@ export function ClienteAvaliacoesTab() {
             </div>
           )}
         </div>
-        <Dialog open={addOpen} onOpenChange={(o) => { if (!o) handleClose(); else setAddOpen(true) }}>
+        <Dialog open={addOpen} onOpenChange={(o: boolean) => { if (!o) handleClose(); else setAddOpen(true) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />

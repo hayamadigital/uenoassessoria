@@ -46,5 +46,203 @@
   "yesterday": "Yesterday",
   "tomorrow": "Tomorrow",
   "ago": "ago",
-  "just_now": "just now"
+  "just_now": "just now",
+  "admin": {
+    "tabs": {
+      "home": "Home",
+      "modules": "Modules",
+      "clients": "Clients",
+      "calendar": "Calendar",
+      "processes": "Processes"
+    },
+    "status": {
+      "prospect": "Prospect",
+      "contato": "Contact",
+      "documentacao": "Documentation",
+      "agendado": "Scheduled",
+      "em_andamento": "In progress",
+      "aprovado": "Approved",
+      "concluido": "Completed",
+      "cancelado": "Canceled"
+    },
+    "task_status": {
+      "atrasado": "Overdue",
+      "em_andamento": "In progress",
+      "pendente": "Pending"
+    },
+    "filters": {
+      "completed": "Completed",
+      "pending": "Pending"
+    },
+    "home": {
+      "admin_panel": "Admin panel",
+      "greeting": "Hello, Ueno Team",
+      "active_clients": "Active clients",
+      "in_progress_count": "+{{count}} in progress",
+      "ongoing_processes": "Ongoing processes",
+      "view_details": "view details",
+      "appointments_today": "Appointments today",
+      "open_calendar": "open calendar",
+      "month_approvals": "Approvals this month",
+      "month_goal": "goal: 12",
+      "urgent_tasks": "URGENT TASKS",
+      "view_all": "View all",
+      "no_pending_tasks": "No pending tasks",
+      "process_funnel": "PROCESS FUNNEL",
+      "funnel": {
+        "contracting": "Contracting",
+        "documentation": "Documentation",
+        "analysis": "Analysis",
+        "department": "Department",
+        "approval": "Approval"
+      }
+    },
+    "settings": {
+      "title": "Settings",
+      "menu_hero_title": "Settings sections",
+      "menu_hero_desc": "Open each area to edit profile, security, users, preferences, and locations.",
+      "profile": {
+        "title": "My profile",
+        "subtitle": "Photo, name, contact, and personal details"
+      },
+      "security": {
+        "title": "Security",
+        "subtitle": "Password, session, and recovery"
+      },
+      "users": {
+        "title": "Users",
+        "subtitle": "Invites and access status"
+      },
+      "preferences": {
+        "title": "Preferences",
+        "subtitle": "Language and panel behavior"
+      },
+      "locations": {
+        "title": "Locations",
+        "subtitle": "Fixed destinations and routes"
+      },
+      "logout": {
+        "title": "Sign out",
+        "subtitle": "End the admin session and return to login."
+      }
+    },
+    "preferences": {
+      "title": "Preferences",
+      "hero_title": "Panel language",
+      "hero_desc": "Choose the admin language and your in-app experience.",
+      "section_label": "Language",
+      "save": "Save preferences",
+      "saved": "Preferences updated."
+    },
+    "modules": {
+      "materials": "Materials",
+      "materials_sub": "tests and materials",
+      "catalog": "Catalog",
+      "catalog_sub": "available services",
+      "reviews": "Reviews",
+      "reviews_sub": "★ feedback",
+      "faq": "FAQ",
+      "faq_sub": "frequently asked questions",
+      "finance": "Finance",
+      "finance_sub": "revenue and forecast",
+      "platform_content": "Platform content",
+      "web_editing_title": "Full editing on web",
+      "web_editing_sub": "Create and edit modules in the desktop panel.",
+      "overview": "OVERVIEW",
+      "simulated_count_one": "{{count}} test",
+      "simulated_count_other": "{{count}} tests",
+      "average_rating": "{{rating}} ★ average",
+      "published_count_one": "{{count}} published",
+      "published_count_other": "{{count}} published",
+      "registered_services": "REGISTERED SERVICES",
+      "no_services": "No services registered",
+      "variations": "Variations",
+      "tests": "Tests",
+      "questions": "Questions",
+      "with_image": "With image",
+      "question_bank": "QUESTION BANK",
+      "no_questions": "No questions registered",
+      "multiple_choice": "Multiple choice",
+      "frequently_asked": "Frequently Asked Questions",
+      "published": "Published",
+      "drafts": "Drafts",
+      "draft": "Draft",
+      "registered_questions": "REGISTERED QUESTIONS",
+      "no_faqs": "No questions registered",
+      "full_management_web": "Full management available on the web version",
+      "documents": "Documents",
+      "files_templates": "Files and Templates",
+      "videos": "Videos",
+      "all_documents": "ALL DOCUMENTS",
+      "no_documents": "No documents registered",
+      "overall_average": "OVERALL AVERAGE",
+      "received_feedback": "RECEIVED FEEDBACK",
+      "no_reviews": "No reviews yet",
+      "reply": "Reply",
+      "admin_response": "Team response",
+      "review_type": {
+        "servico": "Service",
+        "material": "Material",
+        "simulado": "Test"
+      }
+    },
+    "clients": {
+      "management": "Management",
+      "search_placeholder": "Search by name or CPF",
+      "no_clients": "No clients found",
+      "client": "Client"
+    },
+    "processes": {
+      "tracking": "Tracking",
+      "active_count_one": "{{count}} active",
+      "active_count_other": "{{count}} active",
+      "no_processes": "No processes found",
+      "needs_attention": "NEEDS ATTENTION",
+      "process_progress": "Process progress",
+      "message": "Message",
+      "open_process": "Open process"
+    },
+    "calendar": {
+      "confirmed": "Confirmed",
+      "appointment_count_one": "{{count}} appointment",
+      "appointment_count_other": "{{count}} appointments",
+      "no_appointments_day": "No appointments on this day",
+      "personal_event": "Personal event",
+      "commitment_no_client": "Commitment without client",
+      "personal": "Personal",
+      "confirm": "Confirm",
+      "finish": "Finish",
+      "missed": "Missed",
+      "new_event": "New event",
+      "add_to_calendar": "Add to calendar",
+      "event_type": "Event type",
+      "location": "Location",
+      "location_placeholder": "E.g. Exam Center, station, online...",
+      "note": "Note",
+      "internal_notes": "Internal event notes",
+      "instructor": "Instructor",
+      "active_contracted_service": "Active contracted service",
+      "service": "Service",
+      "no_active_service": "This client has no active contracted service.",
+      "select_client_services": "Select a client to load services.",
+      "save_failed": "Could not save",
+      "try_again": "Try again in a moment.",
+      "invalid_datetime_title": "Invalid date or time",
+      "invalid_datetime_message": "Use date format YYYY-MM-DD and time format HH:mm.",
+      "incomplete_title": "Incomplete data",
+      "incomplete_message": "Select client, instructor, and contracted service.",
+      "status": {
+        "agendado": "Scheduled",
+        "confirmado": "Confirmed",
+        "em_andamento": "In progress",
+        "concluido": "Completed",
+        "cancelado": "Canceled",
+        "faltou": "Missed"
+      }
+    },
+    "stub": {
+      "title": "In development",
+      "subtitle": "This section will be implemented soon."
+    }
+  }
 }

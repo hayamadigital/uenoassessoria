@@ -76,6 +76,10 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a
 }
 
+function questaoIdentifier(id: string) {
+  return id.slice(0, 8).toUpperCase()
+}
+
 // ── Tab: Configuração ─────────────────────────────────────────
 function ConfiguracaoTab({
   material,
@@ -211,10 +215,9 @@ function AlterarQuestoesDialog({
   const totalNecessario = config.total_questoes
 
   const { data: questoesDisponiveis = [], isLoading: loadingQuestoes } = useQuery({
-    queryKey: ['questoes-selecao-alterar', material.categoria_id, searchQuestao],
+    queryKey: ['questoes-selecao-alterar', searchQuestao],
     queryFn: async () => {
       const questoes = await listQuestoes(db, {
-        ...(material.categoria_id && { categoriaId: material.categoria_id }),
         ...(searchQuestao && { search: searchQuestao }),
       })
       if (!initialized && config.modo_selecao === 'aleatorio') {
@@ -291,7 +294,12 @@ function AlterarQuestoesDialog({
                   <span className="text-xs text-muted-foreground w-5 shrink-0 mt-0.5">
                     {i + 1}.
                   </span>
-                  <span className="text-sm line-clamp-2 flex-1">{q.enunciado}</span>
+                  <span className="text-sm line-clamp-2 flex-1">
+                    <span className="font-mono text-xs text-muted-foreground mr-2">
+                      {questaoIdentifier(q.id)}
+                    </span>
+                    {q.enunciado}
+                  </span>
                 </div>
               ))}
             </>
@@ -300,7 +308,7 @@ function AlterarQuestoesDialog({
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar pelo enunciado..."
+                  placeholder="Buscar pelo ID ou enunciado..."
                   value={searchQuestao}
                   onChange={(e) => setSearchQuestao(e.target.value)}
                   className="pl-9"
@@ -337,7 +345,12 @@ function AlterarQuestoesDialog({
                       >
                         {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
                       </div>
-                      <span className="text-sm line-clamp-2 flex-1">{q.enunciado}</span>
+                      <span className="text-sm line-clamp-2 flex-1">
+                        <span className="font-mono text-xs text-muted-foreground mr-2">
+                          {questaoIdentifier(q.id)}
+                        </span>
+                        {q.enunciado}
+                      </span>
                     </button>
                   )
                 })
@@ -419,7 +432,12 @@ function QuestoesTab({
                   {i + 1}.
                 </span>
                 <div className="flex-1 space-y-2">
-                  <p className="text-sm font-medium">{q.enunciado}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs rounded bg-muted px-2 py-1 text-muted-foreground">
+                      {questaoIdentifier(q.id)}
+                    </span>
+                    <p className="text-sm font-medium flex-1 min-w-[220px]">{q.enunciado}</p>
+                  </div>
 
                   {/* Imagens */}
                   {q.imagens.length > 0 && (

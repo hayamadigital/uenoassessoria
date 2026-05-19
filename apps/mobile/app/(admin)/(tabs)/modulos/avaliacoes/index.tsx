@@ -3,11 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
 import { listAvaliacoes } from '@ueno/firebase/queries/avaliacoes'
 import { colors } from '@/theme'
 import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { enUS, ptBR } from 'date-fns/locale'
 
 function Stars({ nota }: { nota: number }) {
   return (
@@ -24,13 +25,8 @@ function Stars({ nota }: { nota: number }) {
   )
 }
 
-const TIPO_LABEL: Record<string, string> = {
-  servico: 'Serviço',
-  material: 'Material',
-  simulado: 'Simulado',
-}
-
 export default function AvaliacoesAdminScreen() {
+  const { t, i18n } = useTranslation('common')
   const { data: avaliacoes, isLoading } = useQuery({
     queryKey: ['admin-avaliacoes'],
     queryFn: () => listAvaliacoes(db),
@@ -48,7 +44,7 @@ export default function AvaliacoesAdminScreen() {
           <Ionicons name="chevron-back" size={18} color={colors.ink700} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerSub}>Módulos · Avaliações</Text>
+          <Text style={s.headerSub}>{t('admin.tabs.modules')} · {t('admin.modules.reviews')}</Text>
           <Text style={s.headerTitle}>Feedbacks</Text>
         </View>
       </View>
@@ -58,7 +54,7 @@ export default function AvaliacoesAdminScreen() {
         {/* Highlight card */}
         <View style={s.heroCard}>
           <View style={{ flex: 1 }}>
-            <Text style={s.heroLabel}>MÉDIA GERAL</Text>
+            <Text style={s.heroLabel}>{t('admin.modules.overall_average')}</Text>
             <Text style={s.heroScore}>{media}</Text>
             <View style={{ flexDirection: 'row', gap: 3, marginTop: 4 }}>
               {[1, 2, 3, 4, 5].map((i) => (
@@ -73,27 +69,27 @@ export default function AvaliacoesAdminScreen() {
             </View>
             <View style={s.heroStat}>
               <Text style={[s.heroStatN, { color: '#FCD34D' }]}>{pendentes}</Text>
-              <Text style={s.heroStatL}>Pendentes</Text>
+              <Text style={s.heroStatL}>{t('admin.filters.pending')}</Text>
             </View>
           </View>
         </View>
 
-        <Text style={s.sectionLabel}>FEEDBACKS RECEBIDOS</Text>
+        <Text style={s.sectionLabel}>{t('admin.modules.received_feedback')}</Text>
 
         {isLoading ? (
           <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
         ) : (avaliacoes ?? []).length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="star-outline" size={32} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Nenhuma avaliação ainda</Text>
+            <Text style={s.emptyTxt}>{t('admin.modules.no_reviews')}</Text>
           </View>
         ) : (
           <View style={{ gap: 10 }}>
             {(avaliacoes ?? []).map((av) => {
               const dt = av.created_at
-                ? format(new Date(av.created_at), "d 'de' MMM", { locale: ptBR })
+                ? format(new Date(av.created_at), i18n.language === 'en' ? 'd MMM' : "d 'de' MMM", { locale: i18n.language === 'en' ? enUS : ptBR })
                 : '—'
-              const tipoLabel = TIPO_LABEL[av.tipo] ?? av.tipo
+              const tipoLabel = t(`admin.modules.review_type.${av.tipo}`, av.tipo)
               return (
                 <View key={av.id} style={s.avCard}>
                   <View style={s.avTop}>
@@ -105,7 +101,7 @@ export default function AvaliacoesAdminScreen() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={s.avName} numberOfLines={1}>
-                          {av.cliente_nome ?? 'Cliente'}
+                          {av.cliente_nome ?? t('admin.clients.client')}
                         </Text>
                         <Text style={s.avMeta}>{tipoLabel} · {dt}</Text>
                       </View>
@@ -117,12 +113,12 @@ export default function AvaliacoesAdminScreen() {
                   ) : null}
                   {!av.respondido_em && (
                     <TouchableOpacity style={s.respondBtn}>
-                      <Text style={s.respondBtnTxt}>Responder</Text>
+                      <Text style={s.respondBtnTxt}>{t('admin.modules.reply')}</Text>
                     </TouchableOpacity>
                   )}
                   {av.respondido_em && av.resposta_admin ? (
                     <View style={s.responseBox}>
-                      <Text style={s.responseLabel}>Resposta da assessoria</Text>
+                      <Text style={s.responseLabel}>{t('admin.modules.admin_response')}</Text>
                       <Text style={s.responseText} numberOfLines={2}>{av.resposta_admin}</Text>
                     </View>
                   ) : null}

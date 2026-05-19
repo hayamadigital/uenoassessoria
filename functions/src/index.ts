@@ -192,7 +192,9 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
       updated_at: now,
     })
 
-    return { cliente_id: clienteRef.id, user_id: userId }
+    const resetLink = await auth.generatePasswordResetLink(email)
+
+    return { cliente_id: clienteRef.id, user_id: userId, reset_link: resetLink }
   } catch (err) {
     if (userId) {
       await auth.deleteUser(userId).catch(() => undefined)
@@ -211,7 +213,7 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
   const { email, full_name, role } = request.data as {
     email: string
     full_name: string
-    role: 'admin' | 'instrutor' | 'cliente'
+    role: 'admin' | 'instrutor'
   }
 
   if (!email || !full_name || !role) {

@@ -14,12 +14,24 @@ import {
 import type { EtapaTemplate, EtapaTemplateInsert } from '../types'
 
 function toTemplate(id: string, data: Record<string, unknown>): EtapaTemplate {
-  return { id, ...data } as EtapaTemplate
+  return {
+    id,
+    ...data,
+    descricao: data.descricao ?? null,
+    variacao_ids: Array.isArray(data.variacao_ids) ? data.variacao_ids as string[] : [],
+  } as EtapaTemplate
+}
+
+function removeUndefined<T extends Record<string, unknown>>(data: T): T {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  ) as T
 }
 
 export async function listEtapaTemplatesByServico(
   db: Firestore,
   servicoId: string,
+  variacaoId?: string | null,
 ): Promise<EtapaTemplate[]> {
   const snap = await getDocs(
     query(
@@ -28,17 +40,25 @@ export async function listEtapaTemplatesByServico(
       orderBy('ordem'),
     ),
   )
-  return snap.docs.map((d) => toTemplate(d.id, d.data()))
+  return snap.docs
+    .map((d) => toTemplate(d.id, d.data()))
+    .filter((template) => {
+      if (!variacaoId) return true
+      return template.variacao_ids.length === 0 || template.variacao_ids.includes(variacaoId)
+    })
 }
 
 export async function createEtapaTemplate(
   db: Firestore,
   input: EtapaTemplateInsert,
 ): Promise<EtapaTemplate> {
-  const ref = await addDoc(collection(db, 'etapa_templates'), {
+  const ref = await addDoc(collection(db, 'etapa_templates'), removeUndefined({
     ...input,
+    descricao: input.descricao ?? null,
+    variacao_ids: input.variacao_ids ?? [],
+    ordem: input.ordem ?? 0,
     created_at: new Date().toISOString(),
-  })
+  }))
   const snap = await getDoc(ref)
   return toTemplate(snap.id, snap.data()!)
 }
@@ -48,7 +68,7 @@ export async function updateEtapaTemplate(
   id: string,
   input: Partial<Omit<EtapaTemplateInsert, 'servico_id'>>,
 ): Promise<EtapaTemplate> {
-  await updateDoc(doc(db, 'etapa_templates', id), input)
+  await updateDoc(doc(db, 'etapa_templates', id), removeUndefined(input))
   const snap = await getDoc(doc(db, 'etapa_templates', id))
   return toTemplate(snap.id, snap.data()!)
 }

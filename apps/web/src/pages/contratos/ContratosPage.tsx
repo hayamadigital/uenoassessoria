@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, FileText, User, Send, X, Pencil } from 'lucide-react'
+import { Plus, FileText, User, Send, X, Pencil, Search } from 'lucide-react'
 import { z } from 'zod'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
+import { SortableTh } from '@/components/ui/sortable-th'
 import {
   Dialog,
   DialogContent,
@@ -28,10 +29,17 @@ import {
 } from '@ueno/firebase/queries/contratos'
 import { listClientes } from '@ueno/firebase/queries/clientes'
 import { listServicos } from '@ueno/firebase/queries/servicos'
+import { listContratoTemplates } from '@ueno/firebase/queries/contrato_templates'
+import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
+import { listEtapaTemplatesByServico } from '@ueno/firebase/queries/etapa_templates'
+import { listPagamentos, listParcelas } from '@ueno/firebase/queries/financeiro'
 import { formatDateJST } from '@ueno/utils/date'
 import { contratoSchema } from '@ueno/utils/validators'
+import { renderSecoes, valoresDefaultDasSecoes, type ContextoContrato } from '@ueno/utils/contrato-render'
 import { useAuthStore } from '@/stores/auth.store'
+import { PreencherSecoesContrato } from '@/components/ui/PreencherSecoesContrato'
 import type { StatusContrato, ContratoWithCliente } from '@ueno/firebase'
+import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 type ContratoInput = z.infer<typeof contratoSchema>
 
@@ -67,6 +75,14 @@ export function ContratosPage() {
   // Filters
   const [statusFiltro, setStatusFiltro] = useState<StatusContrato | ''>('')
   const [clienteFiltro, setClienteFiltro] = useState('')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
+  const [busca, setBusca] = useState('')
+  const [createdFrom, setCreatedFrom] = useState('')
+  const [createdTo, setCreatedTo] = useState('')
+  const [sort, setSort] = useState<SortState<'cliente' | 'titulo' | 'status' | 'created_at' | 'assinado_em'>>({
+    key: 'created_at',
+    direction: 'desc',
+  })
 
   // Dialog state
   const [viewContrato, setViewContrato] = useState<ContratoWithCliente | null>(null)
@@ -104,6 +120,20 @@ export function ContratosPage() {
     enabled: addOpen,
   })
 
+  const { data: templates } = useQuery({
+    queryKey: ['contrato-templates'],
+    queryFn: () => listContratoTemplates(db),
+    enabled: addOpen,
+  })
+
+  // Template + valores das seções para criação
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [valoresSecoes, setValoresSecoes] = useState<Record<string, string>>({})
+  const [selectedProcessoId, setSelectedProcessoId] = useState('')
+
+  const selectedTemplate = templates?.find((t) => t.id === selectedTemplateId) ?? null
+  const templateSecoes = selectedTemplate?.secoes ?? []
+
   // Summary counts
   const counts = useMemo(
     () => ({
@@ -128,6 +158,27 @@ export function ContratosPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome))
   }, [todos])
 
+  const contratosFiltrados = useMemo(() => {
+    const rows = (contratos ?? []).filter((c) => {
+      const isActive = c.status !== 'cancelado'
+      if (activeFilter === 'active' && !isActive) return false
+      if (activeFilter === 'inactive' && isActive) return false
+      if (!includesText(
+        [c.cliente?.profile?.full_name, c.titulo, statusLabel[c.status]].join(' '),
+        busca,
+      )) return false
+      return isWithinDateRange(c.created_at, createdFrom, createdTo)
+    })
+
+    return sortBy(rows, sort, {
+      cliente: (c) => c.cliente?.profile?.full_name,
+      titulo: (c) => c.titulo,
+      status: (c) => statusLabel[c.status],
+      created_at: (c) => c.created_at,
+      assinado_em: (c) => c.assinado_em,
+    })
+  }, [activeFilter, busca, contratos, createdFrom, createdTo, sort])
+
   // Auto-open viewer when navigating to /contratos/:id
   useEffect(() => {
     if (paramId && contratos) {
@@ -143,6 +194,49 @@ export function ContratosPage() {
   })
   const selectedCreateClienteId = useWatch({ control: createForm.control, name: 'cliente_id' })
   const selectedCreateCliente = clientes?.find((c) => c.id === selectedCreateClienteId)
+
+  useEffect(() => {
+    setSelectedProcessoId('')
+  }, [selectedCreateClienteId])
+
+  const { data: processos } = useQuery({
+    queryKey: ['processos', 'by-cliente', selectedCreateClienteId],
+    queryFn: () => listProcessosByCliente(db, selectedCreateClienteId),
+    enabled: addOpen && !!selectedCreateClienteId,
+  })
+
+  const selectedProcesso = processos?.find((p) => p.id === selectedProcessoId) ?? null
+
+  const { data: etapaTemplates } = useQuery({
+    queryKey: ['etapa-templates', selectedProcesso?.servico_id, selectedProcesso?.variacao_id],
+    queryFn: () => listEtapaTemplatesByServico(db, selectedProcesso!.servico_id, selectedProcesso!.variacao_id),
+    enabled: !!selectedProcesso?.servico_id,
+  })
+
+  const { data: pagamentosCliente } = useQuery({
+    queryKey: ['pagamentos', 'cliente', selectedCreateClienteId],
+    queryFn: () => listPagamentos(db, { cliente_id: selectedCreateClienteId }),
+    enabled: addOpen && !!selectedCreateClienteId && !!selectedProcessoId,
+  })
+
+  const pagamentoDoProcesso = pagamentosCliente?.find(
+    (p) => p.servico_id === selectedProcesso?.servico_id,
+  ) ?? null
+
+  const { data: parcelasDoProcesso } = useQuery({
+    queryKey: ['parcelas', pagamentoDoProcesso?.id],
+    queryFn: () => listParcelas(db, pagamentoDoProcesso!.id),
+    enabled: !!pagamentoDoProcesso?.id,
+  })
+
+  const contextoContrato: ContextoContrato | undefined = selectedProcesso
+    ? {
+        servico: selectedProcesso.servico,
+        variacao: selectedProcesso.variacao,
+        etapaTemplates: etapaTemplates ?? [],
+        parcelas: parcelasDoProcesso ?? [],
+      }
+    : undefined
 
   const editForm = useForm<EditInput>({
     resolver: zodResolver(editSchema),
@@ -161,6 +255,8 @@ export function ContratosPage() {
       createContrato(db, {
         cliente_id: data.cliente_id,
         servico_id: data.servico_id || null,
+        processo_id: null,
+        aditivo_de: null,
         titulo: data.titulo,
         corpo_html: data.corpo_html,
         status: 'rascunho',
@@ -174,6 +270,9 @@ export function ContratosPage() {
       invalidate()
       setAddOpen(false)
       createForm.reset()
+      setSelectedTemplateId('')
+      setValoresSecoes({})
+      setSelectedProcessoId('')
     },
   })
 
@@ -240,6 +339,24 @@ export function ContratosPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-56 flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente ou título..."
+              className="pl-9"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+          <select
+            value={activeFilter}
+            onChange={(e) => setActiveFilter(e.target.value as ActiveFilter)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+            <option value="all">Ativos e inativos</option>
+          </select>
           <select
             value={statusFiltro}
             onChange={(e) => setStatusFiltro(e.target.value as StatusContrato | '')}
@@ -263,13 +380,31 @@ export function ContratosPage() {
               </option>
             ))}
           </select>
-          {(statusFiltro || clienteFiltro) && (
+          <input
+            type="date"
+            value={createdFrom}
+            onChange={(e) => setCreatedFrom(e.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            title="Criado de"
+          />
+          <input
+            type="date"
+            value={createdTo}
+            onChange={(e) => setCreatedTo(e.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            title="Criado até"
+          />
+          {(statusFiltro || clienteFiltro || activeFilter !== 'active' || busca || createdFrom || createdTo) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setStatusFiltro('')
                 setClienteFiltro('')
+                setActiveFilter('active')
+                setBusca('')
+                setCreatedFrom('')
+                setCreatedTo('')
               }}
             >
               <X className="mr-1.5 h-3.5 w-3.5" />
@@ -283,7 +418,7 @@ export function ContratosPage() {
           <div className="flex justify-center py-10">
             <Spinner />
           </div>
-        ) : contratos?.length === 0 ? (
+        ) : contratosFiltrados.length === 0 ? (
           <div className="rounded-md border border-dashed py-16 text-center text-sm text-muted-foreground">
             Nenhum contrato encontrado.
           </div>
@@ -292,16 +427,16 @@ export function ContratosPage() {
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                  <th className="px-4 py-3 text-left font-medium">Título</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">Criado em</th>
-                  <th className="px-4 py-3 text-left font-medium">Assinado em</th>
+                  <SortableTh sort={sort} sortKey="cliente" onSort={(key) => setSort(nextSort(sort, key))}>Cliente</SortableTh>
+                  <SortableTh sort={sort} sortKey="titulo" onSort={(key) => setSort(nextSort(sort, key))}>Título</SortableTh>
+                  <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
+                  <SortableTh sort={sort} sortKey="created_at" onSort={(key) => setSort(nextSort(sort, key))}>Criado em</SortableTh>
+                  <SortableTh sort={sort} sortKey="assinado_em" onSort={(key) => setSort(nextSort(sort, key))}>Assinado em</SortableTh>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {contratos?.map((c) => (
+                {contratosFiltrados.map((c) => (
                   <tr key={c.id} className="hover:bg-muted/20">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -387,20 +522,32 @@ export function ContratosPage() {
       {/* Dialog 1 — Criar */}
       <Dialog
         open={addOpen}
-        onOpenChange={(o) => {
+        onOpenChange={(o: boolean) => {
           if (!o) {
             setAddOpen(false)
             createForm.reset()
+            setSelectedTemplateId('')
+            setValoresSecoes({})
+            setSelectedProcessoId('')
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Contrato</DialogTitle>
           </DialogHeader>
           <form
             id="create-contrato-form"
-            onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+            onSubmit={createForm.handleSubmit((data) => {
+              const corpoHtml = templateSecoes.length
+                ? renderSecoes(
+                    templateSecoes,
+                    { ...valoresSecoes, cliente_nome: selectedCreateCliente?.profile?.full_name ?? '' },
+                    contextoContrato,
+                  )
+                : data.corpo_html
+              createMutation.mutate({ ...data, corpo_html: corpoHtml })
+            })}
             className="space-y-4 py-2"
           >
             {/* Cliente */}
@@ -425,73 +572,105 @@ export function ContratosPage() {
                   {...createForm.register('cliente_id')}
                   defaultValue=""
                 >
-                  <option value="" disabled>
-                    Selecione um cliente...
-                  </option>
+                  <option value="" disabled>Selecione um cliente...</option>
                   {clientes?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.profile?.full_name ?? c.id}
-                    </option>
+                    <option key={c.id} value={c.id}>{c.profile?.full_name ?? c.id}</option>
                   ))}
                 </select>
               </div>
               {createForm.formState.errors.cliente_id && (
-                <p className="text-xs text-destructive">
-                  {createForm.formState.errors.cliente_id.message}
-                </p>
+                <p className="text-xs text-destructive">{createForm.formState.errors.cliente_id.message}</p>
               )}
             </div>
 
-            {/* Serviço */}
+            {/* Processo vinculado (opcional) */}
+            {selectedCreateClienteId && (
+              <div className="space-y-2">
+                <Label>Processo vinculado <span className="text-xs text-muted-foreground">(opcional)</span></Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedProcessoId}
+                  onChange={(e) => {
+                    setSelectedProcessoId(e.target.value)
+                  }}
+                >
+                  <option value="">Sem processo (sem dados automáticos)</option>
+                  {processos?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.servico.nome}{p.variacao ? ` — ${p.variacao.nome}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Vincula o contrato a um processo e preenche automaticamente as seções de serviço, etapas e parcelas.
+                </p>
+              </div>
+            )}
+
+            {/* Template */}
             <div className="space-y-2">
-              <Label>Serviço</Label>
+              <Label>Modelo de Contrato</Label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                {...createForm.register('servico_id')}
-                defaultValue=""
+                value={selectedTemplateId}
+                onChange={(e) => {
+                  const tplId = e.target.value
+                  setSelectedTemplateId(tplId)
+                  const tpl = templates?.find((t) => t.id === tplId)
+                  if (tpl) {
+                    createForm.setValue('titulo', tpl.nome)
+                    setValoresSecoes(valoresDefaultDasSecoes(tpl.secoes ?? []))
+                  } else {
+                    setValoresSecoes({})
+                  }
+                }}
               >
-                <option value="">Nenhum</option>
-                {servicos?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nome}
-                  </option>
+                <option value="">Sem modelo (conteúdo manual)</option>
+                {templates?.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nome}</option>
                 ))}
               </select>
             </div>
 
             {/* Título */}
             <div className="space-y-2">
-              <Label>
-                Título <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                {...createForm.register('titulo')}
-                placeholder="Ex: Contrato de Prestação de Serviços"
-              />
+              <Label>Título <span className="text-destructive">*</span></Label>
+              <Input {...createForm.register('titulo')} placeholder="Ex: Contrato de Prestação de Serviços" />
               {createForm.formState.errors.titulo && (
-                <p className="text-xs text-destructive">
-                  {createForm.formState.errors.titulo.message}
-                </p>
+                <p className="text-xs text-destructive">{createForm.formState.errors.titulo.message}</p>
               )}
             </div>
 
-            {/* Conteúdo */}
-            <div className="space-y-2">
-              <Label>
-                Conteúdo do Contrato <span className="text-destructive">*</span>
-              </Label>
-              <textarea
-                {...createForm.register('corpo_html')}
-                rows={8}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                placeholder="Conteúdo do contrato (HTML ou texto)..."
-              />
-              {createForm.formState.errors.corpo_html && (
-                <p className="text-xs text-destructive">
-                  {createForm.formState.errors.corpo_html.message}
-                </p>
-              )}
-            </div>
+            {/* Seções do template ou conteúdo manual */}
+            {templateSecoes.length > 0 ? (
+              <div className="space-y-2">
+                <Label>Preencher dados do contrato</Label>
+                <div className="rounded-md border p-4">
+                  <PreencherSecoesContrato
+                    secoes={templateSecoes}
+                    clienteNome={selectedCreateCliente?.profile?.full_name ?? ''}
+                    valores={valoresSecoes}
+                    onChange={(variavel, val) =>
+                      setValoresSecoes((prev) => ({ ...prev, [variavel]: val }))
+                    }
+                    contexto={contextoContrato}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Conteúdo do Contrato <span className="text-destructive">*</span></Label>
+                <textarea
+                  {...createForm.register('corpo_html')}
+                  rows={8}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                  placeholder="Conteúdo do contrato (HTML ou texto)..."
+                />
+                {createForm.formState.errors.corpo_html && (
+                  <p className="text-xs text-destructive">{createForm.formState.errors.corpo_html.message}</p>
+                )}
+              </div>
+            )}
           </form>
           <DialogFooter>
             <Button
@@ -499,6 +678,8 @@ export function ContratosPage() {
               onClick={() => {
                 setAddOpen(false)
                 createForm.reset()
+                setSelectedTemplateId('')
+                setValoresSecoes({})
               }}
             >
               Cancelar
@@ -517,7 +698,7 @@ export function ContratosPage() {
       {/* Dialog 2 — Editar */}
       <Dialog
         open={!!editTarget}
-        onOpenChange={(o) => {
+        onOpenChange={(o: boolean) => {
           if (!o) setEditTarget(null)
         }}
       >
@@ -577,7 +758,7 @@ export function ContratosPage() {
       {/* Dialog 3 — Enviar confirmação */}
       <Dialog
         open={!!enviarTarget}
-        onOpenChange={(o) => {
+        onOpenChange={(o: boolean) => {
           if (!o) setEnviarTarget(null)
         }}
       >
@@ -608,7 +789,7 @@ export function ContratosPage() {
       {/* Dialog 4 — Cancelar confirmação */}
       <Dialog
         open={!!cancelTarget}
-        onOpenChange={(o) => {
+        onOpenChange={(o: boolean) => {
           if (!o) setCancelTarget(null)
         }}
       >
@@ -637,7 +818,7 @@ export function ContratosPage() {
       </Dialog>
 
       {/* Dialog 5 — Ver conteúdo */}
-      <Dialog open={!!viewContrato} onOpenChange={(o) => { if (!o) handleCloseViewer() }}>
+      <Dialog open={!!viewContrato} onOpenChange={(o: boolean) => { if (!o) handleCloseViewer() }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

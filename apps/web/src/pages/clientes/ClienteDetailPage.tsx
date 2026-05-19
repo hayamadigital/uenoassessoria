@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, User, MessageCircle, Send, Loader2 } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Send, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
@@ -106,6 +106,32 @@ function ReenviarCredenciaisButton({
   )
 }
 
+function ClienteHeaderAvatar({ name, url }: { name: string; url?: string | null }) {
+  const [failed, setFailed] = useState(false)
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'CL'
+
+  return (
+    <div className="h-14 w-14 rounded-full overflow-hidden bg-primary/10 border-2 border-border text-primary flex items-center justify-center shrink-0 text-sm font-semibold">
+      {url && !failed ? (
+        <img
+          src={url}
+          alt={name}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  )
+}
+
 export function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -130,17 +156,10 @@ export function ClienteDetailPage() {
     <div>
       <div className="flex items-start justify-between border-b px-8 py-6">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-full overflow-hidden bg-muted border-2 border-border flex items-center justify-center shrink-0">
-            {cliente.profile.avatar_url ? (
-              <img
-                src={cliente.profile.avatar_url}
-                alt={cliente.profile.full_name}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <User className="h-6 w-6 text-muted-foreground" />
-            )}
-          </div>
+          <ClienteHeaderAvatar
+            name={cliente.profile.full_name ?? 'Cliente'}
+            url={cliente.profile.avatar_url}
+          />
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{cliente.profile.full_name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{cliente.profile.email}</p>
