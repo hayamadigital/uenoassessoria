@@ -43,7 +43,7 @@ export function NovoClientePage() {
 
       const createCliente = httpsCallable<
         { full_name: string; email: string; whatsapp?: string; nacionalidade?: string },
-        { clienteId: string; whatsapp_url?: string; reset_link?: string }
+        { cliente_id: string; user_id: string; whatsapp_url?: string; reset_link?: string }
       >(getFunctions(), 'createCliente')
 
       const { data: respData } = await createCliente({
@@ -61,7 +61,7 @@ export function NovoClientePage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['clientes'] })
-      navigate(`/clientes/${respData.clienteId}/processo`)
+      navigate(`/clientes/${respData.cliente_id}/processo`)
     } catch (err) {
       setServerError(err instanceof Error ? err.message : 'Erro ao criar cliente')
     }

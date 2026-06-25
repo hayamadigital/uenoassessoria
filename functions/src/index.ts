@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin'
-import { onRequest, onCall } from 'firebase-functions/v2/https'
+import { onRequest, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
@@ -13,6 +13,18 @@ const auth = getAuth()
 const storage = getStorage()
 
 const CORS = { cors: ['*'] }
+
+async function assertAdmin(request: CallableRequest) {
+  if (request.auth?.token?.role === 'admin') return
+
+  const uid = request.auth?.uid
+  if (!uid) throw new Error('Não autenticado')
+
+  const profileSnap = await db.collection('users').doc(uid).get()
+  if (profileSnap.data()?.role !== 'admin') {
+    throw new Error('Apenas admins podem executar esta ação')
+  }
+}
 
 // ── Auth trigger: set custom claims + create /users doc ────────────
 
@@ -114,6 +126,8 @@ export const setRoleClaim = onCall({ ...CORS }, async (request) => {
 // ── createCliente ──────────────────────────────────────────────────
 
 export const createCliente = onCall({ ...CORS }, async (request) => {
+  await assertAdmin(request)
+
   const { full_name, email, whatsapp, nacionalidade } = request.data as {
     full_name: string
     email: string
