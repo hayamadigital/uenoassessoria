@@ -11,7 +11,7 @@
     "lint": "turbo lint",
     "type-check": "turbo type-check",
     "clean": "turbo clean",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package || true"
   },
   "devDependencies": {
     "patch-package": "^8.0.1",
