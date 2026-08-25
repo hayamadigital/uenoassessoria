@@ -11,3 +11,29 @@ index 73c34ca..905f068 100644
  
    @Field
    var top: ContentPositionValue?
+diff --git a/node_modules/expo-image/ios/ImageLoadOptions.swift b/node_modules/expo-image/ios/ImageLoadOptions.swift
+index 50099ae..1e8061a 100644
+--- a/node_modules/expo-image/ios/ImageLoadOptions.swift
++++ b/node_modules/expo-image/ios/ImageLoadOptions.swift
+@@ -2,7 +2,7 @@
+ 
+ import ExpoModulesCore
+ 
+-internal struct ImageLoadOptions: Record {
++internal struct ImageLoadOptions: Record, @unchecked Sendable {
+   @Field var maxWidth: Int?
+   @Field var maxHeight: Int?
+   @Field var tintColor: UIColor? = nil
+diff --git a/node_modules/expo-image/ios/ImageSource.swift b/node_modules/expo-image/ios/ImageSource.swift
+index 4d23e20..9b069c7 100644
+--- a/node_modules/expo-image/ios/ImageSource.swift
++++ b/node_modules/expo-image/ios/ImageSource.swift
+@@ -2,7 +2,7 @@
+ 
+ import ExpoModulesCore
+ 
+-struct ImageSource: Record {
++struct ImageSource: Record, @unchecked Sendable {
+   @Field
+   var width: Double = 0.0
+ 
