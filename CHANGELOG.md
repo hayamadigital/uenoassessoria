@@ -5,6 +5,27 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-08-25] — Deploy Vercel via GitHub + Recuperação de Senha + Sincronização do main
+
+### Infraestrutura / Deploy
+- Projeto Vercel oficial definido: `hayama-digital-s-projects/ueno-assessoria`, conectado ao GitHub (`hayamadigital/uenoassessoria`, branch `main`)
+- Fluxo de deploy passou a ser **git push → build automático na Vercel** (antes não havia nenhum deploy publicado)
+- `vercel.json` — passou a ser versionado (nunca tinha sido commitado) e ganhou `rewrites` para SPA (corrige 404 em rotas acessadas diretamente, ex: refresh em `/clientes/novo`)
+- Projeto antigo `hayama-digital-s-projects/web` — Git desconectado e aliases removidos (mantido como referência histórica, mas sem deploy nem domínio ativo)
+- `main` estava ~90 arquivos atrás do código local funcional (refatoração de schema nunca commitada) — sincronizado em 4 commits (`7fca933`, `902fc44`, `b3c7bf4`, `9fde56e`)
+
+### Web — Auth
+- `apps/web/src/pages/auth/ForgotPasswordPage.tsx` (novo) — página dedicada de recuperação de senha em `/esqueci-senha`, com campo de email e botão de envio próprios
+- `apps/web/src/pages/auth/LoginPage.tsx` — link "Esqueceu a senha?" agora navega para a página dedicada em vez de resetar inline na tela de login
+- `packages/utils/src/validators.ts` — `forgotPasswordSchema` adicionado
+
+### Pendências identificadas nesta sessão
+- Fluxo de convite de cliente/usuário (`createCliente`/`inviteUser`) gera `reset_link` mas **não envia automaticamente** por e-mail/WhatsApp — depende do admin copiar/colar manualmente. Campo `whatsapp_url` esperado pelo frontend nunca é retornado pelo backend (código morto)
+- Teste ponta a ponta do fluxo de criação de clientes ainda pendente (aguardando credenciais de admin)
+- Domínio próprio (`.com.br` ou similar) ainda não configurado — só `uenoassessoria.vercel.app`, cujo alias precisa ser reatribuído manualmente após cada deploy até um domínio real ser configurado
+
+---
+
 ## [2026-05-19] — Mobile Admin (Modal de Usuários)
 
 ### Mobile (admin)
