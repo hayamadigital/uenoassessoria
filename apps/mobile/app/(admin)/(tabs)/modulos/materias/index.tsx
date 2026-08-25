@@ -15,6 +15,7 @@ const TIPO_COLOR: Record<TipoMaterial, string> = {
   link: '#7E22CE',
   texto: '#0F766E',
   simulado: colors.navy800,
+  card: '#FB923C',
 }
 
 const TIPO_ICON: Record<TipoMaterial, keyof typeof Ionicons.glyphMap> = {
@@ -23,6 +24,7 @@ const TIPO_ICON: Record<TipoMaterial, keyof typeof Ionicons.glyphMap> = {
   link: 'link-outline',
   texto: 'reader-outline',
   simulado: 'book-outline',
+  card: 'card-outline',
 }
 
 const TIPO_LABEL: Record<TipoMaterial, string> = {
@@ -31,6 +33,7 @@ const TIPO_LABEL: Record<TipoMaterial, string> = {
   link: 'Link externo',
   texto: 'Texto',
   simulado: 'Simulado',
+  card: 'Cartão',
 }
 
 type CategoriaGrupo = {

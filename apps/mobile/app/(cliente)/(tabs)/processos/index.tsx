@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { db } from '@/lib/firebase'
@@ -16,6 +17,7 @@ import { ptBR } from 'date-fns/locale'
 type Filter = 'ativo' | 'concluido' | 'cancelado'
 
 const STATUS_CHIP: Record<StatusClienteProcesso, { bg: string; fg: string; label: string }> = {
+  analise: { bg: '#DBEAFE', fg: '#1D4ED8', label: 'Em análise' },
   ativo: { bg: '#FEF3C7', fg: '#92400E', label: 'Em análise' },
   concluido: { bg: '#DCFCE7', fg: '#15803D', label: 'Concluído' },
   cancelado: { bg: '#FEE2E2', fg: '#B91C1C', label: 'Cancelado' },
@@ -117,7 +119,6 @@ function Timeline({ processoId }: { processoId: string }) {
 export default function ProcessosScreen() {
   const { session } = useAuthStore()
   const [filter, setFilter] = useState<Filter>('ativo')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const { data: cliente } = useQuery({
     queryKey: ['cliente', 'me', session?.userId],
@@ -132,12 +133,14 @@ export default function ProcessosScreen() {
   })
 
   const counts: Record<Filter, number> = {
-    ativo: processos?.filter((p) => p.status === 'ativo').length ?? 0,
+    ativo: processos?.filter((p) => p.status === 'ativo' || p.status === 'analise').length ?? 0,
     concluido: processos?.filter((p) => p.status === 'concluido').length ?? 0,
     cancelado: processos?.filter((p) => p.status === 'cancelado').length ?? 0,
   }
 
-  const filtered = processos?.filter((p) => p.status === filter) ?? []
+  const filtered = processos?.filter((p) => filter === 'ativo'
+    ? p.status === 'ativo' || p.status === 'analise'
+    : p.status === filter) ?? []
 
   return (
     <SafeAreaView style={s.safe}>
@@ -189,20 +192,12 @@ export default function ProcessosScreen() {
               />
               <TouchableOpacity
                 style={s.timelineToggle}
-                onPress={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                onPress={() => router.push(`/(cliente)/(tabs)/processos/${p.id}` as any)}
                 activeOpacity={0.8}
               >
-                <Text style={s.timelineToggleTxt}>
-                  {selectedId === p.id ? 'Ocultar linha do tempo' : 'Ver linha do tempo'}
-                </Text>
-                <Ionicons name={selectedId === p.id ? 'chevron-up' : 'chevron-down'} size={14} color={colors.navy800} />
+                <Text style={s.timelineToggleTxt}>Abrir visão completa</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.navy800} />
               </TouchableOpacity>
-              {selectedId === p.id && (
-                <View style={s.timelineCard}>
-                  <Text style={s.sectionLabel}>LINHA DO TEMPO</Text>
-                  <Timeline processoId={p.id} />
-                </View>
-              )}
             </View>
           ))
         )}

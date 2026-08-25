@@ -1,4 +1,5 @@
-import { View, Text, Image } from 'react-native'
+import { View, Text } from 'react-native'
+import { AppImage } from '@/components/AppImage'
 
 const PALETTE = [
   '#1E3A8A', '#0891B2', '#0F766E', '#7E22CE',
@@ -29,7 +30,7 @@ interface AvatarProps {
 export function Avatar({ name, size = 40, url }: AvatarProps) {
   const r = size / 2
   if (url) {
-    return <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: r }} />
+    return <AppImage source={{ uri: url }} style={{ width: size, height: size, borderRadius: r }} />
   }
   return (
     <View style={{ width: size, height: size, borderRadius: r, backgroundColor: bgFor(name), alignItems: 'center', justifyContent: 'center' }}>

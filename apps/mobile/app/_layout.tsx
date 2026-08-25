@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Alert } from 'react-native'
-import { Stack, router } from 'expo-router'
+import { Stack, router, useRootNavigationState } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
@@ -17,6 +17,8 @@ const queryClient = new QueryClient({
 
 function AuthInit() {
   const { setSession, setLoading, clear } = useAuthStore()
+  const session = useAuthStore((state) => state.session)
+  const rootNavigationState = useRootNavigationState()
 
   useEffect(() => {
     const unsub = onAuthChange(auth, async (user) => {
@@ -49,9 +51,6 @@ function AuthInit() {
           }
           setSession(session)
           await i18n.changeLanguage(session.preferredLang)
-          if (session.role === 'admin') router.replace('/(admin)/(tabs)/inicio')
-          else if (session.role === 'instrutor') router.replace('/(instrutor)/hoje')
-          else router.replace('/(cliente)/(tabs)/inicio')
         } catch (e: any) {
           console.error('[Auth] getProfile error:', e?.message)
           Alert.alert(
@@ -69,6 +68,14 @@ function AuthInit() {
     })
     return unsub
   }, [setSession, setLoading, clear])
+
+  useEffect(() => {
+    if (!rootNavigationState?.key || !session) return
+
+    if (session.role === 'admin') router.replace('/(admin)/(tabs)/inicio')
+    else if (session.role === 'instrutor') router.replace('/(instrutor)/hoje')
+    else router.replace('/(cliente)/(tabs)/inicio')
+  }, [rootNavigationState?.key, session])
 
   return null
 }

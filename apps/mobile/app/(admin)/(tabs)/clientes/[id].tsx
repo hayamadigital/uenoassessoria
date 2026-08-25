@@ -1187,7 +1187,7 @@ export default function ClienteDetalheScreen() {
               <EditableField label="Província" value={clienteForm.provincia_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('provincia_jp', v)} />
               <EditableField label="Cidade" value={clienteForm.cidade_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('cidade_jp', v)} />
               <EditableField label="Bairro" value={clienteForm.bairro_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('bairro_jp', v)} />
-              <EditableField label="Endereço" value={clienteForm.endereco_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('endereco_jp', v)} />
+              <EditableField label="Endereço completo em japonês" value={clienteForm.endereco_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('endereco_jp', v)} multiline />
               <EditableField label="Número / Bloco" value={clienteForm.numero_bloco_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('numero_bloco_jp', v)} />
               <EditableField label="Apartamento" value={clienteForm.apartamento_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('apartamento_jp', v)} />
               <EditableField label="Complemento" value={clienteForm.complemento_jp} editing={editingSection === 'endereco'} onChange={(v) => updateClienteField('complemento_jp', v)} />

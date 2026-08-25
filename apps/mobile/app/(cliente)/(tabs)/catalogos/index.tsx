@@ -1,33 +1,16 @@
 import { useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { db } from '@/lib/firebase'
 import { listServicos } from '@ueno/firebase/queries/servicos'
+import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import type { Servico } from '@ueno/firebase'
 
 const SERVICO_COLORS = [colors.navy800, '#0891B2', '#0F766E', '#7E22CE', colors.warn]
-const SERVICO_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  default: 'car-outline',
-  aula: 'school-outline',
-  traducao: 'language-outline',
-  interprete: 'chatbubbles-outline',
-  habilitacao: 'shield-checkmark-outline',
-}
-
-type Categoria = 'todos' | 'cnh' | 'aulas' | 'documentacao' | 'interprete'
-
-const FILTROS: { label: string; value: Categoria }[] = [
-  { label: 'Todos', value: 'todos' },
-  { label: 'CNH', value: 'cnh' },
-  { label: 'Aulas', value: 'aulas' },
-  { label: 'Documentação', value: 'documentacao' },
-  { label: 'Intérprete', value: 'interprete' },
-]
-
 function formatPrecoServico(servico: Servico) {
   if (servico.usa_variacoes) return 'Variações'
   if (servico.preco_variavel && servico.preco_min_jpy != null && servico.preco_max_jpy != null) {
@@ -39,8 +22,6 @@ function formatPrecoServico(servico: Servico) {
 }
 
 export default function CatalogoScreen() {
-  const [filtro, setFiltro] = useState<Categoria>('todos')
-
   const { data: servicos, isLoading } = useQuery({
     queryKey: ['servicos'],
     queryFn: () => listServicos(db, true),
@@ -54,36 +35,6 @@ export default function CatalogoScreen() {
           <Text style={s.headerSub}>O que oferecemos</Text>
           <Text style={s.headerTitle}>Catálogo de serviços</Text>
         </View>
-
-        {/* Hero banner */}
-        <View style={s.heroBanner}>
-          <View style={s.heroCircle1} />
-          <View style={s.kanji}><Text style={s.kanjiTxt}>上野</Text></View>
-          <View style={{ position: 'relative', padding: 18, height: 160, justifyContent: 'space-between' }}>
-            <View style={s.heroPill}>
-              <Ionicons name="star" size={10} color="white" />
-              <Text style={s.heroPillTxt}> Promoção especial</Text>
-            </View>
-            <View>
-              <Text style={s.heroTitle}>Pronto para dirigir{'\n'}no Japão?</Text>
-              <Text style={s.heroSubtitle}>Conheça nossos serviços e escolha o ideal para você.</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Filtros */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.pillsScroll} contentContainerStyle={s.pillsRow}>
-          {FILTROS.map(({ label, value }) => (
-            <TouchableOpacity
-              key={value}
-              style={[s.pill, filtro === value && s.pillActive]}
-              onPress={() => setFiltro(value)}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.pillTxt, filtro === value && s.pillTxtActive]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
 
         {isLoading ? (
           <ActivityIndicator color={colors.navy800} style={{ marginTop: 24 }} />
@@ -127,10 +78,9 @@ function ServicoCard({
       <View style={[s.cardBanner, { backgroundColor: color + '18' }]}>
         {imageUri && !imageFailed ? (
           <>
-            <Image
+            <AppImage
               source={{ uri: imageUri }}
               style={s.cardBannerImage}
-              resizeMode="cover"
               onError={() => setImageFailed(true)}
             />
             <View style={s.cardBannerOverlay} />
@@ -150,7 +100,7 @@ function ServicoCard({
             <Text style={s.cardPriceLabel}>A PARTIR DE</Text>
             <Text style={s.cardPrice}>{formatPrecoServico(servico)}</Text>
           </View>
-          <View style={[s.cardBtn, { backgroundColor: color }]}>
+          <View style={s.cardBtn}>
             <Text style={s.cardBtnTxt}>Ver serviço</Text>
             <Ionicons name="chevron-forward" size={14} color="white" />
           </View>
@@ -169,27 +119,6 @@ const s = StyleSheet.create({
   headerSub: { fontSize: 12, color: colors.ink500 },
   headerTitle: { fontSize: 24, fontWeight: '700', color: colors.ink900, letterSpacing: -0.5, marginTop: 2 },
 
-  heroBanner: {
-    borderRadius: 20, overflow: 'hidden', marginBottom: 18, height: 160,
-    backgroundColor: colors.navy800,
-    shadowColor: colors.navy900, shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.22, shadowRadius: 32, elevation: 10,
-    position: 'relative',
-  },
-  heroCircle1: { position: 'absolute', right: -40, top: -40, width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,.06)' },
-  kanji: { position: 'absolute', right: 14, top: 8 },
-  kanjiTxt: { fontSize: 54, fontWeight: '700', color: 'rgba(255,255,255,.06)', fontFamily: 'serif' },
-  heroPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(255,255,255,.16)', alignSelf: 'flex-start' },
-  heroPillTxt: { fontSize: 11, color: 'white', fontWeight: '600' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: 'white', letterSpacing: -0.4, lineHeight: 24, marginBottom: 4 },
-  heroSubtitle: { fontSize: 11.5, color: 'rgba(255,255,255,.85)' },
-
-  pillsScroll: { marginBottom: 18 },
-  pillsRow: { flexDirection: 'row', gap: 8, paddingRight: 4 },
-  pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.ink200 },
-  pillActive: { backgroundColor: colors.navy800, borderColor: colors.navy800 },
-  pillTxt: { fontSize: 12, fontWeight: '600', color: colors.ink700 },
-  pillTxtActive: { color: 'white' },
-
   card: {
     backgroundColor: colors.white, borderRadius: 18,
     borderWidth: 1, borderColor: colors.ink100,
@@ -205,7 +134,15 @@ const s = StyleSheet.create({
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.ink100, borderStyle: 'dashed' },
   cardPriceLabel: { fontSize: 10, color: colors.ink400, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   cardPrice: { fontSize: 15, fontWeight: '700', color: colors.ink900, marginTop: 1 },
-  cardBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 },
+  cardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.navy800,
+  },
   cardBtnTxt: { fontSize: 13, fontWeight: '600', color: 'white' },
 
   sheet: {

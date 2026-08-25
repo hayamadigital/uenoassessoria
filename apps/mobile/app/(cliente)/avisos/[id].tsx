@@ -1,13 +1,10 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   View,
   Text,
   ScrollView,
-  FlatList,
-  Image,
   ActivityIndicator,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -16,13 +13,16 @@ import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { db } from '@/lib/firebase'
 import { getAviso } from '@ueno/firebase/queries/avisos'
+import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
+import { useAuthStore } from '@/stores/auth.store'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { TipoAviso } from '@ueno/firebase'
 
+const { FlatList, Dimensions } = require('react-native') as any
 const { width: SCREEN_W } = Dimensions.get('window')
-const HERO_HEIGHT = 260
+const CONTENT_WIDTH = SCREEN_W - 40
 
 const TIPO_LABEL: Record<TipoAviso, string> = {
   logistica: 'Logística',
@@ -41,12 +41,14 @@ const TIPO_COLORS: Record<TipoAviso, { bg: string; text: string }> = {
 export default function AvisoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const insets = useSafeAreaInsets()
+  const { session } = useAuthStore()
   const [activeIndex, setActiveIndex] = useState(0)
+  const [carouselHeights, setCarouselHeights] = useState<Record<number, number>>({})
 
   const { data: aviso, isLoading } = useQuery({
-    queryKey: ['aviso', id],
+    queryKey: ['aviso', id, session?.userId],
     queryFn: () => getAviso(db, id!),
-    enabled: !!id,
+    enabled: !!id && !!session?.userId,
   })
 
   if (isLoading) {
@@ -65,53 +67,29 @@ export default function AvisoDetailScreen() {
     )
   }
 
-  const allImages = [aviso.banner_url, ...aviso.imagens_carrossel]
+  const contentImages = aviso.imagens_carrossel
+  const showStackedImages = aviso.conteudo_tipo === 'imagens' || aviso.imagens_layout === 'lista'
   const tipoColors = TIPO_COLORS[aviso.tipo]
+  const heroWidth = SCREEN_W
+  const activeCarouselHeight = carouselHeights[activeIndex]
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.ink50 }}>
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-        {/* Image carousel */}
-        <View style={{ height: HERO_HEIGHT, width: SCREEN_W }}>
-          <FlatList
-            data={allImages}
-            keyExtractor={(_, i) => String(i)}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => {
-              const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W)
-              setActiveIndex(idx)
-            }}
-            renderItem={({ item }) => (
-              <Image
-                source={{ uri: item }}
-                style={{ width: SCREEN_W, height: HERO_HEIGHT }}
-                resizeMode="cover"
-              />
-            )}
-          />
-
-          {/* Back button */}
+        {/* Hero image */}
+        <MeasuredImage
+          uri={aviso.banner_url}
+          width={heroWidth}
+          containerStyle={s.heroWrap}
+          imageStyle={s.heroImage}
+        >
           <TouchableOpacity
             style={[s.backBtn, { top: insets.top + 8 }]}
             onPress={() => router.back()}
           >
             <Ionicons name="chevron-back" size={20} color="white" />
           </TouchableOpacity>
-
-          {/* Dots */}
-          {allImages.length > 1 && (
-            <View style={s.dotsRow}>
-              {allImages.map((_, i) => (
-                <View
-                  key={i}
-                  style={[s.dot, i === activeIndex ? s.dotActive : s.dotInactive]}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+        </MeasuredImage>
 
         {/* Content */}
         <View style={s.content}>
@@ -133,7 +111,67 @@ export default function AvisoDetailScreen() {
             </Text>
           </View>
 
-          <Text style={s.descricao}>{aviso.descricao}</Text>
+          {aviso.conteudo_tipo === 'texto' && aviso.descricao ? (
+            <Text style={s.descricao}>{aviso.descricao}</Text>
+          ) : null}
+
+          {contentImages.length > 0 ? (
+            <View style={s.imagesSection}>
+              <Text style={s.imagesLabel}>{showStackedImages ? 'Imagens' : 'Carrossel de imagens'}</Text>
+              {showStackedImages ? (
+                <View style={s.imageStack}>
+                  {contentImages.map((item, i) => (
+                    <MeasuredImage
+                      key={`${item}-${i}`}
+                      uri={item}
+                      width={CONTENT_WIDTH}
+                      containerStyle={s.stackImageWrap}
+                      imageStyle={s.stackImage}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View>
+                  <View style={[s.carouselWrap, activeCarouselHeight ? { height: activeCarouselHeight } : null]}>
+                    <FlatList
+                      data={contentImages}
+                      keyExtractor={(_: string, i: number) => String(i)}
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onMomentumScrollEnd={(e: any) => {
+                        const idx = Math.round(e.nativeEvent.contentOffset.x / CONTENT_WIDTH)
+                        setActiveIndex(idx)
+                      }}
+                      renderItem={({ item, index }: { item: string; index: number }) => (
+                        <MeasuredImage
+                          uri={item}
+                          width={CONTENT_WIDTH}
+                          containerStyle={s.carouselImageWrap}
+                          imageStyle={s.carouselImage}
+                        />
+                      )}
+                      contentContainerStyle={s.carouselRow}
+                    />
+                  </View>
+                  {contentImages.length > 1 && (
+                    <View style={s.dotsRow}>
+                      {contentImages.map((_, i) => (
+                        <View
+                          key={i}
+                          style={[s.dot, i === activeIndex ? s.dotActive : s.dotInactive]}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {aviso.conteudo_tipo === 'imagens' && aviso.descricao ? (
+            <Text style={s.descricao}>{aviso.descricao}</Text>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -165,6 +203,12 @@ const s = StyleSheet.create({
   dotInactive: { width: 6, backgroundColor: 'rgba(255,255,255,0.5)' },
 
   content: { padding: 20, paddingBottom: 36 },
+  heroWrap: {
+    width: '100%',
+  },
+  heroImage: {
+    width: '100%',
+  },
 
   tipoBadge: {
     alignSelf: 'flex-start',
@@ -195,4 +239,70 @@ const s = StyleSheet.create({
     color: colors.ink700,
     lineHeight: 22,
   },
+  imagesSection: {
+    marginTop: 6,
+  },
+  imagesLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.ink500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
+  imageStack: {
+    gap: 12,
+  },
+  stackImageWrap: {
+    width: '100%',
+  },
+  stackImage: {
+    width: '100%',
+  },
+  carouselWrap: {
+    width: CONTENT_WIDTH,
+  },
+  carouselImageWrap: {
+    width: CONTENT_WIDTH,
+  },
+  carouselImage: {
+    width: '100%',
+  },
+  carouselRow: {
+    paddingRight: 0,
+    gap: 10,
+  },
 })
+
+function MeasuredImage({
+  uri,
+  width,
+  containerStyle,
+  imageStyle,
+  children,
+}: {
+  uri: string
+  width: number
+  containerStyle?: any
+  imageStyle?: any
+  children?: ReactNode
+}) {
+  const [aspectRatio, setAspectRatio] = useState(1)
+
+  return (
+    <View style={[{ width, aspectRatio }, containerStyle]}>
+      <AppImage
+        source={{ uri }}
+        style={[{ width: '100%', height: '100%' }, imageStyle]}
+        contentFit="contain"
+        onLoad={(event) => {
+          const { width: imgWidth, height: imgHeight } = event.source || {}
+          if (imgWidth && imgHeight) {
+            setAspectRatio(imgWidth / imgHeight)
+          }
+        }}
+      />
+      {children}
+    </View>
+  )
+}

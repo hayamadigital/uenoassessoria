@@ -1,4 +1,7 @@
 import { Tabs } from 'expo-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Alert } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
 import { useQuery } from '@tanstack/react-query'
 import { db } from '@/lib/firebase'
@@ -9,6 +12,15 @@ import { colors } from '@/theme'
 
 export default function TabsLayout() {
   const { session } = useAuthStore()
+  const [approvalAcknowledged, setApprovalAcknowledged] = useState(false)
+  const promptedProcessIdRef = useRef<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const { data: cliente } = useQuery({
     queryKey: ['cliente', 'me', session?.userId],
@@ -20,9 +32,65 @@ export default function TabsLayout() {
     queryKey: ['processos', cliente?.id, 'tabs'],
     queryFn: () => listProcessosByCliente(db, cliente!.id),
     enabled: !!cliente,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   })
 
-  const hasServicoAdquirido = (processos?.length ?? 0) > 0
+  const activeProcess = useMemo(
+    () => processos?.find((processo) => processo.status === 'ativo') ?? null,
+    [processos],
+  )
+  const approvalStorageKey = activeProcess ? `cliente-processo-aprovado:${activeProcess.id}` : null
+  const showProcessosMenu = !!activeProcess
+
+  useEffect(() => {
+    let alive = true
+
+    async function syncApprovalAlert() {
+      if (!activeProcess || !approvalStorageKey) {
+        if (alive) {
+          promptedProcessIdRef.current = null
+          setApprovalAcknowledged(false)
+        }
+        return
+      }
+
+      if (approvalAcknowledged) return
+
+      const alreadySeen = await AsyncStorage.getItem(approvalStorageKey)
+      if (!alive) return
+
+      if (alreadySeen === '1') {
+        promptedProcessIdRef.current = activeProcess.id
+        setApprovalAcknowledged(true)
+        return
+      }
+
+      if (promptedProcessIdRef.current === activeProcess.id) return
+      promptedProcessIdRef.current = activeProcess.id
+      setApprovalAcknowledged(false)
+      Alert.alert(
+        'Solicitação aprovada',
+        'Sua solicitação foi aprovada. Acompanhe as próximas etapas pelo menu Processos.',
+        [
+          {
+            text: 'Acompanhar etapas',
+            onPress: async () => {
+              await AsyncStorage.setItem(approvalStorageKey, '1')
+              if (mountedRef.current) setApprovalAcknowledged(true)
+            },
+          },
+        ],
+        { cancelable: false },
+      )
+    }
+
+    syncApprovalAlert()
+
+    return () => {
+      alive = false
+    }
+  }, [activeProcess, approvalAcknowledged, approvalStorageKey])
 
   return (
     <Tabs
@@ -66,7 +134,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={24} color={color} />
           ),
-          href: hasServicoAdquirido ? undefined : null,
+          href: showProcessosMenu ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
+        name="processos/[id]"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen

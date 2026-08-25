@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ueno.assessoria"
+      "bundleIdentifier": "com.ueno.assessoria",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
@@ -42,6 +46,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b7bb37d4-7afd-44d0-b105-1c2c2e785e13"
+      }
+    },
+    "owner": "hayamadigitals-team"
   }
 }

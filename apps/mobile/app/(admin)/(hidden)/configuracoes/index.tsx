@@ -1,8 +1,11 @@
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,23 +18,28 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
+import { getFunctions, httpsCallable } from 'firebase/functions'
+import { useNavigation } from '@react-navigation/native'
 import { sendPasswordResetEmail } from 'firebase/auth'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
-import type { PreferredLang } from '@ueno/firebase'
+import type { DestinoFixo, PreferredLang, Profile } from '@ueno/firebase'
 import { auth, db, storage } from '@/lib/firebase'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
 import { colors, shadows } from '@/theme'
 import { signOut } from '@ueno/firebase'
 import { getProfile, listProfiles, updateProfile } from '@ueno/firebase/queries/perfis'
+import { listDestinos, createDestino, updateDestino, toggleDestinoAtivo } from '@ueno/firebase/queries/destinos'
 import { avatarPath } from '@ueno/firebase/storage'
 import { useEffect, useMemo, useState } from 'react'
 
 type IconName = keyof typeof Ionicons.glyphMap
-type SectionKey = 'account' | 'email' | 'language' | 'users' | 'notifications' | 'security' | 'company' | 'support'
+type SectionKey = 'account' | 'language' | 'users' | 'notifications' | 'security' | 'locations' | 'company' | 'support'
+type UserModalMode = 'invite' | 'edit'
+type EditableRole = 'admin' | 'instrutor'
 
 type RowProps = {
   icon: IconName
@@ -127,6 +135,7 @@ function SaveButton({ label, loading, onPress }: { label: string; loading?: bool
 
 export default function AdminConfiguracoesScreen() {
   const { t, i18n } = useTranslation(['common', 'configuracoes'])
+  const navigation = useNavigation()
   const { session, clear, setSession } = useAuthStore()
   const queryClient = useQueryClient()
   const [activeSection, setActiveSection] = useState<SectionKey | null>(null)
@@ -134,23 +143,27 @@ export default function AdminConfiguracoesScreen() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
-  const [enderecoJp, setEnderecoJp] = useState('')
-  const [cepJp, setCepJp] = useState('')
-  const [provinciaJp, setProvinciaJp] = useState('')
-  const [cidadeJp, setCidadeJp] = useState('')
-  const [bairroJp, setBairroJp] = useState('')
-  const [numeroBlocoJp, setNumeroBlocoJp] = useState('')
-  const [apartamentoJp, setApartamentoJp] = useState('')
-  const [complementoJp, setComplementoJp] = useState('')
-  const [mapaLinkJp, setMapaLinkJp] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [email, setEmail] = useState('')
   const [preferredLang, setPreferredLang] = useState<PreferredLang>('pt-BR')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [pushEnabled, setPushEnabled] = useState(true)
   const [taskAlerts, setTaskAlerts] = useState(true)
   const [financeAlerts, setFinanceAlerts] = useState(true)
   const [documentAlerts, setDocumentAlerts] = useState(true)
+  const [userModalOpen, setUserModalOpen] = useState(false)
+  const [userModalMode, setUserModalMode] = useState<UserModalMode>('invite')
+  const [editingUser, setEditingUser] = useState<Profile | null>(null)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteFullName, setInviteFullName] = useState('')
+  const [inviteRole, setInviteRole] = useState<EditableRole>('instrutor')
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [invitingUser, setInvitingUser] = useState(false)
+  const [locationModalOpen, setLocationModalOpen] = useState(false)
+  const [locationId, setLocationId] = useState<string | null>(null)
+  const [locationName, setLocationName] = useState('')
+  const [locationAddress, setLocationAddress] = useState('')
+  const [locationGoogleMapsUrl, setLocationGoogleMapsUrl] = useState('')
+  const [savingLocation, setSavingLocation] = useState(false)
 
   const { data: profile, isLoading: loadingProfile } = useQuery({
     queryKey: ['admin-profile', session?.userId],
@@ -163,49 +176,240 @@ export default function AdminConfiguracoesScreen() {
     queryFn: () => listProfiles(db),
   })
 
+  const { data: destinos = [], isLoading: loadingLocations } = useQuery({
+    queryKey: ['destinos'],
+    queryFn: () => listDestinos(db),
+  })
+
   const teamMembers = useMemo(
     () => team.filter((user) => user.role !== 'cliente'),
     [team],
   )
+
+  const activeLocation = useMemo(
+    () =>
+      destinos.find(
+        (destino) =>
+          destino.endereco === profile?.endereco_jp &&
+          destino.google_maps_url === (profile?.mapa_link_jp ?? null),
+      ) ?? null,
+    [destinos, profile?.endereco_jp, profile?.mapa_link_jp],
+  )
+
+  const handleInviteUser = async () => {
+    if (!inviteEmail.trim() || !inviteFullName.trim()) {
+      Alert.alert('Campos obrigatórios', 'Preencha nome completo e email para gerar o convite.')
+      return
+    }
+
+    try {
+      setInvitingUser(true)
+      const inviteUser = httpsCallable<
+        { email: string; full_name: string; role: EditableRole },
+        { user_id: string; reset_link?: string }
+      >(getFunctions(), 'inviteUser')
+
+      const { data } = await inviteUser({
+        email: inviteEmail.trim(),
+        full_name: inviteFullName.trim(),
+        role: inviteRole,
+      })
+
+      setInviteLink(data.reset_link ?? null)
+      if (userModalMode === 'invite') {
+        setInviteEmail('')
+        setInviteFullName('')
+        setInviteRole('instrutor')
+      }
+      Alert.alert('Convite gerado', 'O link de acesso foi criado e está visível abaixo.')
+      queryClient.invalidateQueries({ queryKey: ['admin-team'] })
+    } catch (error) {
+      Alert.alert('Falha ao gerar convite', error instanceof Error ? error.message : 'Tente novamente.')
+    } finally {
+      setInvitingUser(false)
+    }
+  }
+
+  const handleSaveUserPermissions = async () => {
+    if (!editingUser) return
+    try {
+      setInvitingUser(true)
+      const setRoleClaim = httpsCallable<{ uid: string; role: EditableRole }, { success: boolean }>(
+        getFunctions(),
+        'setRoleClaim',
+      )
+      await setRoleClaim({ uid: editingUser.id, role: inviteRole })
+      await updateProfile(db, editingUser.id, { role: inviteRole })
+      await queryClient.invalidateQueries({ queryKey: ['admin-team'] })
+      setUserModalOpen(false)
+      setEditingUser(null)
+      Alert.alert('Permissões atualizadas', 'O perfil do usuário foi atualizado com sucesso.')
+    } catch (error) {
+      Alert.alert('Falha ao salvar permissões', error instanceof Error ? error.message : 'Tente novamente.')
+    } finally {
+      setInvitingUser(false)
+    }
+  }
+
+  const handleOpenInviteLink = async () => {
+    if (!inviteLink) return
+    try {
+      await Linking.openURL(inviteLink)
+    } catch {
+      Alert.alert('Não foi possível abrir o link', inviteLink)
+    }
+  }
+
+  const handleSaveLocation = async () => {
+    if (!locationName.trim() || !locationAddress.trim()) {
+      Alert.alert('Campos obrigatórios', 'Preencha nome e endereço do local.')
+      return
+    }
+
+    try {
+      setSavingLocation(true)
+      const payload = {
+        nome: locationName.trim(),
+        endereco: locationAddress.trim(),
+        googleMapsUrl: locationGoogleMapsUrl.trim() || null,
+      }
+
+      const savedLocation = locationId
+        ? await updateDestino(db, locationId, payload)
+        : await createDestino(db, payload)
+
+      if (session) {
+        await updateProfile(db, session.userId, {
+          endereco_jp: savedLocation.endereco,
+          mapa_link_jp: savedLocation.google_maps_url,
+        })
+      }
+
+      setLocationId(null)
+      setLocationName('')
+      setLocationAddress('')
+      setLocationGoogleMapsUrl('')
+      setLocationModalOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['destinos'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-profile', session?.userId] })
+      Alert.alert('Pronto', 'Local salvo e aplicado ao perfil do admin.')
+    } catch (error) {
+      Alert.alert('Falha ao salvar local', error instanceof Error ? error.message : 'Tente novamente.')
+    } finally {
+      setSavingLocation(false)
+    }
+  }
+
+  const handleEditLocation = (destino: DestinoFixo) => {
+    setLocationId(destino.id)
+    setLocationName(destino.nome)
+    setLocationAddress(destino.endereco)
+    setLocationGoogleMapsUrl(destino.google_maps_url ?? '')
+    setLocationModalOpen(true)
+    setActiveSection('locations')
+  }
+
+  const handleOpenNewLocation = () => {
+    setLocationId(null)
+    setLocationName('')
+    setLocationAddress('')
+    setLocationGoogleMapsUrl('')
+    setLocationModalOpen(true)
+  }
+
+  const handleCloseLocationModal = () => {
+    setLocationModalOpen(false)
+    setLocationId(null)
+    setLocationName('')
+    setLocationAddress('')
+    setLocationGoogleMapsUrl('')
+  }
+
+  const openInviteModal = () => {
+    router.push('/(admin)/(hidden)/configuracoes/usuarios/novo')
+  }
+
+  const openEditPermissionsModal = (user: Profile) => {
+    router.push({
+      pathname: '/(admin)/(hidden)/configuracoes/usuarios/[id]',
+      params: { id: user.id },
+    })
+  }
+
+  const closeUserModal = () => {
+    setUserModalOpen(false)
+    setEditingUser(null)
+    setInviteEmail('')
+    setInviteFullName('')
+    setInviteRole('instrutor')
+  }
+
+  const handleApplyLocation = async (destino: DestinoFixo) => {
+    if (!session) return
+    try {
+      await updateProfile(db, session.userId, {
+        endereco_jp: destino.endereco,
+        mapa_link_jp: destino.google_maps_url,
+      })
+      await queryClient.invalidateQueries({ queryKey: ['admin-profile', session.userId] })
+      Alert.alert('Local aplicado', `${destino.nome} agora é o local do admin.`)
+    } catch (error) {
+      Alert.alert('Falha ao aplicar local', error instanceof Error ? error.message : 'Tente novamente.')
+    }
+  }
+
+  const handleToggleLocation = async (destino: DestinoFixo) => {
+    try {
+      await toggleDestinoAtivo(db, destino.id, !destino.is_active)
+      await queryClient.invalidateQueries({ queryKey: ['destinos'] })
+    } catch (error) {
+      Alert.alert('Falha ao alterar local', error instanceof Error ? error.message : 'Tente novamente.')
+    }
+  }
 
   useEffect(() => {
     if (!session) return
     setFullName(profile?.full_name ?? session.fullName ?? '')
     setPhone(profile?.phone ?? '')
     setWhatsapp(profile?.whatsapp ?? '')
-    setEnderecoJp(profile?.endereco_jp ?? '')
-    setCepJp(profile?.cep_jp ?? '')
-    setProvinciaJp(profile?.provincia_jp ?? '')
-    setCidadeJp(profile?.cidade_jp ?? '')
-    setBairroJp(profile?.bairro_jp ?? '')
-    setNumeroBlocoJp(profile?.numero_bloco_jp ?? '')
-    setApartamentoJp(profile?.apartamento_jp ?? '')
-    setComplementoJp(profile?.complemento_jp ?? '')
-    setMapaLinkJp(profile?.mapa_link_jp ?? '')
     setAvatarUrl(profile?.avatar_url ?? session.avatarUrl ?? null)
-    setEmail(profile?.email ?? session.email ?? '')
     setPreferredLang(profile?.preferred_lang ?? session.preferredLang ?? 'pt-BR')
   }, [profile, session])
 
   const headerTitle = useMemo(() => {
     if (activeSection === 'account') return t('configuracoes:mobile_admin.account_data')
-    if (activeSection === 'email') return t('configuracoes:mobile_admin.access_email')
     if (activeSection === 'language') return t('common:language')
     if (activeSection === 'users') return t('configuracoes:mobile_admin.users_permissions')
     if (activeSection === 'notifications') return t('configuracoes:mobile_admin.admin_notifications')
     if (activeSection === 'security') return t('configuracoes:tabs.seguranca')
+    if (activeSection === 'locations') return 'Locais'
     if (activeSection === 'company') return t('configuracoes:mobile_admin.system')
     if (activeSection === 'support') return t('configuracoes:mobile_admin.internal_support')
     return t('common:settings')
   }, [activeSection, t])
 
   const handleBack = () => {
+    if (locationModalOpen) {
+      handleCloseLocationModal()
+      return
+    }
+    if (userModalOpen) {
+      closeUserModal()
+      return
+    }
     if (activeSection) {
       setActiveSection(null)
       return
     }
     router.back()
   }
+
+  useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: !activeSection,
+      headerBackButtonMenuEnabled: false,
+    })
+  }, [activeSection, navigation])
 
   const syncSession = (patch: Partial<NonNullable<typeof session>>) => {
     if (!session) return
@@ -281,15 +485,6 @@ export default function AdminConfiguracoesScreen() {
         full_name: fullName.trim(),
         phone: clean(phone),
         whatsapp: clean(whatsapp),
-        endereco_jp: clean(enderecoJp),
-        cep_jp: clean(cepJp),
-        provincia_jp: clean(provinciaJp),
-        cidade_jp: clean(cidadeJp),
-        bairro_jp: clean(bairroJp),
-        numero_bloco_jp: clean(numeroBlocoJp),
-        apartamento_jp: clean(apartamentoJp),
-        complemento_jp: clean(complementoJp),
-        mapa_link_jp: clean(mapaLinkJp),
         preferred_lang: preferredLang,
       })
       syncSession({ fullName: fullName.trim(), preferredLang })
@@ -367,12 +562,12 @@ export default function AdminConfiguracoesScreen() {
 
       <Section title={t('configuracoes:mobile_admin.account')}>
         <Row icon="person-outline" label={t('configuracoes:mobile_admin.account_data')} value={session?.fullName ?? '-'} onPress={() => setActiveSection('account')} />
-        <Row icon="mail-outline" label={t('configuracoes:mobile_admin.access_email')} value={session?.email ?? '-'} onPress={() => setActiveSection('email')} />
         <Row icon="language-outline" label={t('common:language')} value={session?.preferredLang === 'en' ? 'English' : 'Português (BR)'} onPress={() => setActiveSection('language')} last />
       </Section>
 
       <Section title={t('configuracoes:mobile_admin.administration')}>
         <Row icon="people-outline" label={t('configuracoes:mobile_admin.users_permissions')} value={t('configuracoes:mobile_admin.user_count', { count: teamMembers.length || 0 })} onPress={() => setActiveSection('users')} />
+        <Row icon="location-outline" label="Locais" value={activeLocation?.nome ?? 'Definir'} onPress={() => setActiveSection('locations')} />
         <Row icon="notifications-outline" label={t('configuracoes:mobile_admin.admin_notifications')} onPress={() => setActiveSection('notifications')} />
         <Row icon="lock-closed-outline" label={t('configuracoes:mobile_admin.account_security')} onPress={() => setActiveSection('security')} last />
       </Section>
@@ -422,33 +617,264 @@ export default function AdminConfiguracoesScreen() {
         </View>
       </View>
       <View style={s.accountGroup}>
-        <FormSubsection title="Endereço" />
+        <FormSubsection title="Acesso" />
         <View style={s.accountGroupBody}>
-          <Field label="CEP" value={cepJp} onChangeText={setCepJp} keyboardType="number-pad" />
-          <Field label="Província" value={provinciaJp} onChangeText={setProvinciaJp} />
-          <Field label="Cidade" value={cidadeJp} onChangeText={setCidadeJp} />
-          <Field label="Bairro" value={bairroJp} onChangeText={setBairroJp} />
-          <Field label={t('configuracoes:profile.endereco_jp')} value={enderecoJp} onChangeText={setEnderecoJp} placeholder={t('configuracoes:mobile_admin.address_placeholder')} />
-          <Field label="Número / Bloco" value={numeroBlocoJp} onChangeText={setNumeroBlocoJp} />
-          <Field label="Apartamento" value={apartamentoJp} onChangeText={setApartamentoJp} />
-          <Field label="Complemento" value={complementoJp} onChangeText={setComplementoJp} />
-          <Field label="Link do mapa" value={mapaLinkJp} onChangeText={setMapaLinkJp} keyboardType="url" autoCapitalize="none" last />
+          <InfoLine label="Email de acesso" value={session?.email ?? '-'} last />
         </View>
       </View>
       <SaveButton label={t('configuracoes:profile.save')} loading={isSaving} onPress={saveAccount} />
     </View>
   )
 
-  const renderEmail = () => (
+  const renderLocations = () => (
     <View style={s.panel}>
       <Text style={s.detailText}>
-        Este email é usado para entrar no app e não pode ser alterado por aqui. Para trocar sua senha, envie um link de redefinição para o email cadastrado.
+        Aqui você cadastra os locais fixos e escolhe qual deles fica vinculado ao perfil do admin.
       </Text>
-      <InfoLine label="Email de acesso" value={email || session?.email || '-'} />
-      <TouchableOpacity style={[s.actionRow, { borderBottomWidth: 0 }]} activeOpacity={0.8} onPress={handlePasswordReset}>
-        <Ionicons name="key-outline" size={19} color={colors.navy800} />
-        <Text style={s.actionText}>Alterar senha</Text>
+      <TouchableOpacity style={s.newLocationBtn} activeOpacity={0.85} onPress={handleOpenNewLocation}>
+        <Ionicons name="add-circle-outline" size={18} color={colors.white} />
+        <Text style={s.newLocationBtnTxt}>Adicionar local</Text>
       </TouchableOpacity>
+      <View style={s.locationsList}>
+        {loadingLocations ? <ActivityIndicator color={colors.navy800} style={s.loader} /> : null}
+        {destinos.map((destino, index) => (
+          <View key={destino.id} style={[s.locationRow, index === destinos.length - 1 && { borderBottomWidth: 0 }]}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.locationName} numberOfLines={1}>{destino.nome}</Text>
+              <Text style={s.locationAddress} numberOfLines={2}>{destino.endereco}</Text>
+              <Text style={s.locationMap} numberOfLines={1}>
+                {destino.google_maps_url ?? 'Sem link do Maps'}
+              </Text>
+            </View>
+            <View style={s.locationActions}>
+              <TouchableOpacity style={s.locationActionBtn} onPress={() => handleApplyLocation(destino)} activeOpacity={0.8}>
+                <Ionicons name="location" size={16} color={colors.navy800} />
+                <Text style={s.locationActionText}>Aplicar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.locationActionBtn} onPress={() => handleEditLocation(destino)} activeOpacity={0.8}>
+                <Ionicons name="pencil" size={16} color={colors.ink700} />
+                <Text style={s.locationActionText}>Editar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.locationActionBtn} onPress={() => handleToggleLocation(destino)} activeOpacity={0.8}>
+                <Ionicons name={destino.is_active ? 'pause' : 'play'} size={16} color={destino.is_active ? colors.red : colors.green} />
+                <Text style={[s.locationActionText, { color: destino.is_active ? colors.red : colors.green }]}>
+                  {destino.is_active ? 'Desativar' : 'Ativar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+        {!loadingLocations && destinos.length === 0 ? (
+          <Text style={s.emptyText}>Nenhum local cadastrado ainda.</Text>
+        ) : null}
+      </View>
+      <Modal
+        visible={locationModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseLocationModal}
+      >
+        <View style={s.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={handleCloseLocationModal} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={s.modalKeyboard}
+          >
+            <View style={s.modalSheet}>
+              <View style={s.modalHandle} />
+              <View style={s.modalHeader}>
+                <View>
+                  <Text style={s.modalTitle}>{locationId ? 'Editar local' : 'Novo local'}</Text>
+                  <Text style={s.modalSub}>Preencha os campos e salve para atualizar o local fixo.</Text>
+                </View>
+                <TouchableOpacity style={s.modalCloseBtn} onPress={handleCloseLocationModal} activeOpacity={0.8}>
+                  <Ionicons name="close" size={18} color={colors.ink700} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                style={s.modalScroll}
+                contentContainerStyle={s.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Field label="Nome do local" value={locationName} onChangeText={setLocationName} placeholder="Ex: Menkyo Center" />
+                <Field label="Endereço" value={locationAddress} onChangeText={setLocationAddress} placeholder="Endereço completo" />
+                <Field
+                  label="Link do Google Maps"
+                  value={locationGoogleMapsUrl}
+                  onChangeText={setLocationGoogleMapsUrl}
+                  placeholder="https://maps.google.com/..."
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  last
+                />
+                <View style={s.modalActions}>
+                  <TouchableOpacity style={s.modalSecondaryBtn} onPress={handleCloseLocationModal} activeOpacity={0.85}>
+                    <Text style={s.modalSecondaryTxt}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalPrimaryBtn, savingLocation && { opacity: 0.7 }]}
+                    onPress={handleSaveLocation}
+                    activeOpacity={0.85}
+                    disabled={savingLocation}
+                  >
+                    {savingLocation ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={s.modalPrimaryTxt}>Salvar local</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+      <Modal
+        visible={userModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeUserModal}
+      >
+        <View style={s.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeUserModal} />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={s.modalKeyboard}
+          >
+            <View style={s.modalSheet}>
+              <View style={s.modalHandle} />
+              <View style={s.modalHeader}>
+                <View>
+                  <Text style={s.modalTitle}>
+                    {userModalMode === 'invite' ? 'Convidar usuário' : 'Dados do usuário'}
+                  </Text>
+                  <Text style={s.modalSub}>
+                    {userModalMode === 'invite'
+                      ? 'Crie o acesso e copie o link para enviar manualmente.'
+                      : 'Veja os dados e altere o perfil de acesso deste usuário.'}
+                  </Text>
+                </View>
+                <TouchableOpacity style={s.modalCloseBtn} onPress={closeUserModal} activeOpacity={0.8}>
+                  <Ionicons name="close" size={18} color={colors.ink700} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                style={s.modalScroll}
+                contentContainerStyle={s.modalContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {userModalMode === 'invite' ? (
+                  <>
+                    <Field
+                      label="Nome completo"
+                      value={inviteFullName}
+                      onChangeText={setInviteFullName}
+                      placeholder="Nome da pessoa"
+                      autoCapitalize="words"
+                    />
+                    <Field
+                      label="Email"
+                      value={inviteEmail}
+                      onChangeText={setInviteEmail}
+                      placeholder="email@exemplo.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <View style={s.permissionInfoBox}>
+                      <View style={s.permissionProfileHeader}>
+                        <Avatar
+                          name={editingUser?.full_name ?? ''}
+                          size={44}
+                          url={editingUser?.avatar_url ?? null}
+                        />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={s.permissionProfileName} numberOfLines={1}>
+                            {editingUser?.full_name ?? '-'}
+                          </Text>
+                          <Text style={s.permissionProfileEmail} numberOfLines={1}>
+                            {editingUser?.email ?? '-'}
+                          </Text>
+                        </View>
+                      </View>
+                      <InfoLine label="Status" value={editingUser?.is_active ? 'Ativo' : 'Inativo'} />
+                      <InfoLine label="Perfil atual" value={editingUser?.role ?? '-'} last />
+                    </View>
+                    <Text style={s.permissionLabel}>Alterar permissão</Text>
+                  </>
+                )}
+
+                {userModalMode === 'invite' ? <Text style={s.permissionLabel}>Permissão</Text> : null}
+                <View style={s.segment}>
+                  {[
+                    ['instrutor', 'Instrutor'],
+                    ['admin', 'Admin'],
+                  ].map(([value, label]) => {
+                    const selected = inviteRole === value
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={[s.segmentItem, selected && s.segmentItemActive]}
+                        activeOpacity={0.8}
+                        onPress={() => setInviteRole(value as EditableRole)}
+                      >
+                        <Text style={[s.segmentText, selected && s.segmentTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    )
+                  })}
+                </View>
+
+                {userModalMode === 'invite' && inviteLink ? (
+                  <View style={s.linkBox}>
+                    <Text style={s.linkTitle}>Link de acesso criado</Text>
+                    <Text style={s.linkValue} selectable>
+                      {inviteLink}
+                    </Text>
+                    <View style={s.linkActions}>
+                      <TouchableOpacity style={s.linkActionBtn} onPress={handleOpenInviteLink} activeOpacity={0.8}>
+                        <Ionicons name="open-outline" size={16} color={colors.navy800} />
+                        <Text style={s.linkActionTxt}>Abrir link</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={s.linkActionBtn}
+                        onPress={() => setInviteLink(null)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close-outline" size={16} color={colors.ink700} />
+                        <Text style={s.linkActionTxt}>Ocultar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+
+                <View style={s.modalActions}>
+                  <TouchableOpacity style={s.modalSecondaryBtn} onPress={closeUserModal} activeOpacity={0.85}>
+                    <Text style={s.modalSecondaryTxt}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalPrimaryBtn, invitingUser && { opacity: 0.7 }]}
+                    onPress={userModalMode === 'invite' ? handleInviteUser : handleSaveUserPermissions}
+                    activeOpacity={0.85}
+                    disabled={invitingUser}
+                  >
+                    {invitingUser ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={s.modalPrimaryTxt}>
+                        {userModalMode === 'invite' ? 'Gerar convite' : 'Salvar permissões'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   )
 
@@ -480,18 +906,54 @@ export default function AdminConfiguracoesScreen() {
   const renderUsers = () => (
     <View style={s.panel}>
       <Text style={s.detailText}>{t('configuracoes:mobile_admin.users_help')}</Text>
+      <Pressable style={s.newLocationBtn} onPress={openInviteModal}>
+        <Ionicons name="person-add-outline" size={18} color={colors.white} />
+        <Text style={s.newLocationBtnTxt}>Convidar usuário</Text>
+      </Pressable>
+      {inviteLink ? (
+        <View style={s.linkBox}>
+          <Text style={s.linkTitle}>Link de acesso criado</Text>
+          <Text style={s.linkValue} selectable>
+            {inviteLink}
+          </Text>
+          <View style={s.linkActions}>
+            <TouchableOpacity style={s.linkActionBtn} onPress={handleOpenInviteLink} activeOpacity={0.8}>
+              <Ionicons name="open-outline" size={16} color={colors.navy800} />
+              <Text style={s.linkActionTxt}>Abrir link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.linkActionBtn}
+              onPress={() => setInviteLink(null)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="close-outline" size={16} color={colors.ink700} />
+              <Text style={s.linkActionTxt}>Ocultar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
       {loadingTeam ? <ActivityIndicator color={colors.navy800} style={s.loader} /> : null}
       {teamMembers.map((user, index) => (
-        <View key={user.id} style={[s.userRow, index === teamMembers.length - 1 && { borderBottomWidth: 0 }]}>
+        <Pressable
+          key={user.id}
+          style={[s.userRow, index === teamMembers.length - 1 && { borderBottomWidth: 0 }]}
+          onPress={() => openEditPermissionsModal(user)}
+        >
           <Avatar name={user.full_name} size={36} url={user.avatar_url} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={s.userName} numberOfLines={1}>{user.full_name}</Text>
             <Text style={s.userEmail} numberOfLines={1}>{user.email}</Text>
           </View>
-          <View style={[s.statusPill, !user.is_active && s.statusPillOff]}>
-            <Text style={[s.statusText, !user.is_active && s.statusTextOff]}>{user.role}</Text>
+          <View style={s.userActionStack}>
+            <Pressable style={s.userActionBtn} onPress={() => openEditPermissionsModal(user)}>
+              <Ionicons name="eye-outline" size={14} color={colors.navy800} />
+              <Text style={s.userActionTxt}>Ver</Text>
+            </Pressable>
+            <View style={[s.statusPill, !user.is_active && s.statusPillOff]}>
+              <Text style={[s.statusText, !user.is_active && s.statusTextOff]}>{user.role}</Text>
+            </View>
           </View>
-        </View>
+        </Pressable>
       ))}
     </View>
   )
@@ -529,10 +991,6 @@ export default function AdminConfiguracoesScreen() {
         <Ionicons name="key-outline" size={19} color={colors.navy800} />
         <Text style={s.actionText}>{t('configuracoes:mobile_admin.send_password_reset')}</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[s.actionRow, { borderBottomWidth: 0 }]} activeOpacity={0.8} onPress={handleLogout}>
-        <Ionicons name="log-out-outline" size={19} color={colors.red} />
-        <Text style={[s.actionText, { color: colors.red }]}>{t('configuracoes:mobile_admin.sign_out_account')}</Text>
-      </TouchableOpacity>
     </View>
   )
 
@@ -556,11 +1014,11 @@ export default function AdminConfiguracoesScreen() {
 
   const renderDetail = () => {
     if (activeSection === 'account') return renderAccount()
-    if (activeSection === 'email') return renderEmail()
     if (activeSection === 'language') return renderLanguage()
     if (activeSection === 'users') return renderUsers()
     if (activeSection === 'notifications') return renderNotifications()
     if (activeSection === 'security') return renderSecurity()
+    if (activeSection === 'locations') return renderLocations()
     if (activeSection === 'company') return renderCompany()
     if (activeSection === 'support') return renderSupport()
     return renderMain()
@@ -758,10 +1216,218 @@ const s = StyleSheet.create({
   },
   userName: { fontSize: 13.5, fontWeight: '700', color: colors.ink900 },
   userEmail: { fontSize: 11.5, color: colors.ink500, marginTop: 1 },
+  locationsList: {
+    marginTop: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+  },
+  locationRow: {
+    padding: 14,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+  },
+  locationName: { fontSize: 13.5, fontWeight: '800', color: colors.ink900 },
+  locationAddress: { fontSize: 11.5, color: colors.ink500, marginTop: 2, lineHeight: 16 },
+  locationMap: { fontSize: 11, color: colors.navy800, marginTop: 3 },
+  locationActions: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  locationActionBtn: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.ink200,
+    backgroundColor: colors.ink50,
+  },
+  locationActionText: { fontSize: 11.5, fontWeight: '800', color: colors.ink800 },
+  emptyText: { padding: 16, fontSize: 12.5, color: colors.ink500, textAlign: 'center' },
+  newLocationBtn: {
+    minHeight: 46,
+    marginTop: 8,
+    marginBottom: 14,
+    borderRadius: 14,
+    backgroundColor: colors.navy800,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  newLocationBtnTxt: { fontSize: 13.5, fontWeight: '800', color: colors.white },
+  inviteCard: {
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.navy100,
+    backgroundColor: colors.navy50,
+  },
+  inviteTitle: { fontSize: 14, fontWeight: '800', color: colors.navy900 },
+  inviteHint: { fontSize: 12, lineHeight: 18, color: colors.ink600, marginTop: 4, marginBottom: 12 },
+  inviteFields: { gap: 10, marginBottom: 12 },
+  permissionInfoBox: {
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    borderRadius: 14,
+    backgroundColor: colors.ink50,
+    paddingHorizontal: 2,
+    overflow: 'hidden',
+  },
+  permissionProfileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ink100,
+  },
+  permissionProfileName: { fontSize: 14, fontWeight: '800', color: colors.ink900 },
+  permissionProfileEmail: { fontSize: 12, color: colors.ink500, marginTop: 2 },
+  permissionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.ink500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 2,
+    marginBottom: -2,
+  },
+  userActionStack: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  userActionBtn: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.navy100,
+    backgroundColor: colors.navy50,
+  },
+  userActionTxt: { fontSize: 11.5, fontWeight: '800', color: colors.navy800 },
   statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.navy50 },
   statusPillOff: { backgroundColor: colors.ink100 },
   statusText: { fontSize: 10.5, fontWeight: '700', color: colors.navy800, textTransform: 'capitalize' },
   statusTextOff: { color: colors.ink500 },
+  linkBox: {
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.navy100,
+    backgroundColor: colors.white,
+  },
+  linkTitle: { fontSize: 13.5, fontWeight: '800', color: colors.navy900 },
+  linkValue: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.navy100,
+    color: colors.ink800,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  linkActions: { flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' },
+  linkActionBtn: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.ink200,
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  linkActionTxt: { fontSize: 12.5, fontWeight: '800', color: colors.ink800 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 31, 77, 0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalKeyboard: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    paddingTop: 10,
+    maxHeight: '88%',
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.ink200,
+    marginBottom: 10,
+  },
+  modalHeader: {
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: colors.ink900 },
+  modalSub: { fontSize: 12, color: colors.ink500, marginTop: 3, lineHeight: 17 },
+  modalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: colors.ink50,
+    borderWidth: 1,
+    borderColor: colors.ink100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScroll: { flexGrow: 0 },
+  modalContent: { paddingHorizontal: 18, paddingBottom: 24, gap: 10 },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalSecondaryBtn: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.ink200,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryTxt: { fontSize: 13.5, fontWeight: '800', color: colors.ink800 },
+  modalPrimaryBtn: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    backgroundColor: colors.navy800,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryTxt: { fontSize: 13.5, fontWeight: '800', color: colors.white },
   switchRow: {
     minHeight: 56,
     flexDirection: 'row',

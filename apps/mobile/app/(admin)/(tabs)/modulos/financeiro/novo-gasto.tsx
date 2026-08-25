@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Image,
   Alert,
   ActivityIndicator,
 } from 'react-native'
@@ -16,6 +15,7 @@ import { router } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { db, storage } from '@/lib/firebase'
+import { AppImage } from '@/components/AppImage'
 import { createGasto, listAdminProfiles } from '@ueno/firebase/queries/financeiro'
 import { uploadFile, gastoComprovantePath } from '@ueno/firebase/storage'
 import { useAuthStore } from '@/stores/auth.store'
@@ -257,7 +257,7 @@ export default function NovoGastoScreen() {
           <FieldLabel label="Comprovante (opcional)" />
           {fotoUri ? (
             <View style={s.fotoPreview}>
-              <Image source={{ uri: fotoUri }} style={s.fotoImg} resizeMode="cover" />
+              <AppImage source={{ uri: fotoUri }} style={s.fotoImg} />
               <TouchableOpacity style={s.fotoRemove} onPress={() => setFotoUri(null)} activeOpacity={0.8}>
                 <Ionicons name="close-circle" size={24} color={colors.err} />
               </TouchableOpacity>

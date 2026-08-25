@@ -46,6 +46,19 @@ declare module 'react-native' {
     absoluteFillObject: ViewStyle
     hairlineWidth: number
   }
+
+  export namespace Animated {
+    class Value {
+      constructor(value: number)
+    }
+    const View: ComponentType<any>
+    function timing(value: Value, config: Record<string, any>): { start: (cb?: () => void) => void }
+    function spring(value: Value, config: Record<string, any>): { start: (cb?: () => void) => void }
+    function delay(time: number): { start: (cb?: () => void) => void }
+    function sequence(animations: any[]): { start: (cb?: () => void) => void }
+    function parallel(animations: any[]): { start: (cb?: () => void) => void }
+    function loop(animation: any, config?: Record<string, any>): { start: (cb?: () => void) => void; stop: () => void }
+  }
 }
 
 declare module 'react-native-webview' {
@@ -55,11 +68,12 @@ declare module 'react-native-webview' {
   export default WebView
 }
 
-declare module 'expo-av' {
+declare module 'expo-video' {
   import type { ComponentType } from 'react'
 
-  export const Video: ComponentType<any>
-  export const ResizeMode: Record<string, string>
+  export const VideoView: ComponentType<any>
+  export const useVideoPlayer: (...args: any[]) => any
+  export const createVideoPlayer: (...args: any[]) => any
 }
 
 declare module 'react-native-gesture-handler' {

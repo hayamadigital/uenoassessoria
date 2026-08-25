@@ -1,14 +1,15 @@
-import { Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native'
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, router } from 'expo-router'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
-import { Video, ResizeMode } from 'expo-av'
+import { VideoView, useVideoPlayer } from 'expo-video'
 import { WebView } from 'react-native-webview'
 import { db } from '@/lib/firebase'
-import { getMaterial, listSimuladoQuestoes } from '@ueno/firebase/queries/materiais'
+import { AppImage } from '@/components/AppImage'
+import { getMaterial, listMaterialCards, listSimuladoQuestoes } from '@ueno/firebase/queries/materiais'
 import { colors } from '@/theme'
-import type { QuestaoWithDetails, TipoMaterial } from '@ueno/firebase'
+import type { MaterialCard, QuestaoWithDetails, TipoMaterial } from '@ueno/firebase'
 
 const TIPO_COLOR: Record<TipoMaterial, string> = {
   pdf: '#0891B2',
@@ -16,6 +17,7 @@ const TIPO_COLOR: Record<TipoMaterial, string> = {
   link: '#7E22CE',
   texto: '#0F766E',
   simulado: colors.navy800,
+  card: '#FB923C',
 }
 
 const TIPO_LABEL: Record<TipoMaterial, string> = {
@@ -24,6 +26,7 @@ const TIPO_LABEL: Record<TipoMaterial, string> = {
   link: 'Link externo',
   texto: 'Texto',
   simulado: 'Simulado',
+  card: 'Cartão',
 }
 
 function questionIdentifier(id: string) {
@@ -36,6 +39,21 @@ function isDirectVideoUrl(url: string) {
 
 function pdfViewerUrl(url: string) {
   return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`
+}
+
+function DirectVideoPlayer({ url }: { url: string }) {
+  const player = useVideoPlayer({ uri: url })
+
+  return (
+    <View style={s.videoWrap}>
+      <VideoView
+        player={player}
+        style={s.video}
+        nativeControls
+        contentFit="contain"
+      />
+    </View>
+  )
 }
 
 function QuestionCard({ questao, index }: { questao: QuestaoWithDetails; index: number }) {
@@ -74,6 +92,29 @@ function QuestionCard({ questao, index }: { questao: QuestaoWithDetails; index: 
   )
 }
 
+function MaterialCardPreview({ card, index }: { card: MaterialCard; index: number }) {
+  return (
+    <View style={s.flashCard}>
+      <View style={s.flashImageWrap}>
+        <AppImage source={{ uri: card.imagem_url }} style={s.flashImage} contentFit="contain" />
+      </View>
+      <View style={s.flashBody}>
+        <View style={s.flashMetaRow}>
+          <Text style={s.flashIndex}>{index + 1}</Text>
+          {card.categoria ? <Text style={s.flashCategory}>{card.categoria}</Text> : null}
+        </View>
+        <Text style={s.flashTitle}>{card.legenda_pt}</Text>
+        {[card.legenda_kanji, card.legenda_hiragana, card.legenda_romaji].filter(Boolean).length > 0 ? (
+          <Text style={s.flashReading}>
+            {[card.legenda_kanji, card.legenda_hiragana, card.legenda_romaji].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
+        {card.descricao ? <Text style={s.flashDesc}>{card.descricao}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
 export default function MateriaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
 
@@ -87,6 +128,12 @@ export default function MateriaDetailScreen() {
     queryKey: ['admin-materia-simulado-questoes', id],
     queryFn: () => listSimuladoQuestoes(db, id!),
     enabled: !!id && material?.tipo === 'simulado',
+  })
+
+  const { data: cards, isLoading: loadingCards } = useQuery({
+    queryKey: ['admin-materia-cards', id],
+    queryFn: () => listMaterialCards(db, id!),
+    enabled: !!id && material?.tipo === 'card',
   })
 
   if (loadingMaterial) {
@@ -137,14 +184,7 @@ export default function MateriaDetailScreen() {
         <WebView source={{ uri: url }} style={s.webView} startInLoadingState />
       ) : material.tipo === 'video' && url ? (
         isDirectVideoUrl(url) ? (
-          <View style={s.videoWrap}>
-            <Video
-              source={{ uri: url }}
-              style={s.video}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
-            />
-          </View>
+          <DirectVideoPlayer url={url} />
         ) : (
           <WebView source={{ uri: url }} style={s.webView} startInLoadingState />
         )
@@ -153,7 +193,7 @@ export default function MateriaDetailScreen() {
           {material.tipo === 'texto' && (
             <>
               {material.banner_url ? (
-                <Image source={{ uri: material.banner_url }} style={s.banner} resizeMode="cover" />
+                <AppImage source={{ uri: material.banner_url }} style={s.banner} />
               ) : null}
 
               <View style={[s.typePill, { backgroundColor: typeColor + '18' }]}>
@@ -174,11 +214,10 @@ export default function MateriaDetailScreen() {
                   <Text style={s.sectionLabel}>ÁLBUM</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.albumRow}>
                     {albumUrls.map((imageUrl, index) => (
-                      <Image
+                      <AppImage
                         key={`${imageUrl}-${index}`}
                         source={{ uri: imageUrl }}
                         style={s.albumImage}
-                        resizeMode="cover"
                       />
                     ))}
                   </ScrollView>
@@ -211,7 +250,31 @@ export default function MateriaDetailScreen() {
             </>
           )}
 
-          {material.tipo !== 'texto' && material.tipo !== 'simulado' && (
+          {material.tipo === 'card' && (
+            <>
+              <View style={[s.typePill, { backgroundColor: typeColor + '18' }]}>
+                <Text style={[s.typePillTxt, { color: typeColor }]}>CARDS</Text>
+              </View>
+              {material.descricao ? <Text style={s.description}>{material.descricao}</Text> : null}
+
+              <Text style={s.sectionLabel}>CARDS</Text>
+              {loadingCards ? (
+                <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
+              ) : (cards ?? []).length === 0 ? (
+                <View style={s.empty}>
+                  <Text style={s.emptyTxt}>Nenhum card cadastrado neste material.</Text>
+                </View>
+              ) : (
+                <View style={{ gap: 12 }}>
+                  {(cards ?? []).map((card, index) => (
+                    <MaterialCardPreview key={card.id} card={card} index={index} />
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+
+          {material.tipo !== 'texto' && material.tipo !== 'simulado' && material.tipo !== 'card' && (
             <View style={s.empty}>
               <Text style={s.emptyTxt}>Este material ainda não possui URL para renderização.</Text>
             </View>
@@ -278,6 +341,26 @@ const s = StyleSheet.create({
   optionTextCorrect: { color: '#166534', fontWeight: '600' },
   correctSummary: { fontSize: 11, color: '#166534', fontWeight: '600', marginTop: 9 },
   explanation: { fontSize: 11, color: colors.ink500, lineHeight: 16, marginTop: 6 },
+  flashCard: {
+    borderWidth: 1, borderColor: colors.ink100, borderRadius: 15,
+    backgroundColor: colors.white, overflow: 'hidden',
+  },
+  flashImageWrap: { aspectRatio: 4 / 3, backgroundColor: colors.ink50, alignItems: 'center', justifyContent: 'center' },
+  flashImage: { width: '100%', height: '100%' },
+  flashBody: { padding: 12 },
+  flashMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  flashIndex: {
+    minWidth: 24, height: 24, borderRadius: 7,
+    backgroundColor: '#FFEDD5', color: '#C2410C',
+    textAlign: 'center', textAlignVertical: 'center', fontSize: 11, fontWeight: '800',
+  },
+  flashCategory: {
+    flexShrink: 1, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999,
+    backgroundColor: colors.ink50, color: colors.ink500, fontSize: 10.5, fontWeight: '700',
+  },
+  flashTitle: { fontSize: 14, fontWeight: '800', color: colors.ink900, lineHeight: 19 },
+  flashReading: { fontSize: 11.5, color: colors.ink500, lineHeight: 17, marginTop: 5 },
+  flashDesc: { fontSize: 12, color: colors.ink600, lineHeight: 18, marginTop: 8 },
   empty: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 12 },
   emptyTxt: { fontSize: 13, color: colors.ink400, textAlign: 'center' },
 })

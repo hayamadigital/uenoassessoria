@@ -75,6 +75,7 @@ export default function EditarQuestaoScreen() {
         },
         cleanOptions,
         questao.imagens.map((img, index) => ({ url: img.url, ordem: index })),
+        questao.explicacao_imagens.map((img, index) => ({ url: img.url, ordem: index })),
       )
     },
     onSuccess: () => {
