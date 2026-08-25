@@ -15,12 +15,7 @@ Documento de contexto para quem pegar o projeto a partir daqui. Última atualiza
 
 1. Commit + `git push origin main`
 2. Vercel builda automaticamente (webhook do GitHub já conectado)
-3. **Atenção**: o domínio amigável `uenoassessoria.vercel.app` é um alias manual — não segue automaticamente o deploy mais novo. Depois de cada deploy, rodar:
-   ```
-   vercel ls                                    # pega a URL do deploy mais recente com status Ready
-   vercel alias set <url-do-deploy> uenoassessoria.vercel.app
-   ```
-   Isso deixa de ser necessário quando um domínio próprio for configurado nas settings do projeto.
+3. URL de produção: **`https://ueno-assessoria.vercel.app`** (com hífen — é o domínio automático baseado no nome do projeto e já segue sozinho o deploy mais recente, sem precisar de nenhum passo manual). Não usar `uenoassessoria.vercel.app` (sem hífen) — é um alias avulso que sobrou de configuração anterior e não é a URL de referência.
 4. Não existe domínio próprio (`.com.br` ou similar) configurado ainda.
 
 ## Estado do repositório (importante)
