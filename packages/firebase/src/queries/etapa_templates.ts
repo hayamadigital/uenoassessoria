@@ -14,11 +14,12 @@ import {
 import type { EtapaTemplate, EtapaTemplateInsert } from '../types'
 
 function toTemplate(id: string, data: Record<string, unknown>): EtapaTemplate {
+  const row = data as Partial<EtapaTemplate>
   return {
     id,
-    ...data,
-    descricao: data.descricao ?? null,
-    variacao_ids: Array.isArray(data.variacao_ids) ? data.variacao_ids as string[] : [],
+    ...row,
+    descricao: row.descricao ?? null,
+    variacao_ids: Array.isArray(row.variacao_ids) ? row.variacao_ids as string[] : [],
   } as EtapaTemplate
 }
 

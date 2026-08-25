@@ -8,10 +8,10 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   type Firestore,
 } from 'firebase/firestore'
-import type { ClienteProcessoInsert, ClienteProcessoWithServico } from '../types'
+import type { ClienteProcessoInsert, ClienteProcessoWithCliente, ClienteProcessoWithServico } from '../types'
+import { getCliente } from './clientes'
 import { getServicoVariacao } from './servico_variacoes'
 
 async function resolveVariacao(db: Firestore, variacaoId: unknown) {
@@ -31,11 +31,10 @@ export async function listProcessosByCliente(
     query(
       collection(db, 'cliente_processos'),
       where('cliente_id', '==', clienteId),
-      orderBy('created_at', 'desc'),
     ),
   )
 
-  return Promise.all(
+  const processos = await Promise.all(
     snap.docs.map(async (d) => {
       const data = d.data()
       const servicoSnap = await getDoc(doc(db, 'servicos', data.servico_id as string))
@@ -46,9 +45,41 @@ export async function listProcessosByCliente(
         ...data,
         servico: { id: servicoSnap.id, ...servicoSnap.data() },
         variacao,
-      } as ClienteProcessoWithServico
+      } as unknown as ClienteProcessoWithServico
     }),
   )
+
+  return processos.sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+export async function listProcessosAtivos(
+  db: Firestore,
+): Promise<ClienteProcessoWithCliente[]> {
+  const snap = await getDocs(
+    query(collection(db, 'cliente_processos'), where('status', 'in', ['analise', 'ativo'])),
+  )
+
+  const processos = await Promise.all(
+    snap.docs.map(async (d) => {
+      const data = d.data()
+      const [servicoSnap, variacao, cliente] = await Promise.all([
+        getDoc(doc(db, 'servicos', data.servico_id as string)),
+        resolveVariacao(db, data.variacao_id),
+        getCliente(db, data.cliente_id as string),
+      ])
+
+      return {
+        id: d.id,
+        variacao_id: null,
+        ...data,
+        servico: { id: servicoSnap.id, ...servicoSnap.data() },
+        variacao,
+        cliente,
+      } as unknown as ClienteProcessoWithCliente
+    }),
+  )
+
+  return processos.sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
 export async function getProcesso(db: Firestore, id: string): Promise<ClienteProcessoWithServico> {
@@ -63,7 +94,7 @@ export async function getProcesso(db: Firestore, id: string): Promise<ClientePro
     ...data,
     servico: { id: servicoSnap.id, ...servicoSnap.data() },
     variacao,
-  } as ClienteProcessoWithServico
+  } as unknown as ClienteProcessoWithServico
 }
 
 export async function createProcesso(

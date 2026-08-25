@@ -4,7 +4,7 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type UserRole = 'admin' | 'instrutor' | 'cliente'
-
+export type TipoEventoAgendamento = 'ueno' | 'pessoal'
 export type StatusProcesso =
   | 'prospect'
   | 'contato'
@@ -33,7 +33,7 @@ export type MetodoPagamento = 'dinheiro' | 'transferencia' | 'pix' | 'outro'
 
 export type StatusContrato = 'rascunho' | 'enviado' | 'assinado' | 'cancelado'
 
-export type TipoMaterial = 'pdf' | 'video' | 'link' | 'texto' | 'simulado'
+export type TipoMaterial = 'pdf' | 'video' | 'link' | 'texto' | 'simulado' | 'card'
 
 export type TipoOpcaoQuestao = 'booleano' | 'multipla'
 export type ModoSelecaoSimulado = 'aleatorio' | 'manual'
@@ -65,7 +65,7 @@ export type AgendamentoModoEtapa = 'nao_aplica' | 'definir_dia' | 'definir_dia_h
 
 export type ResponsavelEtapa = 'cliente' | 'assessoria' | 'menkyocenter' | 'outros'
 
-export type StatusClienteProcesso = 'ativo' | 'concluido' | 'cancelado'
+export type StatusClienteProcesso = 'analise' | 'ativo' | 'concluido' | 'cancelado'
 
 export type TipoResponsavelContato = 'pessoal' | 'parente' | 'terceiros'
 
@@ -90,9 +90,22 @@ export interface Profile {
   preferred_lang: PreferredLang
   is_active: boolean
   endereco_jp: string | null
+  mapa_link_jp: string | null
   created_at: string
   updated_at: string
 }
+
+export type TipoSecaoContrato =
+  | 'cabecalho'
+  | 'lista_servicos'
+  | 'pagamento'
+  | 'cronograma'
+  | 'clausula_texto'
+  | 'assinatura'
+  | 'descricao_servico'
+  | 'lista_etapas'
+
+export type TipoCampoContrato = 'texto' | 'valor_jpy' | 'numero_inteiro' | 'data' | 'booleano'
 
 // ─────────────────────────────────────────────
 // Collection: /clientes/{id}
@@ -138,6 +151,10 @@ export interface Servico {
   duracao_min: number
   duracao_texto: string | null
   preco_jpy: number
+  preco_variavel: boolean
+  preco_min_jpy: number | null
+  preco_max_jpy: number | null
+  usa_variacoes: boolean
   imagem_url: string | null
   is_active: boolean
   ordem: number
@@ -147,9 +164,10 @@ export interface Servico {
 
 export interface Agendamento {
   id: string
-  cliente_id: string
-  instrutor_id: string
-  servico_id: string
+  tipo_evento: TipoEventoAgendamento
+  cliente_id: string | null
+  instrutor_id: string | null
+  servico_id: string | null
   data_hora_inicio: string
   data_hora_fim: string
   status: StatusAgendamento
@@ -171,6 +189,8 @@ export interface DocumentoTemplate {
   descricao: string | null
   obrigatorio: boolean
   servico_id: string | null
+  variacao_ids: string[]
+  variacao_id: string | null
   ordem: number
   created_at: string
 }
@@ -214,6 +234,23 @@ export interface Pagamento {
   updated_at: string
 }
 
+export type FinalidadeGasto = 'alimentacao' | 'transporte' | 'material' | 'comunicacao' | 'manutencao' | 'outros'
+
+export interface Gasto {
+  id: string
+  funcionario_id: string
+  funcionario_nome: string
+  finalidade: FinalidadeGasto
+  descricao: string
+  valor_jpy: number
+  data: string
+  comprovante_url: string | null
+  registrado_por: string
+  created_at: string
+}
+
+export type GastoInsert = Omit<Gasto, 'id' | 'created_at'>
+
 // Subcollection: /pagamentos/{id}/parcelas/{id}
 export interface Parcela {
   id: string
@@ -253,8 +290,37 @@ export interface ContratoTemplate {
   corpo_html: string
   servico_id: string | null
   is_default: boolean
+  secoes?: ContratoSecao[]
   created_at: string
   updated_at: string
+}
+
+export interface ContratoSecaoCampo {
+  id: string
+  label: string
+  variavel: string
+  tipo: TipoCampoContrato
+  obrigatorio: boolean
+  valor_padrao?: string | null | undefined
+}
+
+export interface ContratoSecao {
+  id: string
+  ordem: number
+  tipo: TipoSecaoContrato
+  titulo?: string | null | undefined
+  conteudo_html?: string | null | undefined
+  campos: ContratoSecaoCampo[]
+  servico_id?: string | null | undefined
+  variacao_ids: string[]
+}
+
+export interface PublicAppConfig {
+  id: string
+  support_whatsapp: string | null
+  home_material_category_id: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface CategoriaMaterial {
@@ -282,6 +348,23 @@ export interface Material {
   is_active: boolean
   ordem: number
   publicado_por: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MaterialCard {
+  id: string
+  material_id: string
+  imagem_url: string
+  legenda_pt: string
+  categoria: string | null
+  legenda_kanji: string | null
+  legenda_hiragana: string | null
+  legenda_romaji: string | null
+  descricao: string | null
+  credito_imagem: string | null
+  fonte_url: string | null
+  ordem: number
   created_at: string
   updated_at: string
 }
@@ -388,6 +471,7 @@ export interface ClienteProcesso {
   id: string
   cliente_id: string
   servico_id: string
+  variacao_id: string | null
   data_inicio: string | null
   valor_acordado_jpy: number | null
   status: StatusClienteProcesso
@@ -416,6 +500,7 @@ export interface EtapaTemplate {
   nome: string
   descricao: string | null
   responsavel_padrao: ResponsavelEtapa
+  variacao_ids: string[]
   ordem: number
   created_at: string
 }
@@ -484,8 +569,11 @@ export type ClienteDocumentoInsert = Omit<ClienteDocumento, 'id' | 'created_at' 
 export type PagamentoInsert = Omit<Pagamento, 'id' | 'created_at' | 'updated_at'>
 export type ContratoInsert = Omit<Contrato, 'id' | 'created_at' | 'updated_at'>
 export type ContratoTemplateInsert = Omit<ContratoTemplate, 'id' | 'created_at' | 'updated_at'>
+export type ContratoSecaoCampoInput = ContratoSecaoCampo
+export type ContratoSecaoInput = ContratoSecao
 export type CategoriaMaterialInsert = Omit<CategoriaMaterial, 'id' | 'created_at'>
 export type MaterialInsert = Omit<Material, 'id' | 'created_at' | 'updated_at'>
+export type MaterialCardInsert = Omit<MaterialCard, 'id' | 'created_at' | 'updated_at'>
 export type AvaliacaoInsert = Omit<Avaliacao, 'id' | 'created_at'>
 export type RotaDiaInsert = Omit<RotaDia, 'id' | 'created_at' | 'updated_at'>
 export type RotaParadaInsert = Omit<RotaParada, 'id' | 'created_at'>
@@ -500,6 +588,26 @@ export type ClienteEntradaSaidaInsert = Omit<ClienteEntradaSaida, 'id' | 'create
 export type ClienteHistoricoInsert = Omit<ClienteHistorico, 'id' | 'created_at'>
 export type ParcelaInsert = Omit<Parcela, 'id' | 'created_at' | 'updated_at'>
 export type DestinoFixoInsert = Omit<DestinoFixo, 'id' | 'created_at' | 'updated_at'>
+
+export interface ServicoVariacao {
+  id: string
+  servico_id: string
+  nome: string
+  descricao: string | null
+  duracao_texto: string | null
+  preco_jpy: number | null
+  preco_variavel: boolean
+  preco_min_jpy: number | null
+  preco_max_jpy: number | null
+  usa_variacoes: boolean
+  ativo: boolean
+  is_active: boolean
+  ordem: number
+  created_at: string
+  updated_at: string
+}
+
+export type ServicoVariacaoInsert = Omit<ServicoVariacao, 'id' | 'created_at' | 'updated_at'>
 
 // ─────────────────────────────────────────────
 // View / joined types
@@ -569,6 +677,11 @@ export interface OtimizacaoRotaResultado {
 
 export interface ClienteProcessoWithServico extends ClienteProcesso {
   servico: Servico
+  variacao: ServicoVariacao | null
+}
+
+export interface ClienteProcessoWithCliente extends ClienteProcessoWithServico {
+  cliente: ClienteWithProfile
 }
 
 export interface ClienteHistoricoWithResponsavel extends ClienteHistorico {
@@ -614,6 +727,14 @@ export interface QuestaoImagem {
   created_at: string
 }
 
+export interface QuestaoExplicacaoImagem {
+  id: string
+  questao_id: string
+  url: string
+  ordem: number
+  created_at: string
+}
+
 export interface SimuladoConfig {
   material_id: string
   total_questoes: number
@@ -628,6 +749,15 @@ export interface SimuladoQuestao {
   ordem: number
 }
 
+export interface QuestaoSimuladoUsage {
+  simulado_id: string
+  titulo: string
+  categoria_id: string | null
+  is_public: boolean
+  is_active: boolean
+  ordem: number | null
+}
+
 export interface ClienteSimuladoResultado {
   id: string
   cliente_id: string
@@ -635,7 +765,15 @@ export interface ClienteSimuladoResultado {
   score: number
   total: number
   tentativa: number
+  respostas?: SimuladoResultadoResposta[]
   created_at: string
+}
+
+export interface SimuladoResultadoResposta {
+  questao_id: string
+  selected_option_ids: string[]
+  correct_option_ids: string[]
+  is_correct: boolean
 }
 
 export interface QuestaoErroReport {
@@ -651,6 +789,7 @@ export interface QuestaoErroReport {
 export type QuestaoInsert = Omit<Questao, 'id' | 'created_at' | 'updated_at'>
 export type QuestaoOpcaoInsert = Omit<QuestaoOpcao, 'id'>
 export type QuestaoImagemInsert = Omit<QuestaoImagem, 'id' | 'created_at'>
+export type QuestaoExplicacaoImagemInsert = Omit<QuestaoExplicacaoImagem, 'id' | 'created_at'>
 export type SimuladoConfigInsert = Omit<SimuladoConfig, 'created_at' | 'updated_at'>
 export type ClienteSimuladoResultadoInsert = Omit<ClienteSimuladoResultado, 'id' | 'created_at'>
 export type QuestaoErroReportInsert = Omit<QuestaoErroReport, 'id' | 'created_at' | 'updated_at'>
@@ -658,6 +797,7 @@ export type QuestaoErroReportInsert = Omit<QuestaoErroReport, 'id' | 'created_at
 export interface QuestaoWithDetails extends Questao {
   opcoes: QuestaoOpcao[]
   imagens: QuestaoImagem[]
+  explicacao_imagens: QuestaoExplicacaoImagem[]
 }
 
 export interface MaterialWithSimuladoConfig extends Material {
@@ -696,6 +836,8 @@ export type FAQInsert = Omit<FAQ, 'id' | 'created_at' | 'updated_at'>
 // ─────────────────────────────────────────────
 
 export type TipoAviso = 'logistica' | 'promocao' | 'data_comemorativa' | 'geral'
+export type ConteudoAvisoTipo = 'texto' | 'imagens'
+export type LayoutImagensAviso = 'carrossel' | 'lista'
 
 export type StatusAviso = 'agendado' | 'ativo' | 'encerrado'
 
@@ -703,8 +845,11 @@ export interface Aviso {
   id: string
   titulo: string
   descricao: string
+  conteudo_tipo: ConteudoAvisoTipo
   tipo: TipoAviso
   banner_url: string
+  imagens_layout: LayoutImagensAviso
+  pdf_url: string | null
   imagens_carrossel: string[]
   data_publicacao: string   // ISO string
   data_encerramento: string // ISO string

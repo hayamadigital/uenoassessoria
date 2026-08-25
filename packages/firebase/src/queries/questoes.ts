@@ -6,7 +6,6 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  collectionGroup,
   query,
   where,
   orderBy,
@@ -17,6 +16,7 @@ import type {
   QuestaoWithDetails,
   QuestaoOpcaoInsert,
   QuestaoImagemInsert,
+  QuestaoExplicacaoImagemInsert,
   QuestaoInsert,
   QuestaoErroReport,
   QuestaoErroReportInsert,
@@ -26,10 +26,11 @@ import type {
 } from '../types'
 
 async function fetchQuestaoWithDetails(db: Firestore, id: string): Promise<QuestaoWithDetails> {
-  const [qSnap, opSnap, imgSnap] = await Promise.all([
+  const [qSnap, opSnap, imgSnap, explicacaoImgSnap] = await Promise.all([
     getDoc(doc(db, 'questoes', id)),
     getDocs(query(collection(db, 'questoes', id, 'opcoes'), orderBy('ordem'))),
     getDocs(query(collection(db, 'questoes', id, 'imagens'), orderBy('ordem'))),
+    getDocs(query(collection(db, 'questoes', id, 'explicacao_imagens'), orderBy('ordem'))),
   ])
   if (!qSnap.exists()) throw new Error('Questao not found')
   return {
@@ -37,6 +38,7 @@ async function fetchQuestaoWithDetails(db: Firestore, id: string): Promise<Quest
     ...qSnap.data(),
     opcoes: opSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     imagens: imgSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+    explicacao_imagens: explicacaoImgSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
   } as QuestaoWithDetails
 }
 
@@ -73,18 +75,16 @@ export async function listSimuladosByQuestao(
   db: Firestore,
   questaoId: string,
 ): Promise<QuestaoSimuladoUsage[]> {
-  const snap = await getDocs(
-    query(collectionGroup(db, 'questoes'), where('questao_id', '==', questaoId)),
-  )
+  const configsSnap = await getDocs(collection(db, 'simulado_config'))
+  const usages: QuestaoSimuladoUsage[] = []
 
-  const usages = await Promise.all(
-    snap.docs.map(async (linkedDoc) => {
-      const simuladoConfigRef = linkedDoc.ref.parent.parent
-      const simuladoId = simuladoConfigRef?.id
-      if (!simuladoId) return null
-
-      const materialSnap = await getDoc(doc(db, 'materiais', simuladoId))
-      if (!materialSnap.exists()) return null
+  for (const configDoc of configsSnap.docs) {
+    const linkedSnap = await getDocs(
+      query(collection(db, 'simulado_config', configDoc.id, 'questoes'), where('questao_id', '==', questaoId)),
+    )
+    for (const linkedDoc of linkedSnap.docs) {
+      const materialSnap = await getDoc(doc(db, 'materiais', configDoc.id))
+      if (!materialSnap.exists()) continue
       const material = materialSnap.data() as {
         titulo?: string
         categoria_id?: string | null
@@ -92,30 +92,33 @@ export async function listSimuladosByQuestao(
         is_active?: boolean
       }
 
-      return {
-        simulado_id: simuladoId,
+      usages.push({
+        simulado_id: configDoc.id,
         titulo: material.titulo ?? 'Simulado',
         categoria_id: material.categoria_id ?? null,
         is_public: material.is_public ?? false,
         is_active: material.is_active ?? true,
         ordem: (linkedDoc.data().ordem as number | undefined) ?? null,
-      } satisfies QuestaoSimuladoUsage
-    }),
-  )
+      })
+    }
+  }
 
-  return usages.filter((usage): usage is QuestaoSimuladoUsage => usage !== null)
+  return usages
 }
 
 export async function listSimuladoUsageCounts(
   db: Firestore,
 ): Promise<Record<string, number>> {
-  const snap = await getDocs(collectionGroup(db, 'questoes'))
   const counts: Record<string, number> = {}
+  const configsSnap = await getDocs(collection(db, 'simulado_config'))
 
-  for (const d of snap.docs) {
-    const questaoId = d.data().questao_id as string | undefined
-    if (questaoId) {
-      counts[questaoId] = (counts[questaoId] ?? 0) + 1
+  for (const configDoc of configsSnap.docs) {
+    const linkedSnap = await getDocs(collection(db, 'simulado_config', configDoc.id, 'questoes'))
+    for (const d of linkedSnap.docs) {
+      const questaoId = d.data().questao_id as string | undefined
+      if (questaoId) {
+        counts[questaoId] = (counts[questaoId] ?? 0) + 1
+      }
     }
   }
 
@@ -127,12 +130,13 @@ export async function createQuestao(
   questaoData: QuestaoInsert,
   opcoes: Omit<QuestaoOpcaoInsert, 'questao_id'>[],
   imagens: Omit<QuestaoImagemInsert, 'questao_id'>[],
+  explicacaoImagens: Omit<QuestaoExplicacaoImagemInsert, 'questao_id'>[] = [],
 ): Promise<QuestaoWithDetails> {
   const now = new Date().toISOString()
   const ref = await addDoc(collection(db, 'questoes'), { ...questaoData, created_at: now, updated_at: now })
   const questaoId = ref.id
 
-  const [opRefs, imgRefs] = await Promise.all([
+  await Promise.all([
     Promise.all(
       opcoes.map((op, i) =>
         addDoc(collection(db, 'questoes', questaoId, 'opcoes'), { ...op, questao_id: questaoId, ordem: i }),
@@ -141,6 +145,16 @@ export async function createQuestao(
     Promise.all(
       imagens.map((img, i) =>
         addDoc(collection(db, 'questoes', questaoId, 'imagens'), {
+          ...img,
+          questao_id: questaoId,
+          ordem: i,
+          created_at: now,
+        }),
+      ),
+    ),
+    Promise.all(
+      explicacaoImagens.map((img, i) =>
+        addDoc(collection(db, 'questoes', questaoId, 'explicacao_imagens'), {
           ...img,
           questao_id: questaoId,
           ordem: i,
@@ -159,18 +173,21 @@ export async function updateQuestao(
   questaoData: Partial<QuestaoInsert>,
   opcoes: Omit<QuestaoOpcaoInsert, 'questao_id'>[],
   imagens: Omit<QuestaoImagemInsert, 'questao_id'>[],
+  explicacaoImagens: Omit<QuestaoExplicacaoImagemInsert, 'questao_id'>[] = [],
 ): Promise<QuestaoWithDetails> {
   const now = new Date().toISOString()
   await updateDoc(doc(db, 'questoes', id), { ...questaoData, updated_at: now })
 
   // Replace opcoes and imagens
-  const [opSnap, imgSnap] = await Promise.all([
+  const [opSnap, imgSnap, explicacaoImgSnap] = await Promise.all([
     getDocs(collection(db, 'questoes', id, 'opcoes')),
     getDocs(collection(db, 'questoes', id, 'imagens')),
+    getDocs(collection(db, 'questoes', id, 'explicacao_imagens')),
   ])
   await Promise.all([
     ...opSnap.docs.map((d) => deleteDoc(d.ref)),
     ...imgSnap.docs.map((d) => deleteDoc(d.ref)),
+    ...explicacaoImgSnap.docs.map((d) => deleteDoc(d.ref)),
   ])
   await Promise.all([
     ...opcoes.map((op, i) =>
@@ -178,6 +195,14 @@ export async function updateQuestao(
     ),
     ...imagens.map((img, i) =>
       addDoc(collection(db, 'questoes', id, 'imagens'), { ...img, questao_id: id, ordem: i, created_at: now }),
+    ),
+    ...explicacaoImagens.map((img, i) =>
+      addDoc(collection(db, 'questoes', id, 'explicacao_imagens'), {
+        ...img,
+        questao_id: id,
+        ordem: i,
+        created_at: now,
+      }),
     ),
   ])
 
@@ -268,8 +293,7 @@ export async function createErroReport(
 ): Promise<QuestaoErroReport> {
   const now = new Date().toISOString()
   const ref = await addDoc(collection(db, 'questao_erro_reports'), { ...data, created_at: now, updated_at: now })
-  const snap = await getDoc(ref)
-  return { id: snap.id, ...snap.data() } as QuestaoErroReport
+  return { id: ref.id, ...data, created_at: now, updated_at: now }
 }
 
 export async function updateErroReport(

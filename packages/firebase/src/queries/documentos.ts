@@ -28,11 +28,39 @@ function toDocumento(id: string, data: Record<string, unknown>): ClienteDocument
   return { id, ...data } as ClienteDocumento
 }
 
+function toDocumentoTemplate(id: string, data: Record<string, unknown>): DocumentoTemplate {
+  const legacyVariacaoId = typeof data.variacao_id === 'string' ? data.variacao_id : null
+  const variacaoIds = Array.isArray(data.variacao_ids)
+    ? data.variacao_ids as string[]
+    : legacyVariacaoId
+      ? [legacyVariacaoId]
+      : []
+  return { id, ...data, variacao_id: legacyVariacaoId, variacao_ids: variacaoIds } as DocumentoTemplate
+}
+
 export async function listDocumentoTemplates(db: Firestore): Promise<DocumentoTemplate[]> {
   const snap = await getDocs(
     query(collection(db, 'documento_templates'), orderBy('ordem')),
   )
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DocumentoTemplate)
+  return snap.docs.map((d) => toDocumentoTemplate(d.id, d.data()))
+}
+
+export async function listDocumentoTemplatesByServico(
+  db: Firestore,
+  servicoId: string,
+  variacaoId?: string | null,
+): Promise<DocumentoTemplate[]> {
+  const templates = await listDocumentoTemplates(db)
+  return templates.filter((template) => {
+    if (template.servico_id !== servicoId) return false
+    const variacaoIds = template.variacao_ids.length > 0
+      ? template.variacao_ids
+      : template.variacao_id
+        ? [template.variacao_id]
+        : []
+    if (!variacaoId) return variacaoIds.length === 0
+    return variacaoIds.length === 0 || variacaoIds.includes(variacaoId)
+  })
 }
 
 export async function createDocumentoTemplate(
@@ -41,10 +69,12 @@ export async function createDocumentoTemplate(
 ): Promise<DocumentoTemplate> {
   const ref = await addDoc(collection(db, 'documento_templates'), {
     ...input,
+    variacao_ids: input.variacao_ids ?? [],
+    variacao_id: input.variacao_id ?? null,
     created_at: new Date().toISOString(),
   })
   const snap = await getDoc(ref)
-  return { id: snap.id, ...snap.data() } as DocumentoTemplate
+  return toDocumentoTemplate(snap.id, snap.data()!)
 }
 
 export async function updateDocumentoTemplate(
@@ -78,7 +108,7 @@ export async function getClienteDocumentos(
     templateIds.map((tid) => getDoc(doc(db, 'documento_templates', tid!))),
   )
   const templateMap = Object.fromEntries(
-    templateSnaps.filter((s) => s.exists()).map((s) => [s.id, { id: s.id, ...s.data() } as DocumentoTemplate]),
+    templateSnaps.filter((s) => s.exists()).map((s) => [s.id, toDocumentoTemplate(s.id, s.data()!)]),
   )
 
   return documentos.map((d) => ({
@@ -157,7 +187,7 @@ export async function listPendingDocumentos(
     templateIds.map((tid) => getDoc(doc(db, 'documento_templates', tid!))),
   )
   const templateMap = Object.fromEntries(
-    templateSnaps.filter((s) => s.exists()).map((s) => [s.id, { id: s.id, ...s.data() } as DocumentoTemplate]),
+    templateSnaps.filter((s) => s.exists()).map((s) => [s.id, toDocumentoTemplate(s.id, s.data()!)]),
   )
 
   return documentos.map((d) => ({

@@ -38,6 +38,10 @@ export function comprovantePath(pagamentoId: string, fileName: string) {
   return `comprovantes/${pagamentoId}/${fileName}`
 }
 
+export function gastoComprovantePath(fileName: string) {
+  return `comprovantes/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+}
+
 export function materialPath(tipo: string, fileName: string) {
   return `materiais/${tipo}/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileName.split('.').pop()}`
 }
@@ -53,6 +57,11 @@ export function avatarPath(uid: string, fileName: string) {
 export function avisoBannerPath(avisoId: string, fileName: string) {
   const ext = fileName.split('.').pop() ?? 'jpg'
   return `avisos/${avisoId}/banner/${Date.now()}.${ext}`
+}
+
+export function avisoPdfPath(avisoId: string, fileName: string) {
+  const ext = fileName.split('.').pop() ?? 'pdf'
+  return `avisos/${avisoId}/pdf/${Date.now()}.${ext}`
 }
 
 export function avisoCarrosselPath(avisoId: string, fileName: string) {

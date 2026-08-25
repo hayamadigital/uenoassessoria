@@ -11,6 +11,7 @@ import {
   orderBy,
   type Firestore,
 } from 'firebase/firestore'
+import { getCliente } from './clientes'
 import type { ProcessoEtapa, ProcessoEtapaInsert, StatusProcessoEtapa } from '../types'
 
 export interface EtapaPendenteItem extends ProcessoEtapa {
@@ -79,19 +80,30 @@ export async function deleteEtapa(db: Firestore, id: string): Promise<void> {
 
 export async function listEtapasPendentesAssessoria(db: Firestore): Promise<EtapaPendenteItem[]> {
   const snap = await getDocs(
-    query(collection(db, 'processo_etapas'), where('responsavel', '==', 'assessoria')),
+    query(collection(db, 'processo_etapas')),
   )
 
-  const etapas = snap.docs
+  const etapasNaoConcluidas = snap.docs
     .map((d) => toEtapa(d.id, d.data()))
     .filter((e) => e.status !== 'concluido')
+
+  const etapasPorProcesso = new Map<string, ProcessoEtapa[]>()
+  etapasNaoConcluidas.forEach((etapa) => {
+    const current = etapasPorProcesso.get(etapa.processo_id) ?? []
+    current.push(etapa)
+    etapasPorProcesso.set(etapa.processo_id, current)
+  })
+
+  const etapas = [...etapasPorProcesso.values()]
+    .map((items) => items.sort((a, b) => a.ordem - b.ordem)[0])
+    .filter((etapa): etapa is ProcessoEtapa => !!etapa && etapa.responsavel === 'assessoria')
     .sort((a, b) => {
       const diff = URGENCY_ORDER[a.status as StatusProcessoEtapa] - URGENCY_ORDER[b.status as StatusProcessoEtapa]
       if (diff !== 0) return diff
       if (a.data_agendada && b.data_agendada) return a.data_agendada.localeCompare(b.data_agendada)
       if (a.data_agendada) return -1
       if (b.data_agendada) return 1
-      return 0
+      return a.ordem - b.ordem
     })
 
   const processoIds = [...new Set(etapas.map((e) => e.processo_id))]
@@ -102,10 +114,10 @@ export async function listEtapasPendentesAssessoria(db: Firestore): Promise<Etap
   })
 
   const clienteIds = [...new Set([...processoMap.values()].filter(Boolean))]
-  const clienteSnaps = await Promise.all(clienteIds.map((id) => getDoc(doc(db, 'clientes', id))))
+  const clientes = await Promise.all(clienteIds.map((id) => getCliente(db, id).catch(() => null)))
   const clienteMap = new Map<string, string>()
-  clienteSnaps.forEach((s) => {
-    if (s.exists()) clienteMap.set(s.id, (s.data().profile?.full_name as string) ?? '—')
+  clientes.forEach((cliente) => {
+    if (cliente) clienteMap.set(cliente.id, cliente.profile.full_name ?? '—')
   })
 
   return etapas.map((etapa) => {

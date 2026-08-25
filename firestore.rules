@@ -7,8 +7,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isAdminByClaim() {
       return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isAdminByProfile() {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isAdmin() {
+      return isAdminByClaim() || isAdminByProfile();
     }
 
     function isInstrutor() {
@@ -23,13 +32,43 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function clienteSelfEditableFields() {
+      return [
+        'cpf',
+        'data_nascimento',
+        'endereco_jp',
+        'cidade_jp',
+        'cep_jp',
+        'cnh_numero',
+        'cnh_categoria',
+        'cnh_validade',
+        'cnh_estado_emissor',
+        'data_entrada_japao',
+        'visto_tipo',
+        'observacoes',
+        'nome_japones',
+        'nacionalidade',
+        'zairyu_card',
+        'visto_validade',
+        'profissao_tipo',
+        'profissao_empresa',
+        'provincia_jp',
+        'bairro_jp',
+        'numero_bloco_jp',
+        'apartamento_jp',
+        'complemento_jp',
+        'mapa_link_jp',
+        'updated_at'
+      ];
+    }
+
     // ── /users/{uid} — profiles ────────────────────────────────────
     match /users/{uid} {
-      allow read: if isAdmin() || isOwner(uid)
+      allow read: if isAdminByClaim() || isOwner(uid)
         || (isInstrutor() && resource.data.role in ['cliente', 'admin']);
-      allow create: if isAdmin();
-      allow update: if isAdmin() || isOwner(uid);
-      allow delete: if isAdmin();
+      allow create: if isAdminByClaim();
+      allow update: if isAdminByClaim() || isOwner(uid);
+      allow delete: if isAdminByClaim();
     }
 
     // ── /clientes/{clienteId} ──────────────────────────────────────
@@ -38,7 +77,13 @@ service cloud.firestore {
         || (isInstrutor() && resource.data.assigned_instrutor_id == request.auth.uid)
         || (isCliente() && resource.data.profile_id == request.auth.uid);
       allow create: if isAdmin();
-      allow update: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          isCliente()
+          && resource.data.profile_id == request.auth.uid
+          && request.resource.data.profile_id == resource.data.profile_id
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(clienteSelfEditableFields())
+        );
       allow delete: if isAdmin();
 
       // Subcollections: documentos, contatos, habilitacoes, entrada_saida, historico, materiais_progresso, simulado_resultado
@@ -116,6 +161,12 @@ service cloud.firestore {
       }
     }
 
+    // ── /servico_variacoes/{id} ───────────────────────────────────
+    match /servico_variacoes/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // ── /pagamentos/{id} ──────────────────────────────────────────
     match /pagamentos/{id} {
       allow read: if isAdmin()
@@ -154,6 +205,19 @@ service cloud.firestore {
     match /materiais/{id} {
       allow read: if isSignedIn() || resource.data.is_public == true;
       allow write: if isAdmin();
+
+      match /cards/{cardId} {
+        allow read: if isSignedIn()
+          || get(/databases/$(database)/documents/materiais/$(id)).data.is_public == true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── /app_config/{id} ──────────────────────────────────────────
+    // Public app preferences used by client/mobile screens
+    match /app_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // ── /categorias_material/{id} ─────────────────────────────────
@@ -188,6 +252,11 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
 
+      match /explicacao_imagens/{imgId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+
       match /erros/{errId} {
         allow read: if isAdmin();
         allow create: if isSignedIn();
@@ -205,8 +274,29 @@ service cloud.firestore {
     // ── /simulado_resultados/{id} ─────────────────────────────────
     match /simulado_resultados/{id} {
       allow read: if isAdmin()
-        || (isCliente() && resource.data.cliente_id == request.auth.uid);
-      allow create: if isSignedIn();
+        || (
+          isCliente()
+          && (
+            resource.data.cliente_id == request.auth.uid
+            || (
+              resource.data.cliente_id != null
+              && exists(/databases/$(database)/documents/clientes/$(resource.data.cliente_id))
+              && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid
+            )
+          )
+        );
+      allow create: if isAdmin()
+        || (
+          isCliente()
+          && (
+            request.resource.data.cliente_id == request.auth.uid
+            || (
+              request.resource.data.cliente_id != null
+              && exists(/databases/$(database)/documents/clientes/$(request.resource.data.cliente_id))
+              && get(/databases/$(database)/documents/clientes/$(request.resource.data.cliente_id)).data.profile_id == request.auth.uid
+            )
+          )
+        );
       allow update, delete: if isAdmin();
     }
 
@@ -272,7 +362,25 @@ service cloud.firestore {
       allow read: if isAdmin()
         || (isInstrutor() && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.assigned_instrutor_id == request.auth.uid)
         || (isCliente() && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          isCliente()
+          && request.resource.data.status == 'analise'
+          && request.resource.data.cliente_id != null
+          && get(/databases/$(database)/documents/clientes/$(request.resource.data.cliente_id)).data.profile_id == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'cliente_id',
+            'servico_id',
+            'variacao_id',
+            'data_inicio',
+            'valor_acordado_jpy',
+            'status',
+            'notas',
+            'created_at',
+            'updated_at'
+          ])
+        );
+      allow update, delete: if isAdmin();
     }
 
     // ── /processo_etapas/{id} ─────────────────────────────────────

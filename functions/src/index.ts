@@ -266,6 +266,34 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
   return { user_id: userRecord.uid, reset_link: resetLink }
 })
 
+// ── regenerateInviteLink ───────────────────────────────────────────
+
+export const regenerateInviteLink = onCall({ ...CORS }, async (request) => {
+  if (!request.auth?.token?.role || request.auth.token.role !== 'admin') {
+    throw new Error('Apenas admins podem regerar links de convite')
+  }
+
+  const { email } = request.data as { email: string }
+  const normalizedEmail = email?.trim().toLowerCase()
+
+  if (!normalizedEmail) {
+    throw new Error('email é obrigatório')
+  }
+
+  const userRecord = await auth.getUserByEmail(normalizedEmail)
+  const userSnap = await db.collection('users').doc(userRecord.uid).get()
+
+  if (!userSnap.exists) {
+    throw new Error('Usuário não encontrado')
+  }
+
+  const resetLink = await auth.generatePasswordResetLink(normalizedEmail)
+
+  await userSnap.ref.update({ updated_at: new Date().toISOString() })
+
+  return { user_id: userRecord.uid, email: normalizedEmail, reset_link: resetLink }
+})
+
 // ── generateContractPdf ────────────────────────────────────────────
 
 export const generateContractPdf = onRequest({ ...CORS }, async (req, res) => {

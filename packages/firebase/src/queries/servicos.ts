@@ -3,9 +3,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   addDoc,
   updateDoc,
   deleteDoc,
+  type Unsubscribe,
   type Firestore,
 } from 'firebase/firestore'
 import type { Servico, ServicoInsert } from '../types'
@@ -56,6 +58,20 @@ export async function listServicos(db: Firestore, onlyActive = true): Promise<Se
     .map((d) => toServico(d.id, d.data()))
     .filter((servico) => !onlyActive || servico.is_active)
     .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
+export function subscribeServicos(
+  db: Firestore,
+  onChange: (servicos: Servico[]) => void,
+  onlyActive = true,
+): Unsubscribe {
+  return onSnapshot(collection(db, 'servicos'), (snap) => {
+    const rows = snap.docs
+      .map((d) => toServico(d.id, d.data()))
+      .filter((servico) => !onlyActive || servico.is_active)
+      .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'))
+    onChange(rows)
+  })
 }
 
 export async function getServico(db: Firestore, id: string): Promise<Servico> {

@@ -3,9 +3,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   addDoc,
   updateDoc,
   deleteDoc,
+  type Unsubscribe,
   type Firestore,
 } from 'firebase/firestore'
 import type { FAQ, FAQInsert } from '../types'
@@ -49,6 +51,16 @@ export async function listFaqs(db: Firestore): Promise<FAQ[]> {
   return snap.docs
     .map((d, index) => normalizeFaq(d.id, d.data(), index))
     .sort((a, b) => a.ordem - b.ordem)
+}
+
+export function subscribeFaqs(db: Firestore, onChange: (faqs: FAQ[]) => void): Unsubscribe {
+  return onSnapshot(collection(db, 'faq'), (snap) => {
+    onChange(
+      snap.docs
+        .map((d, index) => normalizeFaq(d.id, d.data(), index))
+        .sort((a, b) => a.ordem - b.ordem),
+    )
+  })
 }
 
 export async function createFaq(db: Firestore, input: FAQInsert): Promise<FAQ> {
