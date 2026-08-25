@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoginPage } from '@/pages/auth/LoginPage'
+import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { ClientesPage } from '@/pages/clientes/ClientesPage'
 import { ClienteDetailPage } from '@/pages/clientes/ClienteDetailPage'
@@ -21,8 +22,8 @@ const AgendamentoDetailPage = lazy(() =>
     default: m.AgendamentoDetailPage,
   })),
 )
-const DocumentosPage = lazy(() =>
-  import('@/pages/documentos/DocumentosPage').then((m) => ({ default: m.DocumentosPage })),
+const ProcessosPage = lazy(() =>
+  import('@/pages/processos/ProcessosPage').then((m) => ({ default: m.ProcessosPage })),
 )
 const FinanceiroPage = lazy(() =>
   import('@/pages/financeiro/FinanceiroPage').then((m) => ({ default: m.FinanceiroPage })),
@@ -45,9 +46,6 @@ const ServicosDetailPage = lazy(() =>
   import('@/pages/servicos/ServicosDetailPage').then((m) => ({
     default: m.ServicosDetailPage,
   })),
-)
-const ContratosPage = lazy(() =>
-  import('@/pages/contratos/ContratosPage').then((m) => ({ default: m.ContratosPage })),
 )
 const AvaliacoesPage = lazy(() =>
   import('@/pages/avaliacoes/AvaliacoesPage').then((m) => ({ default: m.AvaliacoesPage })),
@@ -182,6 +180,10 @@ export const router = createBrowserRouter([
     element: <LoginPage />,
   },
   {
+    path: '/esqueci-senha',
+    element: <ForgotPasswordPage />,
+  },
+  {
     path: '/',
     element: <AppShell />,
     children: [
@@ -214,14 +216,16 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'clientes/:id/processos/:processoId', element: <ProcessoDetailPage /> },
+      { path: 'processos', element: <ProcessosPage /> },
+      { path: 'processos/:processoId', element: <ProcessoDetailPage /> },
 
       // ── Agendamentos ──────────────────────────────────────
       // IMPORTANT: /agendamentos/novo must come before /agendamentos/:id
       { path: 'agendamentos', element: <AgendamentosPage /> },
       { path: 'agendamentos/novo', element: <NovoAgendamentoPage /> },
       { path: 'agendamentos/:id', element: <AgendamentoDetailPage /> },
-      { path: 'documentos', element: <DocumentosPage /> },
-      { path: 'documentos/templates', element: <DocumentosPage /> },
+      { path: 'documentos', element: <Navigate to="/processos" replace /> },
+      { path: 'documentos/templates', element: <Navigate to="/processos" replace /> },
       { path: 'financeiro', element: <FinanceiroPage /> },
       { path: 'financeiro/pagamentos', element: <FinanceiroPage /> },
       { path: 'materiais', element: <MateriaisPage /> },
@@ -229,8 +233,8 @@ export const router = createBrowserRouter([
       { path: 'materiais/:id', element: <MaterialDetailPage /> },
       { path: 'servicos', element: <ServicosPage /> },
       { path: 'servicos/:id', element: <ServicosDetailPage /> },
-      { path: 'contratos', element: <ContratosPage /> },
-      { path: 'contratos/:id', element: <ContratosPage /> },
+      { path: 'contratos', element: <Navigate to="/processos" replace /> },
+      { path: 'contratos/:id', element: <Navigate to="/processos" replace /> },
       { path: 'avaliacoes', element: <AvaliacoesPage /> },
       { path: 'rotas', element: <RotasPage /> },
       { path: 'rotas/:data', element: <RotasPlanejamentoPage /> },

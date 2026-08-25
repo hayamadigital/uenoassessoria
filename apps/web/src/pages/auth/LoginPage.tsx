@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { Eye, EyeOff } from 'lucide-react'
-import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
 import { getProfile } from '@ueno/firebase/queries/perfis'
 import { useAuthStore } from '@/stores/auth.store'
@@ -20,8 +20,6 @@ export function LoginPage() {
   const navigate = useNavigate()
   const { session, setSession } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
-  const [forgotSent, setForgotSent] = useState(false)
-  const [forgotLoading, setForgotLoading] = useState(false)
 
   useEffect(() => {
     if (session) {
@@ -33,7 +31,6 @@ export function LoginPage() {
     register,
     handleSubmit,
     setError,
-    getValues,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -63,20 +60,6 @@ export function LoginPage() {
       await signOut(auth)
       setError('root', { message: 'Perfil não encontrado. Contate o administrador.' })
     }
-  }
-
-  const handleForgotPassword = async () => {
-    const email = getValues('email')
-    if (!email) {
-      setError('email', { message: 'Digite o e-mail primeiro' })
-      return
-    }
-    setForgotLoading(true)
-    await sendPasswordResetEmail(auth, email, {
-      url: `${window.location.origin}/login`,
-    })
-    setForgotLoading(false)
-    setForgotSent(true)
   }
 
   return (
@@ -112,14 +95,12 @@ export function LoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">{t('password')}</Label>
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    disabled={forgotLoading}
-                    className="text-xs text-primary hover:underline disabled:opacity-50"
+                  <Link
+                    to="/esqueci-senha"
+                    className="text-xs text-primary hover:underline"
                   >
-                    {forgotLoading ? 'Enviando...' : 'Esqueci minha senha'}
-                  </button>
+                    {t('forgot_password')}
+                  </Link>
                 </div>
                 <div className="relative">
                   <Input
@@ -142,14 +123,6 @@ export function LoginPage() {
                   <p className="text-xs text-destructive">{errors.password.message}</p>
                 ) : null}
               </div>
-
-              {forgotSent ? (
-                <div className="rounded-md bg-green-500/10 p-3">
-                  <p className="text-sm text-green-700 dark:text-green-400">
-                    Link de recuperação enviado para seu e-mail.
-                  </p>
-                </div>
-              ) : null}
 
               {errors.root ? (
                 <div className="rounded-md bg-destructive/10 p-3">
