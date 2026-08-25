@@ -42,8 +42,8 @@ const registrarSchema = z.object({
   valor_jpy: z.coerce.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
   categoria: z.enum(['habilitacao', 'taxa', 'material', 'aula', 'outro']).optional(),
-  servico_id: z.string().uuid().optional(),
-  recebido_por: z.string().uuid().optional(),
+  servico_id: z.string().min(1).optional(),
+  recebido_por: z.string().min(1).optional(),
   data_vencimento: z.string().optional(),
   notas: z.string().optional(),
 })

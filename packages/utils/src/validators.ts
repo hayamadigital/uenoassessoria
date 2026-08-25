@@ -57,7 +57,7 @@ export const clienteSchema = z.object({
   data_entrada_japao: z.string().optional(),
   visto_tipo: z.string().optional(),
   observacoes: z.string().optional(),
-  assigned_instrutor_id: z.string().uuid().optional(),
+  assigned_instrutor_id: z.string().min(1).optional(),
 })
 
 export type ClienteInput = z.infer<typeof clienteSchema>
@@ -103,14 +103,14 @@ export type ServicoInput = z.infer<typeof servicoSchema>
 
 const optionalUuidSchema = z.preprocess(
   (value) => (value === '' || value == null ? null : value),
-  z.string().uuid('Selecione um instrutor').nullable(),
+  z.string().min(1, 'Selecione um instrutor').nullable(),
 )
 
 export const agendamentoSchema = z
   .object({
-    cliente_id: z.string().uuid('Selecione um cliente'),
+    cliente_id: z.string().min(1, 'Selecione um cliente'),
     instrutor_id: optionalUuidSchema,
-    servico_id: z.string().uuid('Selecione um serviço'),
+    servico_id: z.string().min(1, 'Selecione um serviço'),
     data_hora_inicio: z.string().datetime('Data de início inválida'),
     data_hora_fim: z.string().datetime('Data de término inválida'),
     local: z.string().optional(),
@@ -128,9 +128,9 @@ export type AgendamentoInput = z.infer<typeof agendamentoSchema>
 // ─────────────────────────────────────────────
 
 export const pagamentoSchema = z.object({
-  cliente_id: z.string().uuid('Selecione um cliente'),
-  servico_id: z.string().uuid().optional(),
-  agendamento_id: z.string().uuid().optional(),
+  cliente_id: z.string().min(1, 'Selecione um cliente'),
+  servico_id: z.string().min(1).optional(),
+  agendamento_id: z.string().min(1).optional(),
   descricao: z.string().min(2, 'Descrição obrigatória'),
   valor_jpy: z.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
@@ -175,16 +175,16 @@ export const contratoSecaoSchema = z.object({
   titulo: z.string().optional(),
   conteudo_html: z.string().nullable().optional(),
   campos: z.array(contratoSecaoCampoSchema).default([]),
-  servico_id: z.string().uuid().optional().or(z.literal('')),
-  variacao_ids: z.array(z.string().uuid()).default([]),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
+  variacao_ids: z.array(z.string().min(1)).default([]),
 })
 
 export type ContratoSecaoCampoInput = z.infer<typeof contratoSecaoCampoSchema>
 export type ContratoSecaoInput = z.infer<typeof contratoSecaoSchema>
 
 export const contratoSchema = z.object({
-  cliente_id: z.string().uuid('Selecione um cliente'),
-  servico_id: z.string().uuid().optional(),
+  cliente_id: z.string().min(1, 'Selecione um cliente'),
+  servico_id: z.string().min(1).optional(),
   titulo: z.string().min(2, 'Título obrigatório'),
   corpo_html: z.string().min(10, 'Conteúdo do contrato obrigatório'),
 })
@@ -198,7 +198,7 @@ export type ContratoInput = z.infer<typeof contratoSchema>
 export const contratoTemplateSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
   corpo_html: z.string().min(10, 'Conteúdo do template obrigatório'),
-  servico_id: z.string().uuid().optional().or(z.literal('')),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
   is_default: z.boolean().default(false),
   secoes: z.array(contratoSecaoSchema).default([]),
 })
@@ -215,20 +215,20 @@ const comentarioSchema = z.string().max(1000).optional()
 export const avaliacaoSchema = z.discriminatedUnion('tipo', [
   z.object({
     tipo: z.literal('servico'),
-    agendamento_id: z.string().uuid(),
-    instrutor_id: z.string().uuid().optional(),
+    agendamento_id: z.string().min(1),
+    instrutor_id: z.string().min(1).optional(),
     nota: notaSchema,
     comentario: comentarioSchema,
   }),
   z.object({
     tipo: z.literal('material'),
-    material_id: z.string().uuid(),
+    material_id: z.string().min(1),
     nota: notaSchema,
     comentario: comentarioSchema,
   }),
   z.object({
     tipo: z.literal('simulado'),
-    material_id: z.string().uuid(),
+    material_id: z.string().min(1),
     nota: notaSchema,
     comentario: comentarioSchema,
   }),
@@ -250,9 +250,9 @@ export const documentoTemplateSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
   descricao: z.string().optional(),
   obrigatorio: z.boolean().default(true),
-  servico_id: z.string().uuid().optional(),
-  variacao_id: z.string().uuid().optional().or(z.literal('')),
-  variacao_ids: z.array(z.string().uuid()).default([]),
+  servico_id: z.string().min(1).optional(),
+  variacao_id: z.string().min(1).optional().or(z.literal('')),
+  variacao_ids: z.array(z.string().min(1)).default([]),
   ordem: z.number().int().default(0),
 })
 
@@ -319,20 +319,20 @@ export type CategoriaMaterialInput = z.infer<typeof categoriaMaterialSchema>
 // ─────────────────────────────────────────────
 
 export const questaoOpcaoInputSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().min(1).optional(),
   texto: z.string().min(1, 'Texto da opção obrigatório'),
   is_correta: z.boolean().default(false),
   ordem: z.number().int().default(0),
 })
 
 export const questaoImagemInputSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().min(1).optional(),
   url: z.string().url('URL inválida'),
   ordem: z.number().int().default(0),
 })
 
 export const questaoExplicacaoImagemInputSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().min(1).optional(),
   url: z.string().url('URL inválida'),
   ordem: z.number().int().default(0),
 })
@@ -505,7 +505,7 @@ export type EnderecoJpInput = z.infer<typeof enderecoJpSchema>
 // ─────────────────────────────────────────────
 
 export const processoSchema = z.object({
-  servico_id: z.string().uuid('Selecione um serviço'),
+  servico_id: z.string().min(1, 'Selecione um serviço'),
   variacao_id: z.string().optional(),
   data_inicio: z.string().optional(),
   valor_acordado_jpy: z.number().int().min(0).optional(),
@@ -544,7 +544,7 @@ export const etapaTemplateSchema = z.object({
     .enum(['cliente', 'assessoria', 'menkyocenter', 'outros'])
     .default('assessoria'),
   ordem: z.number().int().default(0),
-  variacao_ids: z.array(z.string().uuid()).default([]),
+  variacao_ids: z.array(z.string().min(1)).default([]),
 })
 
 export type EtapaTemplateInput = z.infer<typeof etapaTemplateSchema>

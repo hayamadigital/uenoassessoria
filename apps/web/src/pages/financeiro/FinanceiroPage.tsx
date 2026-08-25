@@ -33,13 +33,13 @@ import type { StatusPagamento, MetodoPagamento, CategoriaPagamento } from '@ueno
 import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
 const registrarSchema = z.object({
-  cliente_id: z.string().uuid('Selecione um cliente'),
-  servico_id: z.string().uuid().optional(),
+  cliente_id: z.string().min(1, 'Selecione um cliente'),
+  servico_id: z.string().min(1).optional(),
   descricao: z.string().min(2, 'Descrição obrigatória'),
   valor_jpy: z.coerce.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
   categoria: z.enum(['habilitacao', 'taxa', 'material', 'aula', 'outro']).optional(),
-  recebido_por: z.string().uuid().optional(),
+  recebido_por: z.string().min(1).optional(),
   data_vencimento: z.string().optional(),
   notas: z.string().optional(),
 })
