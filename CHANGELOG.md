@@ -19,6 +19,9 @@ Formato: `[DATA] Área — O que mudou`
 - `apps/web/src/pages/auth/LoginPage.tsx` — link "Esqueceu a senha?" agora navega para a página dedicada em vez de resetar inline na tela de login
 - `packages/utils/src/validators.ts` — `forgotPasswordSchema` adicionado
 
+### Infraestrutura / Deploy (continuação)
+- `package.json` — `postinstall` de `patch-package` passou a ser tolerante a falha (`|| true`). Causa: o cache de build do Vercel restaurou um `node_modules/expo-image` já com o patch aplicado, e a reaplicação quebrava o `npm install` inteiro (bloqueando o deploy do web, que nem usa `expo-image`). Resolvido com `vercel --force` (descarta cache) para o build imediato + esse fix para não repetir.
+
 ### Firebase Auth
 - Domínio `ueno-assessoria.vercel.app` estava **ausente da lista de domínios autorizados** do Firebase Auth (só tinha `localhost`, `.firebaseapp.com` e `.web.app`) — isso quebrava qualquer fluxo que passasse `continueUrl`/`url` apontando para o domínio de produção com `UNAUTHORIZED_DOMAIN`. Era o caso do botão "Esqueceu a senha?" (antigo, inline na tela de login, e o novo em `/esqueci-senha`). Corrigido adicionando o domínio via API do Identity Toolkit.
 

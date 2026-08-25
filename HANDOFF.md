@@ -22,6 +22,14 @@ Documento de contexto para quem pegar o projeto a partir daqui. Última atualiza
 
 Em 2026-08-25 o branch `main` no GitHub estava **~90 arquivos atrás** do que já rodava localmente — uma refatoração grande de schema (serviços/variações, etapas de processo, financeiro, materiais/questões) nunca tinha sido commitada. Isso foi sincronizado nos commits `7fca933`, `902fc44`, `b3c7bf4`, `9fde56e`. **Antes de assumir que algo "nunca foi testado", verifique o histórico recente** — grande parte do trabalho existia só localmente até agora.
 
+## Se um deploy via GitHub falhar com erro de `patch-package`
+
+Já aconteceu do cache de build do Vercel restaurar um `node_modules/expo-image` já patcheado, e a tentativa de reaplicar o patch quebrar o `npm install` inteiro (mesmo no deploy do web, que não usa esse pacote). O `postinstall` já foi ajustado para não falhar mais por causa disso (`patch-package || true`), mas se algum outro patch novo causar o mesmo problema, o jeito mais rápido de resolver é forçar um deploy sem cache:
+```
+vercel --prod --yes --force --archive=tgz
+```
+(`--archive=tgz` é necessário porque o repo tem mais de 15000 arquivos para upload direto.)
+
 ## Domínios autorizados no Firebase Auth
 
 Qualquer fluxo do client SDK que passe `url`/`continueUrl` (ex: `sendPasswordResetEmail(auth, email, { url })`) só funciona se esse domínio estiver na lista de **Authorized domains** do Firebase Auth (Console → Authentication → Settings, ou via `identitytoolkit.googleapis.com/v2/projects/{project}/config`). Em 2026-08-25 faltava `ueno-assessoria.vercel.app` nessa lista — só havia `localhost`, `.firebaseapp.com` e `.web.app` — o que quebrava o botão "Esqueceu a senha?" com `UNAUTHORIZED_DOMAIN`. Já corrigido, mas **se um domínio próprio for configurado no futuro, ele também precisa ser adicionado aqui** ou qualquer fluxo com `continueUrl` vai quebrar do mesmo jeito.
