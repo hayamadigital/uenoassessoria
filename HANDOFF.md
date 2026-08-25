@@ -22,6 +22,20 @@ Documento de contexto para quem pegar o projeto a partir daqui. Última atualiza
 
 Em 2026-08-25 o branch `main` no GitHub estava **~90 arquivos atrás** do que já rodava localmente — uma refatoração grande de schema (serviços/variações, etapas de processo, financeiro, materiais/questões) nunca tinha sido commitada. Isso foi sincronizado nos commits `7fca933`, `902fc44`, `b3c7bf4`, `9fde56e`. **Antes de assumir que algo "nunca foi testado", verifique o histórico recente** — grande parte do trabalho existia só localmente até agora.
 
+## Deploy das Cloud Functions (separado do deploy do web!)
+
+**Importante**: o push pro GitHub só builda/publica `apps/web` na Vercel. As Cloud Functions (`functions/src/index.ts`), `firestore.rules`, `storage.rules` e `firestore.indexes.json` **não são deployadas automaticamente por nada** — precisam de `firebase deploy` manual:
+
+```
+cd functions && npm run build && cd ..
+firebase deploy --only functions --project ueno-assessoria-475b9
+firebase deploy --only firestore:rules,storage:rules,firestore:indexes --project ueno-assessoria-475b9
+```
+
+Em 2026-08-25 as functions estavam desatualizadas há tempo (o projeto esteve no plano Spark, que bloqueia deploy de functions com gatilho de Firestore) — isso provavelmente era a causa raiz do "erro ao criar clientes". **Sempre que mudar algo em `functions/src/index.ts`, `firestore.rules`, `storage.rules` ou `firestore.indexes.json`, lembrar de deployar manualmente** — não basta commitar e dar push.
+
+O projeto precisa estar no **plano Blaze** (pago, mas com cota gratuita generosa) para isso funcionar — ver seção de custos no changelog/histórico da conversa se precisar reavaliar.
+
 ## Se um deploy via GitHub falhar com erro de `patch-package`
 
 Já aconteceu do cache de build do Vercel restaurar um `node_modules/expo-image` já patcheado, e a tentativa de reaplicar o patch quebrar o `npm install` inteiro (mesmo no deploy do web, que não usa esse pacote). O `postinstall` já foi ajustado para não falhar mais por causa disso (`patch-package || true`), mas se algum outro patch novo causar o mesmo problema, o jeito mais rápido de resolver é forçar um deploy sem cache:

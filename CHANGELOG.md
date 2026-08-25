@@ -22,6 +22,13 @@ Formato: `[DATA] Área — O que mudou`
 ### Infraestrutura / Deploy (continuação)
 - `package.json` — `postinstall` de `patch-package` passou a ser tolerante a falha (`|| true`). Causa: o cache de build do Vercel restaurou um `node_modules/expo-image` já com o patch aplicado, e a reaplicação quebrava o `npm install` inteiro (bloqueando o deploy do web, que nem usa `expo-image`). Resolvido com `vercel --force` (descarta cache) para o build imediato + esse fix para não repetir.
 
+### Cloud Functions (causa raiz mais provável do "erro ao criar cliente")
+- **O projeto Firebase estava no plano Spark (gratuito)**, que bloqueia deploy de functions que usam Eventarc/Pub-Sub (gatilho `onUserCreated` do Firestore) — nenhuma Cloud Function podia ser atualizada. Upgrade para o plano Blaze feito pelo usuário.
+- Após o upgrade, **todas as Cloud Functions estavam desatualizadas em produção** — só foram deployadas agora pela primeira vez desde a refatoração de schema: `createCliente`, `onUserCreated`, `selfRegister`, `setRoleClaim`, `inviteUser`, `generateContractPdf`, `sendNotification`, `otimizarRota`. `regenerateInviteLink` nunca tinha sido deployada (função nova).
+- Isso significa que o backend rodava código antigo (sem a checagem `assertAdmin`, com nomes de campo divergentes do frontend atual) enquanto o frontend já esperava o formato novo — provável causa raiz do "erro ao criar clientes e várias coisas" relatado originalmente.
+- `firestore.rules` e `storage.rules` já estavam em dia (deploy sem alterações).
+- `firestore.indexes.json` — removido índice single-field redundante de `avisos` que impedia o deploy dos índices.
+
 ### Firebase Auth
 - Domínio `ueno-assessoria.vercel.app` estava **ausente da lista de domínios autorizados** do Firebase Auth (só tinha `localhost`, `.firebaseapp.com` e `.web.app`) — isso quebrava qualquer fluxo que passasse `continueUrl`/`url` apontando para o domínio de produção com `UNAUTHORIZED_DOMAIN`. Era o caso do botão "Esqueceu a senha?" (antigo, inline na tela de login, e o novo em `/esqueci-senha`). Corrigido adicionando o domínio via API do Identity Toolkit.
 
