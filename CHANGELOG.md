@@ -19,8 +19,12 @@ Formato: `[DATA] Área — O que mudou`
 - `apps/web/src/pages/auth/LoginPage.tsx` — link "Esqueceu a senha?" agora navega para a página dedicada em vez de resetar inline na tela de login
 - `packages/utils/src/validators.ts` — `forgotPasswordSchema` adicionado
 
+### Firebase Auth
+- Domínio `ueno-assessoria.vercel.app` estava **ausente da lista de domínios autorizados** do Firebase Auth (só tinha `localhost`, `.firebaseapp.com` e `.web.app`) — isso quebrava qualquer fluxo que passasse `continueUrl`/`url` apontando para o domínio de produção com `UNAUTHORIZED_DOMAIN`. Era o caso do botão "Esqueceu a senha?" (antigo, inline na tela de login, e o novo em `/esqueci-senha`). Corrigido adicionando o domínio via API do Identity Toolkit.
+
 ### Pendências identificadas nesta sessão
 - Fluxo de convite de cliente/usuário (`createCliente`/`inviteUser`) gera `reset_link` mas **não envia automaticamente** por e-mail/WhatsApp — depende do admin copiar/colar manualmente. Campo `whatsapp_url` esperado pelo frontend nunca é retornado pelo backend (código morto)
+- `createCliente`/`inviteUser` chamam `generatePasswordResetLink` sem `continueUrl` (usam o domínio padrão `.firebaseapp.com`, que já está autorizado), então **não** são afetados pelo bug de `UNAUTHORIZED_DOMAIN` acima — mas qualquer nova tela que passe `url`/`continueUrl` apontando para um domínio de produção precisa lembrar de autorizá-lo antes em Firebase Auth (Authentication → Settings → Authorized domains, ou via API do Identity Toolkit)
 - Teste ponta a ponta do fluxo de criação de clientes ainda pendente (aguardando credenciais de admin)
 - Domínio próprio (`.com.br` ou similar) ainda não configurado — só `uenoassessoria.vercel.app`, cujo alias precisa ser reatribuído manualmente após cada deploy até um domínio real ser configurado
 
