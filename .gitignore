@@ -42,3 +42,7 @@ Thumbs.db
 web-build/
 .vercel
 .env*
+
+# Local agent tool state
+.codex/
+.superpowers/
