@@ -32,7 +32,9 @@ export function ForgotPasswordPage() {
       })
       setSent(true)
     } catch {
-      setError('root', { message: t('invalid_credentials') })
+      setError('root', {
+        message: 'Não foi possível enviar o email de redefinição. Tente novamente.',
+      })
     }
   }
 
