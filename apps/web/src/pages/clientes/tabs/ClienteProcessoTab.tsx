@@ -44,6 +44,7 @@ interface Context {
 }
 
 const statusLabel: Record<StatusClienteProcesso, string> = {
+  analise: 'Em análise',
   ativo: 'Ativo',
   concluido: 'Concluído',
   cancelado: 'Cancelado',
@@ -53,6 +54,7 @@ const statusVariant: Record<
   StatusClienteProcesso,
   'default' | 'success' | 'destructive' | 'secondary' | 'outline' | 'warning'
 > = {
+  analise: 'warning',
   ativo: 'default',
   concluido: 'success',
   cancelado: 'destructive',

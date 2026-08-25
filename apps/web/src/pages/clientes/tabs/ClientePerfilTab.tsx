@@ -107,8 +107,12 @@ export function ClientePerfilTab() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label>Endereço</Label>
-            <Input {...register('endereco_jp')} />
+            <Label>Endereço completo em japonês</Label>
+            <textarea
+              {...register('endereco_jp')}
+              className="min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Ex: 愛知県名古屋市中区栄1丁目2-3 ○○マンション101"
+            />
           </div>
           <div className="space-y-2">
             <Label>Cidade</Label>

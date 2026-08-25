@@ -5,11 +5,9 @@ import {
   LayoutDashboard,
   Users,
   CalendarDays,
-  FileText,
   CreditCard,
   BookOpen,
   Briefcase,
-  ScrollText,
   Star,
   MapPin,
   Bell,
@@ -17,6 +15,7 @@ import {
   LogOut,
   HelpCircle,
   Megaphone,
+  ListChecks,
 } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
@@ -26,12 +25,11 @@ const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/clientes', icon: Users, label: 'Clientes' },
   { href: '/agendamentos', icon: CalendarDays, label: 'Agendamentos' },
-  { href: '/documentos', icon: FileText, label: 'Documentos' },
+  { href: '/processos', icon: ListChecks, label: 'Processos' },
   { href: '/financeiro', icon: CreditCard, label: 'Financeiro' },
   { href: '/materiais', icon: BookOpen, label: 'Materiais' },
   { href: '/avisos', icon: Megaphone, label: 'Avisos' },
   { href: '/servicos', icon: Briefcase, label: 'Serviços' },
-  { href: '/contratos', icon: ScrollText, label: 'Contratos' },
   { href: '/avaliacoes', icon: Star, label: 'Avaliações' },
   { href: '/rotas', icon: MapPin, label: 'Rotas' },
   { href: '/notificacoes', icon: Bell, label: 'Notificações' },

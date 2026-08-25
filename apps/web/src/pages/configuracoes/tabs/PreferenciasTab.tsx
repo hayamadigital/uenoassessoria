@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { db } from '@/lib/firebase'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
+import { listCategoriasMaterial } from '@ueno/firebase/queries/materiais'
 import { getPublicAppConfig, updatePublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { useAuthStore } from '@/stores/auth.store'
 import { cn } from '@/lib/cn'
@@ -21,7 +22,12 @@ export function PreferenciasTab() {
     queryKey: ['public-app-config'],
     queryFn: () => getPublicAppConfig(db),
   })
+  const { data: categoriasMaterial = [] } = useQuery({
+    queryKey: ['categorias-material'],
+    queryFn: () => listCategoriasMaterial(db),
+  })
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
+  const [homeMaterialCategoryId, setHomeMaterialCategoryId] = useState('')
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -39,18 +45,22 @@ export function PreferenciasTab() {
 
   const supportMutation = useMutation({
     mutationFn: async () => {
-      await updatePublicAppConfig(db, { support_whatsapp: supportWhatsapp })
+      await updatePublicAppConfig(db, {
+        support_whatsapp: supportWhatsapp,
+        home_material_category_id: homeMaterialCategoryId || null,
+      })
       await queryClient.invalidateQueries({ queryKey: ['public-app-config'] })
     },
     onSuccess: () => {
-      setSuccessMsg('WhatsApp de suporte salvo com sucesso.')
+      setSuccessMsg('Preferências públicas salvas com sucesso.')
       setTimeout(() => setSuccessMsg(null), 3000)
     },
   })
 
   useEffect(() => {
     setSupportWhatsapp(publicConfig?.support_whatsapp ?? '')
-  }, [publicConfig?.support_whatsapp])
+    setHomeMaterialCategoryId(publicConfig?.home_material_category_id ?? '')
+  }, [publicConfig?.support_whatsapp, publicConfig?.home_material_category_id])
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -102,10 +112,10 @@ export function PreferenciasTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">WhatsApp de suporte</CardTitle>
-          <CardDescription>Número usado pelo app mobile para abrir o FAQ e iniciar contato.</CardDescription>
+          <CardTitle className="text-base">WhatsApp de suporte e materiais da home</CardTitle>
+          <CardDescription>Define o contato do FAQ e a categoria fixa exibida no mobile do cliente.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="support-whatsapp">Telefone do WhatsApp</Label>
             <Input
@@ -119,13 +129,36 @@ export function PreferenciasTab() {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="home-material-category">Categoria fixa de materiais na home</Label>
+            <select
+              id="home-material-category"
+              value={homeMaterialCategoryId}
+              onChange={(e) => setHomeMaterialCategoryId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Selecione uma categoria</option>
+              {categoriasMaterial.map((categoria) => (
+                <option key={categoria.id} value={categoria.id}>
+                  {categoria.nome}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Essa categoria só aparece no mobile se houver materiais públicos e ativos dentro dela.
+            </p>
+          </div>
+
           <div className="flex items-center gap-4">
             <Button
               onClick={() => supportMutation.mutate()}
               isLoading={supportMutation.isPending}
-              disabled={supportWhatsapp.trim() === (publicConfig?.support_whatsapp ?? '').trim()}
+              disabled={
+                supportWhatsapp.trim() === (publicConfig?.support_whatsapp ?? '').trim() &&
+                homeMaterialCategoryId === (publicConfig?.home_material_category_id ?? '')
+              }
             >
-              Salvar WhatsApp
+              Salvar preferências
             </Button>
             {supportMutation.isError && (
               <p className="text-sm text-destructive">

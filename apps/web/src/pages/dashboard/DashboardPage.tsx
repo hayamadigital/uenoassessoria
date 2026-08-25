@@ -1,387 +1,415 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts'
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  getDocs,
-  getCountFromServer,
-} from 'firebase/firestore'
-import { CreditCard, AlertCircle, Users, CalendarDays } from 'lucide-react'
+import { CalendarDays, ClipboardList, Layers3, Users } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Spinner } from '@/components/ui/spinner'
 import { db } from '@/lib/firebase'
+import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import {
-  getDashboardFinanceiro,
-  getResumoMultiplosMeses,
-} from '@ueno/firebase/queries/financeiro'
-import {
-  getTodayJST,
-  getJSTDayStartUTC,
-  getJSTDayEndUTC,
-  formatTimeJST,
-  formatDateJST,
-} from '@ueno/utils/date'
-import { formatJPY } from '@ueno/utils/currency'
+  listEtapasPendentesAssessoria,
+  updateEtapa,
+  type EtapaPendenteItem,
+} from '@ueno/firebase/queries/etapas'
+import { listProcessosAtivos } from '@ueno/firebase/queries/processos'
+import { formatDateJST, formatTimeJST } from '@ueno/utils/date'
+import type {
+  AgendamentoWithRelations,
+  ClienteProcessoWithCliente,
+  StatusAgendamento,
+  StatusProcessoEtapa,
+} from '@ueno/firebase'
 
-// ── Types ─────────────────────────────────────────────────────────────
-
-interface DashboardData {
-  receita_mes_jpy: number
-  receita_pendente_jpy: number
-  pendentes_atrasados: number
-  pendentes_proximos: number
-  delta_receita_pct: number
-  clientes_ativos: number
-  novos_clientes_mes: number
-  agendamentos_hoje: number
-  proximo_agendamento_hora: string | null
-  historico_receita: { mes: string; valor: number }[]
+type ProcessoServicoResumo = {
+  servico_id: string
+  servico_nome: string
+  total: number
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────
-
-function getLast6Months(): string[] {
-  const months: string[] = []
-  const now = new Date()
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    months.push(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-    )
-  }
-  return months
+type DashboardOperacionalData = {
+  etapasPendentesAssessoria: EtapaPendenteItem[]
+  processosAtivos: ClienteProcessoWithCliente[]
+  clientesAtivos: ClienteProcessoWithCliente[]
+  resumoServicos: ProcessoServicoResumo[]
+  proximosAgendamentos: AgendamentoWithRelations[]
 }
 
-function getPrevMonth(mes: string): string {
-  const parts = mes.split('-')
-  const y = parseInt(parts[0]!, 10)
-  const m = parseInt(parts[1]!, 10)
-  const d = new Date(y, m - 2, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+const statusEtapaLabel: Record<StatusProcessoEtapa, string> = {
+  pendente: 'Pendente',
+  em_andamento: 'Em andamento',
+  concluido: 'Concluído',
+  atrasado: 'Atrasado',
 }
 
-// ── Data fetch ────────────────────────────────────────────────────────
+const statusEtapaClass: Record<StatusProcessoEtapa, string> = {
+  pendente: 'bg-amber-50 text-amber-700',
+  em_andamento: 'bg-blue-50 text-blue-700',
+  concluido: 'bg-green-50 text-green-700',
+  atrasado: 'bg-red-50 text-red-700',
+}
 
-async function fetchDashboardKPIs(): Promise<DashboardData> {
-  const todayJST = getTodayJST() // 'YYYY-MM-DD'
-  const mesAtual = todayJST.slice(0, 7)
-  const mesAnterior = getPrevMonth(mesAtual)
-  const inicioMes = getJSTDayStartUTC(`${mesAtual}-01`)
+const statusEtapaOptions: StatusProcessoEtapa[] = [
+  'pendente',
+  'em_andamento',
+  'atrasado',
+  'concluido',
+]
 
-  const em7Dias = new Date()
-  em7Dias.setDate(em7Dias.getDate() + 7)
-  const em7DiasStr = em7Dias.toISOString().slice(0, 10)
+const statusAgendamentoLabel: Record<StatusAgendamento, string> = {
+  agendado: 'Agendado',
+  confirmado: 'Confirmado',
+  em_andamento: 'Em andamento',
+  concluido: 'Concluído',
+  cancelado: 'Cancelado',
+  faltou: 'Faltou',
+}
 
-  const [
-    finAtual,
-    finAnterior,
-    clientesAtivosSnap,
-    novosClientesSnap,
-    agendHojeCountSnap,
-    primeiroAgendSnap,
-    pagPendentesSnap,
-    historicoMeses,
-  ] = await Promise.all([
-    getDashboardFinanceiro(db, mesAtual),
-    getDashboardFinanceiro(db, mesAnterior),
-    getCountFromServer(
-      query(
-        collection(db, 'clientes'),
-        where('status_processo', 'in', [
-          'contato',
-          'documentacao',
-          'agendado',
-          'em_andamento',
-        ]),
-      ),
-    ),
-    getCountFromServer(
-      query(
-        collection(db, 'clientes'),
-        where('created_at', '>=', inicioMes),
-      ),
-    ),
-    getCountFromServer(
-      query(
-        collection(db, 'agendamentos'),
-        where('data_hora_inicio', '>=', getJSTDayStartUTC(todayJST)),
-        where('data_hora_inicio', '<=', getJSTDayEndUTC(todayJST)),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, 'agendamentos'),
-        where('data_hora_inicio', '>=', getJSTDayStartUTC(todayJST)),
-        where('data_hora_inicio', '<=', getJSTDayEndUTC(todayJST)),
-        orderBy('data_hora_inicio', 'asc'),
-        limit(1),
-      ),
-    ),
-    getDocs(
-      query(
-        collection(db, 'pagamentos'),
-        where('status', '==', 'pendente'),
-      ),
-    ),
-    getResumoMultiplosMeses(db, getLast6Months()),
+async function fetchDashboardOperacional(): Promise<DashboardOperacionalData> {
+  const [etapasPendentesAssessoria, processos, agendamentos] = await Promise.all([
+    listEtapasPendentesAssessoria(db),
+    listProcessosAtivos(db),
+    listAgendamentos(db, { data_inicio: new Date().toISOString() }),
   ])
 
-  const pagamentos = pagPendentesSnap.docs.map(
-    (d) => d.data() as { valor_jpy: number; data_vencimento?: string },
-  )
+  const processosAtivos = processos.filter((processo) => processo.status === 'ativo')
+  const resumoMap = new Map<string, ProcessoServicoResumo>()
 
-  const receitaPendenteJpy = pagamentos.reduce(
-    (acc, p) => acc + (p.valor_jpy ?? 0),
-    0,
-  )
+  processosAtivos.forEach((processo) => {
+    const servicoId = processo.servico_id
+    const current = resumoMap.get(servicoId)
+    if (current) {
+      current.total += 1
+      return
+    }
 
-  const pendentesAtrasados = pagamentos.filter(
-    (p) => p.data_vencimento && p.data_vencimento < todayJST,
-  ).length
+    resumoMap.set(servicoId, {
+      servico_id: servicoId,
+      servico_nome: processo.servico?.nome ?? 'Serviço sem nome',
+      total: 1,
+    })
+  })
 
-  const pendentesProximos = pagamentos.filter(
-    (p) =>
-      p.data_vencimento &&
-      p.data_vencimento >= todayJST &&
-      p.data_vencimento <= em7DiasStr,
-  ).length
+  const clientesPorId = new Map<string, ClienteProcessoWithCliente>()
+  processosAtivos.forEach((processo) => {
+    if (!clientesPorId.has(processo.cliente_id)) {
+      clientesPorId.set(processo.cliente_id, processo)
+    }
+  })
 
-  const deltaPct =
-    finAnterior.total_pago_mes > 0
-      ? Math.round(
-          ((finAtual.total_pago_mes - finAnterior.total_pago_mes) /
-            finAnterior.total_pago_mes) *
-            100,
-        )
-      : 0
-
-  const primeiroDoc = primeiroAgendSnap.docs[0]?.data() as
-    | { data_hora_inicio: string }
-    | undefined
-  const proximaHora = primeiroDoc
-    ? formatTimeJST(primeiroDoc.data_hora_inicio)
-    : null
+  const proximosAgendamentos = agendamentos
+    .filter((agendamento) => !['cancelado', 'faltou', 'concluido'].includes(agendamento.status))
+    .sort((a, b) => a.data_hora_inicio.localeCompare(b.data_hora_inicio))
+    .slice(0, 8)
 
   return {
-    receita_mes_jpy: finAtual.total_pago_mes,
-    receita_pendente_jpy: receitaPendenteJpy,
-    pendentes_atrasados: pendentesAtrasados,
-    pendentes_proximos: pendentesProximos,
-    delta_receita_pct: deltaPct,
-    clientes_ativos: clientesAtivosSnap.data().count,
-    novos_clientes_mes: novosClientesSnap.data().count,
-    agendamentos_hoje: agendHojeCountSnap.data().count,
-    proximo_agendamento_hora: proximaHora,
-    historico_receita: historicoMeses.map((m) => ({
-      mes: m.mes,
-      valor: m.total_pago_mes,
-    })),
+    etapasPendentesAssessoria,
+    processosAtivos,
+    clientesAtivos: [...clientesPorId.values()].slice(0, 10),
+    resumoServicos: [...resumoMap.values()]
+      .sort((a, b) => b.total - a.total || a.servico_nome.localeCompare(b.servico_nome))
+      .slice(0, 10),
+    proximosAgendamentos,
   }
 }
 
-// ── KPICard ───────────────────────────────────────────────────────────
-
-interface KPICardProps {
-  label: string
-  value: string | number
-  borderColor: string
-  iconBg: string
-  icon: React.ElementType
-  subtitleText: string
-  subtitleColor: string
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  )
 }
 
-function KPICard({
+function SectionHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string
+  subtitle: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+function MetricCard({
   label,
   value,
-  borderColor,
-  iconBg,
   icon: Icon,
-  subtitleText,
-  subtitleColor,
-}: KPICardProps) {
+  tone,
+}: {
+  label: string
+  value: string | number
+  icon: React.ElementType
+  tone: 'blue' | 'amber' | 'green' | 'slate'
+}) {
+  const tones = {
+    blue: { border: '#3b82f6', bg: '#eff6ff' },
+    amber: { border: '#f59e0b', bg: '#fffbeb' },
+    green: { border: '#16a34a', bg: '#f0fdf4' },
+    slate: { border: '#475569', bg: '#f8fafc' },
+  }[tone]
+
   return (
     <div
       className="rounded-lg border border-border bg-card p-4"
-      style={{ borderLeftColor: borderColor, borderLeftWidth: 4 }}
+      style={{ borderLeftColor: tones.border, borderLeftWidth: 4 }}
     >
-      <div className="mb-2.5 flex items-start justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
-          {label}
-        </span>
-        <div className="rounded-md p-1.5" style={{ background: iconBg }}>
-          <Icon className="h-3.5 w-3.5" style={{ color: borderColor }} />
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <div className="rounded-md p-1.5" style={{ background: tones.bg }}>
+          <Icon className="h-3.5 w-3.5" style={{ color: tones.border }} />
         </div>
       </div>
-      <div className="text-2xl font-bold text-foreground">{value}</div>
-      <p className="mt-1 text-[11px]" style={{ color: subtitleColor }}>
-        {subtitleText}
-      </p>
+      <div className="mt-2 text-2xl font-bold text-foreground">{value}</div>
     </div>
   )
 }
 
-// ── RevenueChart ──────────────────────────────────────────────────────
+function PendingAssessmentSteps({ etapas }: { etapas: EtapaPendenteItem[] }) {
+  const queryClient = useQueryClient()
 
-const MONTH_LABELS: Record<string, string> = {
-  '01': 'JAN',
-  '02': 'FEV',
-  '03': 'MAR',
-  '04': 'ABR',
-  '05': 'MAI',
-  '06': 'JUN',
-  '07': 'JUL',
-  '08': 'AGO',
-  '09': 'SET',
-  '10': 'OUT',
-  '11': 'NOV',
-  '12': 'DEZ',
-}
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: StatusProcessoEtapa }) =>
+      updateEtapa(db, id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'operacional-v1'] })
+    },
+  })
 
-interface RevenueChartProps {
-  data: { mes: string; valor: number }[]
-}
-
-function RevenueChart({ data }: RevenueChartProps) {
-  const currentMes = getTodayJST().slice(0, 7)
-  const chartData = data.map((d) => ({
-    name: MONTH_LABELS[d.mes.slice(5, 7)] ?? d.mes.slice(5, 7),
-    valor: d.valor,
-    isCurrent: d.mes === currentMes,
-  }))
+  const visibleEtapas = etapas.slice(0, 10)
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            Receita Mensal
-          </p>
-          <p className="text-xs text-muted-foreground">Últimos 6 meses (¥)</p>
-        </div>
-        <Link
-          to="/financeiro"
-          className="rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
-        >
-          Ver financeiro →
-        </Link>
-      </div>
-      <ResponsiveContainer width="100%" height={120}>
-        <BarChart data={chartData} barSize={32}>
-          {/* @ts-expect-error recharts v2 types incompatible with React 19 */}
-          <XAxis
-            dataKey="name"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
-          />
-          {/* @ts-expect-error recharts v2 types incompatible with React 19 */}
-          <Tooltip
-            formatter={(value: number) => [formatJPY(value), 'Receita']}
-            cursor={{ fill: 'rgba(0,0,0,0.04)' }}
-          />
-          {/* @ts-expect-error recharts v2 types incompatible with React 19 */}
-          <Bar dataKey="valor" radius={[3, 3, 0, 0]}>
-            {chartData.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.isCurrent ? '#8b5cf6' : '#ddd6fe'}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// ── QuickActions ──────────────────────────────────────────────────────
-
-const QUICK_ACTIONS = [
-  {
-    label: '+ Novo Cliente',
-    to: '/clientes/novo',
-    color: '#1e40af',
-    border: '#eff6ff',
-    dot: '#3b82f6',
-  },
-  {
-    label: '+ Novo Agendamento',
-    to: '/agendamentos/novo',
-    color: '#6d28d9',
-    border: '#f5f3ff',
-    dot: '#8b5cf6',
-  },
-  {
-    label: '+ Novo Contrato',
-    to: '/contratos',
-    color: '#be185d',
-    border: '#fdf2f8',
-    dot: '#ec4899',
-  },
-  {
-    label: 'Ver Pendências',
-    to: '/financeiro',
-    color: '#c2410c',
-    border: '#fff7ed',
-    dot: '#f97316',
-  },
-] as const
-
-function QuickActions() {
-  return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <p className="mb-3.5 text-sm font-semibold text-foreground">
-        Ações Rápidas
-      </p>
-      <div className="flex flex-col gap-2">
-        {QUICK_ACTIONS.map((a) => (
+      <SectionHeader
+        title="Etapas Pendentes da Assessoria"
+        subtitle={`${etapas.length} etapa(s) aguardando ação interna`}
+        action={
           <Link
-            key={a.to}
-            to={a.to}
-            className="flex items-center gap-2.5 rounded-md border px-3 py-2.5 text-sm font-medium transition-opacity hover:opacity-75"
-            style={{ borderColor: a.border, color: a.color }}
+            to="/processos"
+            className="rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
           >
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: a.dot }}
-            />
-            {a.label}
+            Ver processos →
           </Link>
-        ))}
-      </div>
+        }
+      />
+
+      {visibleEtapas.length === 0 ? (
+        <EmptyState>Nenhuma etapa pendente para a assessoria.</EmptyState>
+      ) : (
+        <div className="divide-y rounded-md border">
+          {visibleEtapas.map((etapa) => {
+            const isUpdating =
+              updateStatusMutation.isPending &&
+              updateStatusMutation.variables?.id === etapa.id
+
+            return (
+              <div
+                key={etapa.id}
+                className="flex items-start justify-between gap-3 px-4 py-3"
+              >
+                <Link
+                  to={`/processos/${etapa.processo_id}`}
+                  className="min-w-0 flex-1 rounded-sm transition-colors hover:text-primary"
+                >
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {etapa.nome}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {etapa.cliente_nome}
+                    {etapa.data_agendada ? ` · ${formatDateJST(etapa.data_agendada)}` : ''}
+                  </p>
+                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${statusEtapaClass[etapa.status]}`}>
+                    {statusEtapaLabel[etapa.status]}
+                  </span>
+                  <select
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    value={etapa.status}
+                    disabled={isUpdating}
+                    aria-label={`Atualizar status da etapa ${etapa.nome}`}
+                    onChange={(event) => {
+                      updateStatusMutation.mutate({
+                        id: etapa.id,
+                        status: event.target.value as StatusProcessoEtapa,
+                      })
+                    }}
+                  >
+                    {statusEtapaOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {statusEtapaLabel[status]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-// ── DashboardPage ─────────────────────────────────────────────────────
+function ActiveClientsList({ processos }: { processos: ClienteProcessoWithCliente[] }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <SectionHeader
+        title="Clientes Ativos"
+        subtitle={`${processos.length} cliente(s) com processo ativo`}
+        action={
+          <Link
+            to="/clientes"
+            className="rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          >
+            Ver clientes →
+          </Link>
+        }
+      />
+
+      {processos.length === 0 ? (
+        <EmptyState>Nenhum cliente com processo ativo.</EmptyState>
+      ) : (
+        <div className="divide-y rounded-md border">
+          {processos.map((processo) => (
+            <Link
+              key={processo.cliente_id}
+              to={`/clientes/${processo.cliente_id}`}
+              className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {processo.cliente.profile.full_name}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {processo.servico?.nome ?? 'Serviço sem nome'}
+                  {processo.variacao ? ` · ${processo.variacao.nome}` : ''}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-green-50 px-2 py-1 text-[11px] font-medium text-green-700">
+                Ativo
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProcessSummaryByService({ resumo }: { resumo: ProcessoServicoResumo[] }) {
+  const total = resumo.reduce((acc, item) => acc + item.total, 0)
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <SectionHeader
+        title="Processos Ativos por Serviço"
+        subtitle={`${total} processo(s) ativo(s) distribuídos por serviço`}
+      />
+
+      {resumo.length === 0 ? (
+        <EmptyState>Nenhum processo ativo por serviço.</EmptyState>
+      ) : (
+        <div className="space-y-3">
+          {resumo.map((item) => {
+            const percent = total > 0 ? Math.max(8, Math.round((item.total / total) * 100)) : 0
+
+            return (
+              <div key={item.servico_id}>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {item.servico_nome}
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {item.total}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-muted">
+                  <div
+                    className="h-2 rounded-full bg-blue-500"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UpcomingAppointments({ agendamentos }: { agendamentos: AgendamentoWithRelations[] }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <SectionHeader
+        title="Próximos Agendamentos"
+        subtitle={`${agendamentos.length} compromisso(s) na fila`}
+        action={
+          <Link
+            to="/agendamentos"
+            className="rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          >
+            Ver agenda →
+          </Link>
+        }
+      />
+
+      {agendamentos.length === 0 ? (
+        <EmptyState>Nenhum próximo agendamento.</EmptyState>
+      ) : (
+        <div className="divide-y rounded-md border">
+          {agendamentos.map((agendamento) => (
+            <Link
+              key={agendamento.id}
+              to={`/agendamentos/${agendamento.id}`}
+              className="flex items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {agendamento.cliente?.profile.full_name ?? agendamento.cliente_nome ?? 'Agenda interna'}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {formatDateJST(agendamento.data_hora_inicio)} · {formatTimeJST(agendamento.data_hora_inicio)}
+                  {agendamento.servico?.nome ? ` · ${agendamento.servico.nome}` : ''}
+                </p>
+                {agendamento.local ? (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {agendamento.local}
+                  </p>
+                ) : null}
+              </div>
+              <span className="shrink-0 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700">
+                {statusAgendamentoLabel[agendamento.status]}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function DashboardPage() {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard', 'kpis-v2'],
-    queryFn: fetchDashboardKPIs,
+    queryKey: ['dashboard', 'operacional-v1'],
+    queryFn: fetchDashboardOperacional,
     refetchInterval: 60_000,
   })
-
-  const deltaPct = data?.delta_receita_pct ?? 0
-  const atrasados = data?.pendentes_atrasados ?? 0
 
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle={`Visão geral — ${formatDateJST(new Date().toISOString())}`}
+        subtitle={`Visão operacional — ${formatDateJST(new Date().toISOString())}`}
       />
 
       <div className="space-y-5 p-8">
@@ -395,71 +423,47 @@ export function DashboardPage() {
           </p>
         ) : (
           <>
-            {/* KPI Row */}
             <div className="grid grid-cols-4 gap-4">
-              <KPICard
-                label="Receita do Mês"
-                value={formatJPY(data?.receita_mes_jpy ?? 0)}
-                borderColor="#22c55e"
-                iconBg="#f0fdf4"
-                icon={CreditCard}
-                subtitleText={
-                  deltaPct > 0
-                    ? `↑ ${deltaPct}% vs mês anterior`
-                    : deltaPct < 0
-                    ? `↓ ${Math.abs(deltaPct)}% vs mês anterior`
-                    : `→ igual ao mês anterior`
-                }
-                subtitleColor={deltaPct > 0 ? '#22c55e' : deltaPct < 0 ? '#ef4444' : '#94a3b8'}
+              <MetricCard
+                label="Etapas da Assessoria"
+                value={data?.etapasPendentesAssessoria.length ?? 0}
+                icon={ClipboardList}
+                tone="amber"
               />
-              <KPICard
-                label="Receita Pendente"
-                value={formatJPY(data?.receita_pendente_jpy ?? 0)}
-                borderColor="#f97316"
-                iconBg="#fff7ed"
-                icon={AlertCircle}
-                subtitleText={
-                  atrasados > 0
-                    ? `${atrasados} em atraso`
-                    : `${data?.pendentes_proximos ?? 0} com vencimento próximo`
-                }
-                subtitleColor={atrasados > 0 ? '#ef4444' : '#f97316'}
-              />
-              <KPICard
+              <MetricCard
                 label="Clientes Ativos"
-                value={data?.clientes_ativos ?? 0}
-                borderColor="#3b82f6"
-                iconBg="#eff6ff"
+                value={data?.clientesAtivos.length ?? 0}
                 icon={Users}
-                subtitleText={
-                  (data?.novos_clientes_mes ?? 0) > 0
-                    ? `↑ ${data!.novos_clientes_mes} novos este mês`
-                    : 'Nenhum novo este mês'
-                }
-                subtitleColor="#3b82f6"
+                tone="green"
               />
-              <KPICard
-                label="Agendamentos Hoje"
-                value={data?.agendamentos_hoje ?? 0}
-                borderColor="#8b5cf6"
-                iconBg="#f5f3ff"
+              <MetricCard
+                label="Processos Ativos"
+                value={data?.processosAtivos.length ?? 0}
+                icon={Layers3}
+                tone="blue"
+              />
+              <MetricCard
+                label="Próximos Agendamentos"
+                value={data?.proximosAgendamentos.length ?? 0}
                 icon={CalendarDays}
-                subtitleText={
-                  data?.proximo_agendamento_hora
-                    ? `Próximo às ${data.proximo_agendamento_hora}`
-                    : 'Nenhum hoje'
-                }
-                subtitleColor="#8b5cf6"
+                tone="slate"
               />
             </div>
 
-            {/* Main Row */}
             <div
               className="grid gap-4"
-              style={{ gridTemplateColumns: '1.6fr 1fr' }}
+              style={{ gridTemplateColumns: 'minmax(0, 1.35fr) minmax(360px, 0.65fr)' }}
             >
-              <RevenueChart data={data?.historico_receita ?? []} />
-              <QuickActions />
+              <PendingAssessmentSteps etapas={data?.etapasPendentesAssessoria ?? []} />
+              <UpcomingAppointments agendamentos={data?.proximosAgendamentos ?? []} />
+            </div>
+
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}
+            >
+              <ActiveClientsList processos={data?.clientesAtivos ?? []} />
+              <ProcessSummaryByService resumo={data?.resumoServicos ?? []} />
             </div>
           </>
         )}

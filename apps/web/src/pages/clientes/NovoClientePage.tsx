@@ -46,12 +46,15 @@ export function NovoClientePage() {
         { cliente_id: string; user_id: string; whatsapp_url?: string; reset_link?: string }
       >(getFunctions(), 'createCliente')
 
-      const { data: respData } = await createCliente({
+      const payload: { full_name: string; email: string; whatsapp?: string; nacionalidade?: string } = {
         full_name: data.full_name,
         email: data.email,
-        whatsapp,
-        nacionalidade: data.nacionalidade,
-      })
+      }
+
+      if (whatsapp) payload.whatsapp = whatsapp
+      if (data.nacionalidade) payload.nacionalidade = data.nacionalidade
+
+      const { data: respData } = await createCliente(payload)
 
       if (respData.whatsapp_url) {
         window.open(respData.whatsapp_url, '_blank', 'noopener,noreferrer')

@@ -267,6 +267,7 @@ export function SecaoContratoBuilder({
       titulo: TIPO_SECAO_LABEL[tipo],
       conteudo_html: null,
       campos: [],
+      variacao_ids: [],
     }
     onChange([...value, newSecao])
   }

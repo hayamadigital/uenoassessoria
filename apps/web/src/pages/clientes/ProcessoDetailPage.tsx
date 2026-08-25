@@ -22,6 +22,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   ArrowLeft,
+  CreditCard,
   GripVertical,
   Plus,
   Pencil,
@@ -51,6 +52,7 @@ import {
 } from '@/components/ui/dialog'
 import { db, storage } from '@/lib/firebase'
 import { uploadFile, contratoPath } from '@ueno/firebase/storage'
+import { getCliente } from '@ueno/firebase/queries/clientes'
 import { getProcesso, updateProcesso } from '@ueno/firebase/queries/processos'
 import {
   listEtapasByProcesso,
@@ -72,16 +74,23 @@ import {
 import {
   listContratoTemplatesForServico,
 } from '@ueno/firebase/queries/contrato_templates'
+import { getClienteDocumentos, getDocumentoSignedUrl } from '@ueno/firebase/queries/documentos'
+import { createPagamento, listPagamentos, upsertParcelas } from '@ueno/firebase/queries/financeiro'
 import { processoSchema, etapaSchema, type ProcessoInput, type EtapaInput } from '@ueno/utils/validators'
 import { formatDateJST } from '@ueno/utils/date'
 import { useAuthStore } from '@/stores/auth.store'
 import type {
   ProcessoEtapa,
+  AgendamentoModoEtapa,
   StatusClienteProcesso,
   StatusProcessoEtapa,
   ResponsavelEtapa,
   Contrato,
   StatusContrato,
+  StatusDocumento,
+  StatusPagamento,
+  ParcelaInsert,
+  StatusParcela,
 } from '@ueno/firebase'
 
 const statusEtapaLabel: Record<StatusProcessoEtapa, string> = {
@@ -109,9 +118,95 @@ const responsavelLabel: Record<ResponsavelEtapa, string> = {
 }
 
 const statusProcessoLabel: Record<StatusClienteProcesso, string> = {
+  analise: 'Em análise',
   ativo: 'Ativo',
   concluido: 'Concluído',
   cancelado: 'Cancelado',
+}
+
+const statusDocumentoLabel: Record<StatusDocumento, string> = {
+  pendente: 'Pendente',
+  enviado: 'Enviado',
+  aprovado: 'Aprovado',
+  reprovado: 'Reprovado',
+  expirado: 'Expirado',
+}
+
+const statusDocumentoVariant: Record<
+  StatusDocumento,
+  'default' | 'success' | 'destructive' | 'secondary' | 'outline' | 'warning'
+> = {
+  pendente: 'warning',
+  enviado: 'secondary',
+  aprovado: 'success',
+  reprovado: 'destructive',
+  expirado: 'outline',
+}
+
+const statusPagamentoLabel: Record<StatusPagamento, string> = {
+  pendente: 'Pendente',
+  pago: 'Pago',
+  cancelado: 'Cancelado',
+  estornado: 'Estornado',
+}
+
+const statusPagamentoVariant: Record<
+  StatusPagamento,
+  'default' | 'success' | 'destructive' | 'secondary' | 'outline' | 'warning'
+> = {
+  pendente: 'warning',
+  pago: 'success',
+  cancelado: 'destructive',
+  estornado: 'outline',
+}
+
+function formatJpy(valor: number) {
+  return `¥${valor.toLocaleString('ja-JP')}`
+}
+
+function displayValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return '—'
+  return String(value)
+}
+
+type AcordoParcelaDraft = {
+  valor_jpy: string
+  data_vencimento: string
+}
+
+type AcordoProcessoInput = {
+  valor_jpy: number
+  parcelas: Array<{
+    numero: number
+    valor_original_jpy: number
+    data_vencimento: string
+  }>
+}
+
+type EtapaUpdateInput = {
+  status: StatusProcessoEtapa
+  responsavel: ResponsavelEtapa
+  agendamento_modo: AgendamentoModoEtapa
+  data_agendada: string
+}
+
+function hojeIso() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function addMonthsIso(dateIso: string, months: number) {
+  const [year, month, day] = dateIso.split('-').map(Number)
+  if (!year || !month || !day) return hojeIso()
+  const date = new Date(year, month - 1 + months, day)
+  return date.toISOString().slice(0, 10)
+}
+
+function splitValorEmParcelas(total: number, quantidade: number) {
+  const base = Math.floor(total / quantidade)
+  const resto = total - base * quantidade
+  return Array.from({ length: quantidade }, (_, index) => (
+    index === quantidade - 1 ? base + resto : base
+  ))
 }
 
 // ── Sortable etapa card ──────────────────────────────────────
@@ -119,10 +214,20 @@ function EtapaCard({
   etapa,
   onEdit,
   onDelete,
+  onStatusChange,
+  canReorder = true,
+  canDelete = true,
+  inlineStatus = false,
+  isStatusUpdating = false,
 }: {
   etapa: ProcessoEtapa
   onEdit: (e: ProcessoEtapa) => void
   onDelete: (id: string) => void
+  onStatusChange?: (etapa: ProcessoEtapa, status: StatusProcessoEtapa) => void
+  canReorder?: boolean
+  canDelete?: boolean
+  inlineStatus?: boolean
+  isStatusUpdating?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: etapa.id })
@@ -139,21 +244,42 @@ function EtapaCard({
       style={style}
       className="flex items-start gap-3 rounded-md border bg-background px-4 py-3"
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="mt-0.5 cursor-grab text-muted-foreground hover:text-foreground"
-        aria-label="Arrastar"
-      >
-        <GripVertical className="h-5 w-5" />
-      </button>
+      {canReorder && (
+        <button
+          {...attributes}
+          {...listeners}
+          className="mt-0.5 cursor-grab text-muted-foreground hover:text-foreground"
+          aria-label="Arrastar"
+        >
+          <GripVertical className="h-5 w-5" />
+        </button>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm">{etapa.nome}</span>
-          <Badge variant={statusEtapaVariant[etapa.status]}>
-            {statusEtapaLabel[etapa.status]}
-          </Badge>
+          {inlineStatus ? (
+            <select
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium"
+              value={etapa.status}
+              disabled={isStatusUpdating}
+              onChange={(event) =>
+                onStatusChange?.(etapa, event.target.value as StatusProcessoEtapa)
+              }
+            >
+              <option value="pendente">Pendente</option>
+              <option value="em_andamento">Em Andamento</option>
+              <option value="concluido">Concluído</option>
+              <option value="atrasado">Atrasado</option>
+            </select>
+          ) : (
+            <Badge variant={statusEtapaVariant[etapa.status]}>
+              {statusEtapaLabel[etapa.status]}
+            </Badge>
+          )}
           <Badge variant="outline">{responsavelLabel[etapa.responsavel]}</Badge>
+          {isStatusUpdating && (
+            <span className="text-xs text-muted-foreground">Atualizando...</span>
+          )}
         </div>
         {etapa.descricao && (
           <p className="text-xs text-muted-foreground mt-0.5">{etapa.descricao}</p>
@@ -175,12 +301,19 @@ function EtapaCard({
         </p>
       </div>
       <div className="flex gap-1 shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => onEdit(etapa)}>
-          <Pencil className="h-4 w-4" />
+        <Button
+          variant={inlineStatus ? 'outline' : 'ghost'}
+          size={inlineStatus ? 'sm' : 'icon'}
+          onClick={() => onEdit(etapa)}
+        >
+          <Pencil className={inlineStatus ? 'mr-1.5 h-3.5 w-3.5' : 'h-4 w-4'} />
+          {inlineStatus ? 'Detalhes' : null}
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(etapa.id)}>
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
+        {canDelete && (
+          <Button variant="ghost" size="icon" onClick={() => onDelete(etapa.id)}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -281,6 +414,96 @@ function EtapaForm({
         </Button>
         <Button type="submit" form="etapa-form" isLoading={isLoading}>
           Salvar
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
+function EtapaUpdateForm({
+  etapa,
+  onSubmit,
+  isLoading,
+  onCancel,
+}: {
+  etapa: ProcessoEtapa
+  onSubmit: (data: EtapaUpdateInput) => void
+  isLoading: boolean
+  onCancel: () => void
+}) {
+  const { register, handleSubmit, watch } = useForm<EtapaUpdateInput>({
+    defaultValues: {
+      status: etapa.status,
+      responsavel: etapa.responsavel,
+      agendamento_modo: etapa.agendamento_modo,
+      data_agendada: etapa.data_agendada ?? '',
+    },
+  })
+
+  const agendamentoModo = watch('agendamento_modo')
+
+  return (
+    <form id="etapa-update-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
+      <div className="rounded-md border bg-muted/20 p-3">
+        <p className="text-sm font-medium">{etapa.nome}</p>
+        {etapa.descricao && (
+          <p className="mt-1 text-xs text-muted-foreground">{etapa.descricao}</p>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            {...register('status')}
+          >
+            <option value="pendente">Pendente</option>
+            <option value="em_andamento">Em Andamento</option>
+            <option value="concluido">Concluído</option>
+            <option value="atrasado">Atrasado</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Responsável</Label>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            {...register('responsavel')}
+          >
+            <option value="assessoria">Assessoria</option>
+            <option value="cliente">Cliente</option>
+            <option value="menkyocenter">Menkyo Center</option>
+            <option value="outros">Outros</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Agendamento</Label>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            {...register('agendamento_modo')}
+          >
+            <option value="nao_aplica">Não se aplica</option>
+            <option value="definir_dia">Definir dia</option>
+            <option value="definir_dia_hora">Definir dia e hora</option>
+          </select>
+        </div>
+        {agendamentoModo !== 'nao_aplica' && (
+          <div className="space-y-2">
+            <Label>Data {agendamentoModo === 'definir_dia_hora' ? 'e Hora' : ''}</Label>
+            <Input
+              type={agendamentoModo === 'definir_dia_hora' ? 'datetime-local' : 'date'}
+              {...register('data_agendada')}
+            />
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" type="button" onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button type="submit" form="etapa-update-form" isLoading={isLoading}>
+          Atualizar etapa
         </Button>
       </DialogFooter>
     </form>
@@ -422,12 +645,18 @@ export function ProcessoDetailPage() {
   const { id: clienteId, processoId } = useParams<{ id: string; processoId: string }>()
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.session?.userId)
+  const isClienteProcessoView = !!clienteId
+  const canManageProcesso = !isClienteProcessoView
 
   const [addOpen, setAddOpen] = useState(false)
   const [addMode, setAddMode] = useState<'manual' | 'template'>('manual')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [editEtapa, setEditEtapa] = useState<ProcessoEtapa | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [acordoOpen, setAcordoOpen] = useState(false)
+  const [acordoValor, setAcordoValor] = useState('')
+  const [acordoParcelas, setAcordoParcelas] = useState<AcordoParcelaDraft[]>([])
+  const [acordoErro, setAcordoErro] = useState<string | null>(null)
 
   // Contrato state
   const [editContratoOpen, setEditContratoOpen] = useState(false)
@@ -445,6 +674,28 @@ export function ProcessoDetailPage() {
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  function criarParcelasDraft(total: number, quantidade: number, primeiraData = hojeIso()): AcordoParcelaDraft[] {
+    const valores = splitValorEmParcelas(Math.max(total, 0), quantidade)
+    return valores.map((valor, index) => ({
+      valor_jpy: valor > 0 ? String(valor) : '',
+      data_vencimento: addMonthsIso(primeiraData, index),
+    }))
+  }
+
+  function atualizarQuantidadeParcelas(quantidadeInput: string) {
+    const quantidade = Math.min(Math.max(Number(quantidadeInput) || 1, 1), 24)
+    const total = Number(acordoValor) || 0
+    setAcordoParcelas(criarParcelasDraft(total, quantidade, acordoParcelas[0]?.data_vencimento || hojeIso()))
+  }
+
+  function recalcularParcelasPorValor(valorInput: string) {
+    setAcordoValor(valorInput)
+    const total = Number(valorInput) || 0
+    if (acordoParcelas.length > 0) {
+      setAcordoParcelas(criarParcelasDraft(total, acordoParcelas.length, acordoParcelas[0]?.data_vencimento || hojeIso()))
+    }
+  }
 
   const { data: processo, isLoading: processoLoading } = useQuery({
     queryKey: ['processos', processoId],
@@ -467,19 +718,37 @@ export function ProcessoDetailPage() {
   const { data: contratos = [] } = useQuery({
     queryKey: ['processos', processoId, 'contratos'],
     queryFn: () => listContratosByProcesso(db, processoId!),
-    enabled: !!processoId,
+    enabled: !!processoId && canManageProcesso,
   })
 
   const { data: contratoTemplates = [] } = useQuery({
     queryKey: ['contrato-templates', 'servico', processo?.servico_id],
     queryFn: () => listContratoTemplatesForServico(db, processo!.servico_id),
-    enabled: !!processo?.servico_id,
+    enabled: !!processo?.servico_id && canManageProcesso,
   })
 
   const { data: todosAditivos = [] } = useQuery({
     queryKey: ['processos', processoId, 'aditivos'],
     queryFn: () => listAditivosByProcesso(db, processoId!),
-    enabled: !!processoId,
+    enabled: !!processoId && canManageProcesso,
+  })
+
+  const { data: documentos = [] } = useQuery({
+    queryKey: ['processos', processoId, 'documentos', processo?.cliente_id],
+    queryFn: () => getClienteDocumentos(db, processo!.cliente_id),
+    enabled: !!processo?.cliente_id,
+  })
+
+  const { data: clienteProcesso } = useQuery({
+    queryKey: ['processos', processoId, 'cliente', processo?.cliente_id],
+    queryFn: () => getCliente(db, processo!.cliente_id),
+    enabled: !!processo?.cliente_id,
+  })
+
+  const { data: pagamentosCliente = [] } = useQuery({
+    queryKey: ['processos', processoId, 'pagamentos', processo?.cliente_id],
+    queryFn: () => listPagamentos(db, { cliente_id: processo!.cliente_id }),
+    enabled: !!processo?.cliente_id && canManageProcesso,
   })
 
   // Processo edit form
@@ -512,6 +781,91 @@ export function ProcessoDetailPage() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['processos', processoId] }),
+  })
+
+  const acordarProcessoMutation = useMutation({
+    mutationFn: async (data: AcordoProcessoInput) => {
+      if (!userId) throw new Error('Não autenticado')
+
+      const primeiroVencimento = data.parcelas[0]?.data_vencimento ?? null
+      const pagamento = await createPagamento(db, {
+        cliente_id: processo!.cliente_id,
+        servico_id: processo!.servico_id,
+        agendamento_id: null,
+        descricao: `Acordo do processo - ${processo!.servico.nome}`,
+        valor_jpy: data.valor_jpy,
+        metodo: 'transferencia',
+        status: 'pendente',
+        data_vencimento: primeiroVencimento,
+        data_pagamento: null,
+        comprovante_url: null,
+        notas: `Pagamento criado ao acordar o processo ${processoId}.`,
+        registrado_por: userId,
+        categoria: 'habilitacao',
+        recebido_por: null,
+      })
+
+      const parcelas: ParcelaInsert[] = data.parcelas.map((parcela) => ({
+        pagamento_id: pagamento.id,
+        numero: parcela.numero,
+        valor_original_jpy: parcela.valor_original_jpy,
+        valor_pago_jpy: 0,
+        status: 'pendente' as StatusParcela,
+        data_vencimento: parcela.data_vencimento,
+        data_pagamento: null,
+        notas: null,
+      }))
+
+      await upsertParcelas(db, pagamento.id, parcelas)
+
+      await updateProcesso(db, processoId!, {
+        status: 'ativo',
+        data_inicio: processo!.data_inicio ?? new Date().toISOString().slice(0, 10),
+        valor_acordado_jpy: data.valor_jpy,
+        notas: processo!.notas ?? 'Processo acordado após análise dos dados e documentos.',
+      })
+
+      if (etapas.length === 0) {
+        const templatesAplicaveis = templates.filter((template) => (
+          template.variacao_ids.length === 0
+          || (processo!.variacao_id ? template.variacao_ids.includes(processo!.variacao_id) : false)
+        ))
+        await Promise.all(templatesAplicaveis.map((template, index) => createEtapa(db, {
+          processo_id: processoId!,
+          nome: template.nome,
+          descricao: template.descricao || null,
+          status: 'pendente',
+          agendamento_modo: 'nao_aplica',
+          data_agendada: null,
+          responsavel: template.responsavel_padrao,
+          ordem: index,
+        })))
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId] })
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId, 'etapas'] })
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId, 'pagamentos', processo?.cliente_id] })
+      queryClient.invalidateQueries({ queryKey: ['processos', 'ativos'] })
+      queryClient.invalidateQueries({ queryKey: ['clientes', processo?.cliente_id, 'processos'] })
+      queryClient.invalidateQueries({ queryKey: ['clientes', processo?.cliente_id, 'pagamentos'] })
+      setAcordoOpen(false)
+      setAcordoErro(null)
+    },
+  })
+
+  const recusarProcessoMutation = useMutation({
+    mutationFn: () => updateProcesso(db, processoId!, {
+      status: 'cancelado',
+      notas: processo!.notas
+        ? `${processo!.notas}\n\nAnálise recusada.`
+        : 'Análise recusada.',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId] })
+      queryClient.invalidateQueries({ queryKey: ['processos', 'ativos'] })
+      queryClient.invalidateQueries({ queryKey: ['clientes', processo?.cliente_id, 'processos'] })
+    },
   })
 
   // ── Contrato mutations ────────────────────────────────────────
@@ -743,6 +1097,28 @@ export function ProcessoDetailPage() {
     },
   })
 
+  const updateEtapaConsultaMutation = useMutation({
+    mutationFn: (data: EtapaUpdateInput) =>
+      updateEtapa(db, editEtapa!.id, {
+        status: data.status,
+        responsavel: data.responsavel,
+        agendamento_modo: data.agendamento_modo,
+        data_agendada: data.agendamento_modo === 'nao_aplica' ? null : data.data_agendada || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId, 'etapas'] })
+      setEditEtapa(null)
+    },
+  })
+
+  const updateEtapaStatusMutation = useMutation({
+    mutationFn: ({ etapa, status }: { etapa: ProcessoEtapa; status: StatusProcessoEtapa }) =>
+      updateEtapa(db, etapa.id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processos', processoId, 'etapas'] })
+    },
+  })
+
   const deleteEtapaMutation = useMutation({
     mutationFn: (id: string) => deleteEtapa(db, id),
     onSuccess: () => {
@@ -757,6 +1133,8 @@ export function ProcessoDetailPage() {
   })
 
   function handleDragEnd(event: DragEndEvent) {
+    if (!canManageProcesso) return
+
     const { active, over } = event
     if (!over || active.id === over.id) return
 
@@ -773,6 +1151,12 @@ export function ProcessoDetailPage() {
     reorderMutation.mutate(reordered.map((e, i) => ({ id: e.id, ordem: i })))
   }
 
+  async function abrirDocumento(url: string | null) {
+    if (!url) return
+    const finalUrl = url.startsWith('http') ? url : await getDocumentoSignedUrl(storage, url)
+    window.open(finalUrl, '_blank', 'noopener,noreferrer')
+  }
+
   if (processoLoading) {
     return (
       <div className="flex justify-center py-16">
@@ -786,6 +1170,400 @@ export function ProcessoDetailPage() {
   const processoServicoNome = processo.variacao
     ? `${processo.servico.nome} — ${processo.variacao.nome}`
     : processo.servico.nome
+  const pagamentos = pagamentosCliente.filter((pagamento) => pagamento.servico_id === processo.servico_id)
+  const totalPago = pagamentos
+    .filter((pagamento) => pagamento.status === 'pago')
+    .reduce((sum, pagamento) => sum + pagamento.valor_jpy, 0)
+  const totalPendente = pagamentos
+    .filter((pagamento) => pagamento.status === 'pendente')
+    .reduce((sum, pagamento) => sum + pagamento.valor_jpy, 0)
+  const backTo = clienteId ? `/clientes/${clienteId}/processo` : '/processos'
+
+  function abrirAcordoModal() {
+    const processoAtual = processo
+    if (!processoAtual) return
+    const valorSugerido = processoAtual.valor_acordado_jpy
+      ?? processoAtual.variacao?.preco_jpy
+      ?? processoAtual.servico.preco_jpy
+      ?? 0
+    setAcordoValor(valorSugerido > 0 ? String(valorSugerido) : '')
+    setAcordoParcelas(criarParcelasDraft(valorSugerido, 1))
+    setAcordoErro(null)
+    setAcordoOpen(true)
+  }
+
+  function confirmarAcordoProcesso() {
+    const valorTotal = Math.round(Number(acordoValor))
+    const parcelas = acordoParcelas.map((parcela, index) => ({
+      numero: index + 1,
+      valor_original_jpy: Math.round(Number(parcela.valor_jpy)),
+      data_vencimento: parcela.data_vencimento,
+    }))
+    const somaParcelas = parcelas.reduce((sum, parcela) => sum + parcela.valor_original_jpy, 0)
+
+    if (!Number.isFinite(valorTotal) || valorTotal <= 0) {
+      setAcordoErro('Informe o valor total acordado.')
+      return
+    }
+    if (parcelas.length === 0) {
+      setAcordoErro('Informe pelo menos uma parcela.')
+      return
+    }
+    if (parcelas.some((parcela) => parcela.valor_original_jpy <= 0 || !parcela.data_vencimento)) {
+      setAcordoErro('Informe valor e data de vencimento para todas as parcelas.')
+      return
+    }
+    if (somaParcelas !== valorTotal) {
+      setAcordoErro('A soma das parcelas precisa ser igual ao valor total acordado.')
+      return
+    }
+
+    setAcordoErro(null)
+    acordarProcessoMutation.mutate({ valor_jpy: valorTotal, parcelas })
+  }
+
+  if (processo.status === 'analise') {
+    return (
+      <div>
+        <PageHeader
+          title={processoServicoNome}
+          subtitle="Solicitação aguardando análise da equipe"
+          actions={<Badge variant="warning">Em análise</Badge>}
+        />
+
+        <div className="px-8 pt-4">
+          <Link
+            to={backTo}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Voltar para Processos
+          </Link>
+        </div>
+
+        <div className="p-8 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {canManageProcesso ? 'Decisão da Análise' : 'Resumo da Análise'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  {canManageProcesso ? (
+                    <>
+                      <p>
+                        Revise os dados e anexos enviados pelo cliente. Ao acordar o processo,
+                        ele ficará ativo e as etapas padrão do serviço serão criadas automaticamente.
+                      </p>
+                      <p>Valores, contratos, pagamentos e etapas ficam disponíveis somente após o acordo.</p>
+                    </>
+                  ) : (
+                    <p>
+                      Solicitação em análise. Esta visão é apenas para consulta dos dados e anexos do processo.
+                    </p>
+                  )}
+                </div>
+                {canManageProcesso && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => recusarProcessoMutation.mutate()}
+                      isLoading={recusarProcessoMutation.isPending}
+                    >
+                      Recusar análise
+                    </Button>
+                    <Button
+                      onClick={abrirAcordoModal}
+                      isLoading={acordarProcessoMutation.isPending}
+                    >
+                      Acordar processo
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Dados do Solicitante</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!clienteProcesso ? (
+                  <div className="flex justify-center py-8"><Spinner /></div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="rounded-md border bg-muted/20 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solicitante</p>
+                          <h3 className="mt-1 text-lg font-semibold">{clienteProcesso.profile.full_name}</h3>
+                          <p className="text-sm text-muted-foreground">{clienteProcesso.profile.email}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{displayValue(clienteProcesso.nacionalidade)}</Badge>
+                          <Badge variant="secondary">{displayValue(clienteProcesso.cidade_jp)}</Badge>
+                        </div>
+                      </div>
+                      {clienteProcesso.observacoes && (
+                        <p className="mt-3 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                          {clienteProcesso.observacoes}
+                        </p>
+                      )}
+                    </div>
+
+                    {[
+                      {
+                        title: 'Contato e Dados Pessoais',
+                        items: [
+                          ['Telefone', clienteProcesso.profile.phone],
+                          ['WhatsApp', clienteProcesso.profile.whatsapp],
+                          ['CPF', clienteProcesso.cpf],
+                          ['Data de nascimento', clienteProcesso.data_nascimento],
+                          ['Nome em japonês', clienteProcesso.nome_japones],
+                        ],
+                      },
+                      {
+                        title: 'Visto e Entrada no Japão',
+                        items: [
+                          ['Zairyu Card', clienteProcesso.zairyu_card],
+                          ['Tipo de visto', clienteProcesso.visto_tipo],
+                          ['Validade do visto', clienteProcesso.visto_validade],
+                          ['Entrada no Japão', clienteProcesso.data_entrada_japao],
+                        ],
+                      },
+                      {
+                        title: 'Habilitação e Trabalho',
+                        items: [
+                          ['CNH', clienteProcesso.cnh_numero],
+                          ['Categoria CNH', clienteProcesso.cnh_categoria],
+                          ['Validade CNH', clienteProcesso.cnh_validade],
+                          ['Estado emissor', clienteProcesso.cnh_estado_emissor],
+                          ['Profissão', clienteProcesso.profissao_tipo],
+                          ['Empresa', clienteProcesso.profissao_empresa],
+                        ],
+                      },
+                      {
+                        title: 'Endereço no Japão',
+                        items: [
+                          ['CEP', clienteProcesso.cep_jp],
+                          ['Província', clienteProcesso.provincia_jp],
+                          ['Cidade', clienteProcesso.cidade_jp],
+                          ['Bairro', clienteProcesso.bairro_jp],
+                          ['Número / bloco', clienteProcesso.numero_bloco_jp],
+                          ['Apartamento', clienteProcesso.apartamento_jp],
+                          ['Complemento', clienteProcesso.complemento_jp],
+                          ['Endereço livre', clienteProcesso.endereco_jp],
+                          ['Mapa', clienteProcesso.mapa_link_jp],
+                        ],
+                      },
+                    ].map((group) => (
+                      <div key={group.title} className="rounded-md border p-4">
+                        <h3 className="text-sm font-semibold">{group.title}</h3>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {group.items.map(([label, value]) => (
+                            <div key={label} className="rounded-md bg-muted/30 px-3 py-2">
+                              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                              <p className="mt-1 break-words text-sm text-foreground">{displayValue(value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Anexos Enviados</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {documentos.length === 0 ? (
+                  <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                    Nenhum anexo enviado para esta análise.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {documentos.map((doc) => {
+                      const nome = doc.nome_custom ?? doc.template?.nome ?? 'Documento'
+                      return (
+                        <div
+                          key={doc.id}
+                          className="rounded-md border bg-background px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate text-sm font-medium">{nome}</span>
+                              </div>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {doc.arquivo_nome ?? 'Arquivo não enviado'} · {formatDateJST(doc.created_at)}
+                              </p>
+                              {doc.observacao && (
+                                <p className="mt-1 text-xs text-muted-foreground">{doc.observacao}</p>
+                              )}
+                            </div>
+                            <Badge variant={statusDocumentoVariant[doc.status]}>
+                              {statusDocumentoLabel[doc.status]}
+                            </Badge>
+                          </div>
+                          {doc.arquivo_url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 w-full"
+                              onClick={() => abrirDocumento(doc.arquivo_url)}
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              Abrir anexo
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <Dialog open={acordoOpen} onOpenChange={setAcordoOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Acordar processo</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-5">
+              <div className="rounded-md border bg-muted/20 p-4">
+                <p className="text-sm font-medium">{processoServicoNome}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Defina o valor final do serviço e as parcelas antes de ativar o processo.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Valor total acordado (JPY)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={acordoValor}
+                    onChange={(event) => recalcularParcelasPorValor(event.target.value)}
+                    placeholder="Ex.: 120000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantidade de parcelas</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={24}
+                    step={1}
+                    value={acordoParcelas.length || 1}
+                    onChange={(event) => atualizarQuantidadeParcelas(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Parcelas e vencimentos</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const total = Number(acordoValor) || 0
+                      setAcordoParcelas(criarParcelasDraft(total, acordoParcelas.length || 1, acordoParcelas[0]?.data_vencimento || hojeIso()))
+                    }}
+                  >
+                    Recalcular valores
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {acordoParcelas.map((parcela, index) => (
+                    <div key={index} className="grid gap-3 rounded-md border p-3 sm:grid-cols-[80px_1fr_1fr] sm:items-end">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Parcela
+                        </p>
+                        <p className="mt-2 text-sm font-semibold">{index + 1}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Valor (JPY)</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={parcela.valor_jpy}
+                          onChange={(event) => {
+                            const next = [...acordoParcelas]
+                            next[index] = {
+                              valor_jpy: event.target.value,
+                              data_vencimento: next[index]?.data_vencimento ?? hojeIso(),
+                            }
+                            setAcordoParcelas(next)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Vencimento</Label>
+                        <Input
+                          type="date"
+                          value={parcela.data_vencimento}
+                          onChange={(event) => {
+                            const next = [...acordoParcelas]
+                            next[index] = {
+                              valor_jpy: next[index]?.valor_jpy ?? '',
+                              data_vencimento: event.target.value,
+                            }
+                            setAcordoParcelas(next)
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {acordoErro && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {acordoErro}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setAcordoOpen(false)}
+                disabled={acordarProcessoMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmarAcordoProcesso}
+                isLoading={acordarProcessoMutation.isPending}
+              >
+                Confirmar e ativar processo
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -801,7 +1579,7 @@ export function ProcessoDetailPage() {
 
       <div className="px-8 pt-4">
         <Link
-          to={`/clientes/${clienteId}/processo`}
+          to={backTo}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" />
@@ -813,50 +1591,196 @@ export function ProcessoDetailPage() {
         {/* Dados do processo */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Dados do Processo</CardTitle>
+            <CardTitle className="text-base">
+              {canManageProcesso ? 'Dados do Processo' : 'Resumo do Processo'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <form
-              onSubmit={handleProcesso((data) => updateProcessoMutation.mutate(data))}
-              className="grid gap-4 sm:grid-cols-2"
-            >
-              <div className="space-y-2">
-                <Label>Serviço</Label>
-                <Input value={processoServicoNome} disabled />
+            {canManageProcesso ? (
+              <form
+                onSubmit={handleProcesso((data) => updateProcessoMutation.mutate(data))}
+                className="grid gap-4 sm:grid-cols-2"
+              >
+                <div className="space-y-2">
+                  <Label>Serviço</Label>
+                  <Input value={processoServicoNome} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de Início</Label>
+                  <Input type="date" {...regProcesso('data_inicio')} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor Acordado (¥)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    {...regProcesso('valor_acordado_jpy', { valueAsNumber: true })}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Observações</Label>
+                  <textarea
+                    {...regProcesso('notas')}
+                    className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2 flex justify-end">
+                  <Button
+                    type="submit"
+                    isLoading={processoSubmitting || updateProcessoMutation.isPending}
+                    disabled={!processoDirty}
+                  >
+                    Salvar Dados
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Serviço</p>
+                  <p className="mt-1 text-sm font-medium">{processoServicoNome}</p>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Início</p>
+                  <p className="mt-1 text-sm font-medium">
+                    {processo.data_inicio ? formatDateJST(processo.data_inicio) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Valor</p>
+                  <p className="mt-1 text-sm font-medium">
+                    {processo.valor_acordado_jpy ? formatJpy(processo.valor_acordado_jpy) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                  <p className="mt-1 text-sm font-medium">{statusProcessoLabel[processo.status]}</p>
+                </div>
+                {processo.notas && (
+                  <div className="rounded-md border bg-muted/20 p-3 sm:col-span-2 lg:col-span-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Observações</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{processo.notas}</p>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Data de Início</Label>
-                <Input type="date" {...regProcesso('data_inicio')} />
-              </div>
-              <div className="space-y-2">
-                <Label>Valor Acordado (¥)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  {...regProcesso('valor_acordado_jpy', { valueAsNumber: true })}
-                />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Observações</Label>
-                <textarea
-                  {...regProcesso('notas')}
-                  className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-2 flex justify-end">
-                <Button
-                  type="submit"
-                  isLoading={processoSubmitting || updateProcessoMutation.isPending}
-                  disabled={!processoDirty}
-                >
-                  Salvar Dados
-                </Button>
-              </div>
-            </form>
+            )}
           </CardContent>
         </Card>
 
+        {canManageProcesso && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Documentos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Documentos e Anexos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {documentos.length === 0 ? (
+                <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                  Nenhum documento vinculado ao cliente deste processo.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {documentos.map((doc) => {
+                    const nome = doc.nome_custom ?? doc.template?.nome ?? 'Documento'
+                    return (
+                      <div
+                        key={doc.id}
+                        className="rounded-md border bg-background px-4 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              <span className="truncate text-sm font-medium">{nome}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {doc.arquivo_nome ?? 'Arquivo não enviado'} · {formatDateJST(doc.created_at)}
+                            </p>
+                            {doc.observacao && (
+                              <p className="mt-1 text-xs text-muted-foreground">{doc.observacao}</p>
+                            )}
+                          </div>
+                          <Badge variant={statusDocumentoVariant[doc.status]}>
+                            {statusDocumentoLabel[doc.status]}
+                          </Badge>
+                        </div>
+                        {doc.arquivo_url && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 w-full"
+                            onClick={() => abrirDocumento(doc.arquivo_url)}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Abrir anexo
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Pagamentos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Pagamentos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs text-muted-foreground">Pago</p>
+                  <p className="text-lg font-semibold">{formatJpy(totalPago)}</p>
+                </div>
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs text-muted-foreground">Pendente</p>
+                  <p className="text-lg font-semibold">{formatJpy(totalPendente)}</p>
+                </div>
+              </div>
+              {pagamentos.length === 0 ? (
+                <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                  Nenhum pagamento encontrado para este serviço.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {pagamentos.slice(0, 6).map((pagamento) => (
+                    <div
+                      key={pagamento.id}
+                      className="flex items-start justify-between gap-3 rounded-md border bg-background px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="truncate text-sm font-medium">{pagamento.descricao}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {formatJpy(pagamento.valor_jpy)}
+                          {pagamento.data_vencimento ? ` · Vence em ${formatDateJST(pagamento.data_vencimento)}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={statusPagamentoVariant[pagamento.status]}>
+                        {statusPagamentoLabel[pagamento.status]}
+                      </Badge>
+                    </div>
+                  ))}
+                  {pagamentos.length > 6 && (
+                    <p className="text-xs text-muted-foreground">
+                      +{pagamentos.length - 6} pagamento(s) relacionados.
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
         {/* Contrato */}
+        {canManageProcesso && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Contratos</CardTitle>
@@ -932,15 +1856,27 @@ export function ProcessoDetailPage() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* Etapas */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Etapas</CardTitle>
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Adicionar Etapa
-            </Button>
+            <div>
+              <CardTitle className="text-base">
+                {canManageProcesso ? 'Etapas' : 'Etapas do Processo'}
+              </CardTitle>
+              {!canManageProcesso && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Atualize o status diretamente em cada etapa. Use detalhes apenas para responsável ou agendamento.
+                </p>
+              )}
+            </div>
+            {canManageProcesso && (
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar Etapa
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {etapasLoading ? (
@@ -949,7 +1885,9 @@ export function ProcessoDetailPage() {
               </div>
             ) : etapas.length === 0 ? (
               <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
-                Nenhuma etapa cadastrada. Clique em "Adicionar Etapa" para criar.
+                {canManageProcesso
+                  ? 'Nenhuma etapa cadastrada. Clique em "Adicionar Etapa" para criar.'
+                  : 'Nenhuma etapa cadastrada para este processo.'}
               </div>
             ) : (
               <DndContext
@@ -968,6 +1906,16 @@ export function ProcessoDetailPage() {
                         etapa={etapa}
                         onEdit={setEditEtapa}
                         onDelete={setDeleteId}
+                        onStatusChange={(targetEtapa, status) =>
+                          updateEtapaStatusMutation.mutate({ etapa: targetEtapa, status })
+                        }
+                        canReorder={canManageProcesso}
+                        canDelete={canManageProcesso}
+                        inlineStatus={!canManageProcesso}
+                        isStatusUpdating={
+                          updateEtapaStatusMutation.isPending &&
+                          updateEtapaStatusMutation.variables?.etapa.id === etapa.id
+                        }
                       />
                     ))}
                   </div>
@@ -979,6 +1927,7 @@ export function ProcessoDetailPage() {
       </div>
 
       {/* Add Etapa Dialog */}
+      {canManageProcesso && (
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -1057,32 +2006,43 @@ export function ProcessoDetailPage() {
           )}
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Edit Etapa Dialog */}
       <Dialog open={!!editEtapa} onOpenChange={(o: boolean) => !o && setEditEtapa(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Editar Etapa</DialogTitle>
+            <DialogTitle>{canManageProcesso ? 'Editar Etapa' : 'Atualizar Etapa'}</DialogTitle>
           </DialogHeader>
           {editEtapa && (
-            <EtapaForm
-              defaultValues={{
-                nome: editEtapa.nome,
-                descricao: editEtapa.descricao ?? '',
-                status: editEtapa.status,
-                agendamento_modo: editEtapa.agendamento_modo,
-                data_agendada: editEtapa.data_agendada ?? '',
-                responsavel: editEtapa.responsavel,
-              }}
-              onSubmit={(data) => editEtapaMutation.mutate(data)}
-              isLoading={editEtapaMutation.isPending}
-              onCancel={() => setEditEtapa(null)}
-            />
+            canManageProcesso ? (
+              <EtapaForm
+                defaultValues={{
+                  nome: editEtapa.nome,
+                  descricao: editEtapa.descricao ?? '',
+                  status: editEtapa.status,
+                  agendamento_modo: editEtapa.agendamento_modo,
+                  data_agendada: editEtapa.data_agendada ?? '',
+                  responsavel: editEtapa.responsavel,
+                }}
+                onSubmit={(data) => editEtapaMutation.mutate(data)}
+                isLoading={editEtapaMutation.isPending}
+                onCancel={() => setEditEtapa(null)}
+              />
+            ) : (
+              <EtapaUpdateForm
+                etapa={editEtapa}
+                onSubmit={(data) => updateEtapaConsultaMutation.mutate(data)}
+                isLoading={updateEtapaConsultaMutation.isPending}
+                onCancel={() => setEditEtapa(null)}
+              />
+            )
           )}
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirm */}
+      {canManageProcesso && (
       <Dialog open={!!deleteId} onOpenChange={(o: boolean) => !o && setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1105,8 +2065,10 @@ export function ProcessoDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Selecionar Template Dialog */}
+      {canManageProcesso && (
       <Dialog open={selecionarTemplateOpen} onOpenChange={setSelecionarTemplateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -1159,8 +2121,10 @@ export function ProcessoDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Editor de Contrato / Aditivo */}
+      {canManageProcesso && (
       <Dialog open={editContratoOpen} onOpenChange={setEditContratoOpen}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
@@ -1262,8 +2226,10 @@ export function ProcessoDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Enviar Confirm */}
+      {canManageProcesso && (
       <Dialog open={enviarContratoOpen} onOpenChange={(o: boolean) => { setEnviarContratoOpen(o); if (!o) setEnviarTarget(null) }}>
         <DialogContent>
           <DialogHeader>
@@ -1283,6 +2249,7 @@ export function ProcessoDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   )
 }

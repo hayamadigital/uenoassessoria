@@ -77,12 +77,33 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a
 }
 
+function normalizeQuestionText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.,;:!?'"“”‘’()[\]{}]/g, '')
+    .trim()
+}
+
+function uniqueQuestoesForRandom(questoes: Questao[]): Questao[] {
+  const seen = new Set<string>()
+  return questoes.filter((questao) => {
+    const key = `${questao.tipo_opcao}:${normalizeQuestionText(questao.enunciado) || questao.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 const TIPO_LABELS: Record<TipoMaterial, string> = {
   pdf: 'PDF',
   video: 'Vídeo',
   link: 'Link',
   texto: 'Texto',
   simulado: 'Simulado',
+  card: 'Cards',
 }
 
 const TIPO_ICONS: Record<TipoMaterial, React.ElementType> = {
@@ -91,6 +112,7 @@ const TIPO_ICONS: Record<TipoMaterial, React.ElementType> = {
   link: Link2,
   texto: AlignLeft,
   simulado: ClipboardList,
+  card: Image,
 }
 
 const TIPO_BADGE_VARIANTS: Record<TipoMaterial, string> = {
@@ -99,6 +121,7 @@ const TIPO_BADGE_VARIANTS: Record<TipoMaterial, string> = {
   link: 'outline',
   texto: 'outline',
   simulado: 'default',
+  card: 'secondary',
 }
 
 const EMPTY_QUESTOES: Questao[] = []
@@ -272,7 +295,7 @@ function NovoMaterialDialog({
         titulo: data.titulo,
         descricao: data.descricao || null,
         tipo: data.tipo,
-        url,
+        url: data.tipo === 'card' ? null : url,
         conteudo_texto: data.tipo === 'texto' ? data.conteudo_texto || null : null,
         banner_url: bannerUrl,
         album_urls: albumUrls,
@@ -324,6 +347,7 @@ function NovoMaterialDialog({
               <option value="video">Vídeo</option>
               <option value="link">Link</option>
               <option value="texto">Texto</option>
+              <option value="card">Cards</option>
             </select>
           </div>
 
@@ -472,6 +496,12 @@ function NovoMaterialDialog({
             </div>
           )}
 
+          {tipo === 'card' && (
+            <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+              Este material será um conjunto de flashcards. Depois de criar, abra “Gerenciar” para adicionar imagens, legendas e campos de memorização de cada card.
+            </div>
+          )}
+
           {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
 
           {!defaultCategoriaId && (
@@ -539,7 +569,7 @@ function EditarMaterialDialog({
       updateMaterial(db, material.id, {
         titulo: titulo.trim(),
         descricao: descricao.trim() || null,
-        url: url.trim() || null,
+        url: material.tipo === 'card' ? null : url.trim() || null,
         is_public: isPublic,
         ordem: material.ordem,
         categoria_id: categoriaId || null,
@@ -678,14 +708,18 @@ function NovoSimuladoDialog({
   })
 
   const questoesAleatoriasList = questoesAleatorias ?? EMPTY_QUESTOES
+  const questoesAleatoriasUnicas = useMemo(
+    () => uniqueQuestoesForRandom(questoesAleatoriasList),
+    [questoesAleatoriasList],
+  )
 
   useEffect(() => {
     if (step !== 2 || config?.modo_selecao !== 'aleatorio') return
     if (loadingQuestoesAleatorias) return
-    const sorteadas = shuffleArray(questoesAleatoriasList).slice(0, config.total_questoes)
+    const sorteadas = shuffleArray(questoesAleatoriasUnicas).slice(0, config.total_questoes)
     setRandomPreview(sorteadas)
     setSelectedIds(sorteadas.map((q) => q.id))
-  }, [config, loadingQuestoesAleatorias, questoesAleatoriasList, step])
+  }, [config, loadingQuestoesAleatorias, questoesAleatoriasUnicas, step])
 
   const createSimuladoMutation = useMutation({
     mutationFn: async (data: NovoSimuladoInput) => {
@@ -733,10 +767,10 @@ function NovoSimuladoDialog({
 
   const handleResortear = async () => {
     const todas =
-      questoesAleatoriasList.length > 0
-        ? questoesAleatoriasList
+      questoesAleatoriasUnicas.length > 0
+        ? questoesAleatoriasUnicas
         : await listQuestoes(db)
-    const sorteadas = shuffleArray(todas).slice(0, config!.total_questoes)
+    const sorteadas = shuffleArray(uniqueQuestoesForRandom(todas)).slice(0, config!.total_questoes)
     setRandomPreview(sorteadas)
     setSelectedIds(sorteadas.map((q) => q.id))
   }
@@ -891,7 +925,7 @@ function NovoSimuladoDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleResortear}
-                  disabled={loadingQuestoesAleatorias || questoesAleatoriasList.length === 0}
+                  disabled={loadingQuestoesAleatorias || questoesAleatoriasUnicas.length === 0}
                 >
                   <RefreshCw className="mr-2 h-3 w-3" />
                   Ressortear
@@ -1068,7 +1102,7 @@ function MaterialRow({
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
-          {material.tipo === 'simulado' && (
+          {(material.tipo === 'simulado' || material.tipo === 'card') && (
             <Link to={`/materiais/${material.id}`}>
               <Button variant="ghost" size="sm">
                 <Pencil className="mr-1 h-3 w-3" />
@@ -1076,7 +1110,7 @@ function MaterialRow({
               </Button>
             </Link>
           )}
-          {material.tipo !== 'simulado' && (
+          {material.tipo !== 'simulado' && material.tipo !== 'card' && (
             <Button
               variant="ghost"
               size="icon"
@@ -1121,8 +1155,8 @@ export function MateriaisPage() {
   const [createdFrom, setCreatedFrom] = useState('')
   const [createdTo, setCreatedTo] = useState('')
   const [sort, setSort] = useState<SortState<'titulo' | 'tipo' | 'categoria' | 'visibilidade' | 'created_at'>>({
-    key: 'titulo',
-    direction: 'asc',
+    key: 'created_at',
+    direction: 'desc',
   })
   // null = dialog fechado | undefined = livre (sem pré-seleção) | string = pré-selecionada
   const [novoMaterialCategoria, setNovoMaterialCategoria] = useState<string | undefined | null>(null)

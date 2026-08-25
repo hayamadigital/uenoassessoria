@@ -120,6 +120,7 @@ export function ClienteEnderecoTab() {
     resolver: zodResolver(enderecoJpSchema),
     defaultValues: {
       cep_jp: cliente.cep_jp ?? '',
+      endereco_jp: cliente.endereco_jp ?? '',
       provincia_jp: cliente.provincia_jp ?? '',
       cidade_jp: cliente.cidade_jp ?? '',
       bairro_jp: cliente.bairro_jp ?? '',
@@ -138,7 +139,9 @@ export function ClienteEnderecoTab() {
     bairro: string,
     numero: string,
     apto: string,
+    enderecoCompleto?: string,
   ): string {
+    if (enderecoCompleto?.trim()) return enderecoCompleto.trim()
     return [provincia, cidade, bairro, numero, apto].filter(Boolean).join(' ')
   }
 
@@ -151,6 +154,7 @@ export function ClienteEnderecoTab() {
       cliente.bairro_jp ?? '',
       cliente.numero_bloco_jp ?? '',
       cliente.apartamento_jp ?? '',
+      cliente.endereco_jp ?? '',
     )
     if (!addr.trim()) return
 
@@ -194,6 +198,7 @@ export function ClienteEnderecoTab() {
           r.address3 ?? '',
           watch('numero_bloco_jp') ?? '',
           watch('apartamento_jp') ?? '',
+          watch('endereco_jp') ?? '',
         )
         const mapsUrl = buildMapsSearchUrl(fullAddress)
         setValue('mapa_link_jp', mapsUrl, { shouldDirty: true, shouldTouch: true })
@@ -227,6 +232,7 @@ export function ClienteEnderecoTab() {
     mutationFn: (data: EnderecoJpInput) =>
       updateCliente(db, cliente.id, {
         cep_jp: data.cep_jp || null,
+        endereco_jp: data.endereco_jp || null,
         provincia_jp: data.provincia_jp || null,
         cidade_jp: data.cidade_jp || null,
         bairro_jp: data.bairro_jp || null,
@@ -281,6 +287,15 @@ export function ClienteEnderecoTab() {
               </Button>
             </div>
             {cepError && <p className="text-xs text-destructive">{cepError}</p>}
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Endereço completo em japonês</Label>
+            <textarea
+              {...register('endereco_jp')}
+              className="min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Ex: 愛知県名古屋市中区栄1丁目2-3 ○○マンション101"
+            />
           </div>
 
           <div className="space-y-2">

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { db } from '@/lib/firebase'
 import { listAvisos, deleteAviso, computeStatusAviso } from '@ueno/firebase/queries/avisos'
 import { formatDateJST } from '@ueno/utils/date'
-import type { Aviso, TipoAviso, StatusAviso } from '@ueno/firebase'
+import type { Aviso, TipoAviso, StatusAviso, ConteudoAvisoTipo } from '@ueno/firebase'
 
 const tipoLabel: Record<TipoAviso, string> = {
   logistica: 'Logística',
@@ -36,6 +36,16 @@ const statusVariant: Record<StatusAviso, 'default' | 'secondary' | 'outline' | '
   agendado: 'secondary',
   ativo: 'success',
   encerrado: 'outline',
+}
+
+const conteudoLabel: Record<ConteudoAvisoTipo, string> = {
+  texto: 'Texto',
+  imagens: 'Imagens',
+}
+
+const conteudoVariant: Record<ConteudoAvisoTipo, 'default' | 'secondary' | 'outline' | 'success' | 'warning' | 'destructive'> = {
+  texto: 'outline',
+  imagens: 'secondary',
 }
 
 export function AvisosPage() {
@@ -139,6 +149,7 @@ export function AvisosPage() {
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground w-14">Banner</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Título</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Tipo</th>
+                <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Formato</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Segmento</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Publicação</th>
                 <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">Encerramento</th>
@@ -168,6 +179,11 @@ export function AvisosPage() {
                   </td>
                   <td className="px-3 py-2.5">
                     <Badge variant={tipoVariant[aviso.tipo]}>{tipoLabel[aviso.tipo]}</Badge>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <Badge variant={conteudoVariant[aviso.conteudo_tipo ?? 'texto']}>
+                      {conteudoLabel[aviso.conteudo_tipo ?? 'texto']}
+                    </Badge>
                   </td>
                   <td className="px-3 py-2.5 text-muted-foreground text-xs">
                     {aviso.broadcast ? 'Todos' : aviso.tipos_processo.join(', ')}

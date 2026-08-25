@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { UserPlus } from 'lucide-react'
+import { RotateCw, UserPlus } from 'lucide-react'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -44,12 +44,21 @@ const roleFilters: { label: string; value: 'admin' | 'instrutor' | '' }[] = [
   { label: 'Instrutor', value: 'instrutor' },
 ]
 
+type InviteLinkResponse = {
+  user_id: string
+  email?: string
+  reset_link?: string
+}
+
 export function UsuariosTab() {
   const queryClient = useQueryClient()
   const [roleFilter, setRoleFilter] = useState<'admin' | 'instrutor' | ''>('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
+  const [inviteLinkEmail, setInviteLinkEmail] = useState<string | null>(null)
+  const [lastInviteEmail, setLastInviteEmail] = useState<string | null>(null)
 
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['profiles', roleFilter],
@@ -83,7 +92,7 @@ export function UsuariosTab() {
     mutationFn: async (data: InviteUserInput) => {
       const inviteUser = httpsCallable<
         { email: string; full_name: string; role: 'admin' | 'instrutor' },
-        { user_id: string; reset_link?: string }
+        InviteLinkResponse
       >(getFunctions(), 'inviteUser')
 
       const { data: response } = await inviteUser({
@@ -93,16 +102,99 @@ export function UsuariosTab() {
       })
       return response
     },
-    onSuccess: (response) => {
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] })
       setInviteSuccess(true)
       setInviteLink(response.reset_link ?? null)
+      setLastInviteLink(response.reset_link ?? null)
+      setInviteLinkEmail(variables.email)
+      setLastInviteEmail(variables.email)
       resetForm({ role: 'instrutor' })
     },
   })
 
+  const regenerateLinkMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const regenerateInviteLink = httpsCallable<
+        { email: string },
+        InviteLinkResponse
+      >(getFunctions(), 'regenerateInviteLink')
+
+      const { data: response } = await regenerateInviteLink({ email })
+      return response
+    },
+    onSuccess: (response, email) => {
+      setInviteSuccess(true)
+      setLastInviteLink(response.reset_link ?? null)
+      setLastInviteEmail(response.email ?? email)
+
+      if (dialogOpen && inviteLinkEmail === email) {
+        setInviteLink(response.reset_link ?? null)
+        setInviteLinkEmail(response.email ?? email)
+      }
+    },
+  })
+
+  const isRegeneratingLink = (email?: string | null) =>
+    regenerateLinkMutation.isPending && regenerateLinkMutation.variables === email
+
   return (
     <div className="space-y-6">
+      {lastInviteLink && (
+        <Card className="border-emerald-200 bg-emerald-50/70">
+          <CardContent className="flex flex-col gap-4 pt-6">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-emerald-900">Link de acesso criado</p>
+              <p className="text-sm text-emerald-900/80">
+                Use esse link para a pessoa definir a senha. Ele fica visível abaixo e pode ser
+                aberto ou copiado.
+              </p>
+            </div>
+            <div className="rounded-md border border-emerald-200 bg-white p-3">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Link de convite
+              </p>
+              <p className="break-all text-sm text-foreground">{lastInviteLink}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigator.clipboard.writeText(lastInviteLink)}
+              >
+                Copiar link
+              </Button>
+              <Button
+                type="button"
+                onClick={() => window.open(lastInviteLink, '_blank', 'noopener,noreferrer')}
+              >
+                Abrir link
+              </Button>
+              {lastInviteEmail && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  isLoading={isRegeneratingLink(lastInviteEmail)}
+                  onClick={() => regenerateLinkMutation.mutate(lastInviteEmail)}
+                >
+                  <RotateCw className="mr-2 h-4 w-4" />
+                  Regerar link
+                </Button>
+              )}
+              <Button type="button" variant="ghost" onClick={() => setLastInviteLink(null)}>
+                Ocultar
+              </Button>
+            </div>
+            {regenerateLinkMutation.isError && (
+              <p className="text-sm text-destructive">
+                {regenerateLinkMutation.error instanceof Error
+                  ? regenerateLinkMutation.error.message
+                  : 'Erro ao regerar link'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Usuários do Sistema</CardTitle>
@@ -144,7 +236,7 @@ export function UsuariosTab() {
                     <th className="px-4 py-3 text-left font-medium">Email</th>
                     <th className="px-4 py-3 text-left font-medium">Perfil</th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-right font-medium">Ação</th>
+                    <th className="px-4 py-3 text-right font-medium">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,23 +254,33 @@ export function UsuariosTab() {
                           {profile.is_active ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          isLoading={
-                            toggleMutation.isPending &&
-                            toggleMutation.variables?.id === profile.id
-                          }
-                          onClick={() =>
-                            toggleMutation.mutate({
-                              id: profile.id,
-                              isActive: profile.is_active,
-                            })
-                          }
-                        >
-                          {profile.is_active ? 'Desativar' : 'Ativar'}
-                        </Button>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            isLoading={isRegeneratingLink(profile.email)}
+                            onClick={() => regenerateLinkMutation.mutate(profile.email)}
+                          >
+                            Regerar link
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            isLoading={
+                              toggleMutation.isPending &&
+                              toggleMutation.variables?.id === profile.id
+                            }
+                            onClick={() =>
+                              toggleMutation.mutate({
+                                id: profile.id,
+                                isActive: profile.is_active,
+                              })
+                            }
+                          >
+                            {profile.is_active ? 'Desativar' : 'Ativar'}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -235,6 +337,17 @@ export function UsuariosTab() {
                     >
                       Abrir link
                     </Button>
+                    {inviteLinkEmail && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        isLoading={isRegeneratingLink(inviteLinkEmail)}
+                        onClick={() => regenerateLinkMutation.mutate(inviteLinkEmail)}
+                      >
+                        <RotateCw className="mr-2 h-4 w-4" />
+                        Regerar link
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -242,6 +355,7 @@ export function UsuariosTab() {
                         setDialogOpen(false)
                         setInviteSuccess(false)
                         setInviteLink(null)
+                        setInviteLinkEmail(null)
                         resetForm({ role: 'instrutor' })
                       }}
                     >
@@ -269,8 +383,8 @@ export function UsuariosTab() {
                     <Label>Perfil</Label>
                     <Select
                       value={selectedRole}
-                      onValueChange={(val) =>
-                        setValue('role', val as 'admin' | 'instrutor')
+                      onValueChange={(val: 'admin' | 'instrutor') =>
+                        setValue('role', val)
                       }
                     >
                       <SelectTrigger>
@@ -292,6 +406,13 @@ export function UsuariosTab() {
                         : 'Erro ao enviar convite'}
                     </p>
                   )}
+                  {regenerateLinkMutation.isError && (
+                    <p className="text-sm text-destructive">
+                      {regenerateLinkMutation.error instanceof Error
+                        ? regenerateLinkMutation.error.message
+                        : 'Erro ao regerar link'}
+                    </p>
+                  )}
                 </>
               )}
             </div>
@@ -304,6 +425,7 @@ export function UsuariosTab() {
                   resetForm()
                   setInviteSuccess(false)
                   setInviteLink(null)
+                  setInviteLinkEmail(null)
                 }}
               >
                 Cancelar

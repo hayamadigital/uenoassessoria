@@ -13,7 +13,7 @@ import { listServicos } from '@ueno/firebase/queries/servicos'
 import { uploadFile, avisoBannerPath, avisoCarrosselPath } from '@ueno/firebase/storage'
 import { useAuthStore } from '@/stores/auth.store'
 import { getJSTDayStartUTC, getJSTDayEndUTC } from '@ueno/utils/date'
-import type { TipoAviso, AvisoInsert } from '@ueno/firebase'
+import type { TipoAviso, AvisoInsert, ConteudoAvisoTipo, LayoutImagensAviso } from '@ueno/firebase'
 
 const TIPO_OPTIONS: { value: TipoAviso; label: string }[] = [
   { value: 'logistica', label: 'Logística' },
@@ -45,6 +45,8 @@ export function AvisoFormPage({ id }: Props) {
 
   const [titulo, setTitulo] = useState('')
   const [tipo, setTipo] = useState<TipoAviso>('geral')
+  const [conteudoTipo, setConteudoTipo] = useState<ConteudoAvisoTipo>('texto')
+  const [imagensLayout, setImagensLayout] = useState<LayoutImagensAviso>('carrossel')
   const [descricao, setDescricao] = useState('')
   const [dataPublicacao, setDataPublicacao] = useState('')
   const [dataEncerramento, setDataEncerramento] = useState('')
@@ -64,6 +66,8 @@ export function AvisoFormPage({ id }: Props) {
     if (!aviso) return
     setTitulo(aviso.titulo)
     setTipo(aviso.tipo)
+    setConteudoTipo(aviso.conteudo_tipo ?? 'texto')
+    setImagensLayout(aviso.imagens_layout ?? (aviso.conteudo_tipo === 'imagens' ? 'lista' : 'carrossel'))
     setDescricao(aviso.descricao)
     setDataPublicacao(aviso.data_publicacao.slice(0, 10))
     setDataEncerramento(aviso.data_encerramento.slice(0, 10))
@@ -79,7 +83,7 @@ export function AvisoFormPage({ id }: Props) {
     mutationFn: async () => {
       setError('')
       if (!titulo.trim()) throw new Error('Título obrigatório')
-      if (!descricao.trim()) throw new Error('Descrição obrigatória')
+      if (conteudoTipo === 'texto' && !descricao.trim()) throw new Error('Descrição obrigatória')
       if (!dataPublicacao) throw new Error('Data de publicação obrigatória')
       if (!dataEncerramento) throw new Error('Data de encerramento obrigatória')
       if (dataEncerramento <= dataPublicacao) throw new Error('Data de encerramento deve ser após publicação')
@@ -90,7 +94,10 @@ export function AvisoFormPage({ id }: Props) {
         titulo: titulo.trim(),
         tipo,
         descricao: descricao.trim(),
+        conteudo_tipo: conteudoTipo,
         banner_url: bannerUrl,
+        imagens_layout: conteudoTipo === 'imagens' ? 'lista' : imagensLayout,
+        pdf_url: null,
         imagens_carrossel: carrosselUrls,
         data_publicacao: getJSTDayStartUTC(dataPublicacao),
         data_encerramento: getJSTDayEndUTC(dataEncerramento),
@@ -177,6 +184,11 @@ export function AvisoFormPage({ id }: Props) {
     )
   }
 
+  function handleConteudoTipoChange(next: ConteudoAvisoTipo) {
+    setConteudoTipo(next)
+    setImagensLayout(next === 'imagens' ? 'lista' : 'carrossel')
+  }
+
   if (isEdit && isLoadingAviso) return <Spinner className="m-auto mt-20" />
   if (isEdit && aviso === null) return <p className="m-auto mt-20 text-muted-foreground">Aviso não encontrado.</p>
 
@@ -242,12 +254,35 @@ export function AvisoFormPage({ id }: Props) {
               </select>
             </div>
             <div>
-              <Label htmlFor="descricao">Descrição *</Label>
+              <Label>Formato do conteúdo *</Label>
+              <div className="mt-1 flex gap-3">
+                <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="conteudo_tipo"
+                    checked={conteudoTipo === 'texto'}
+                    onChange={() => handleConteudoTipoChange('texto')}
+                  />
+                  <span>Texto</span>
+                </label>
+                <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="conteudo_tipo"
+                    checked={conteudoTipo === 'imagens'}
+                    onChange={() => handleConteudoTipoChange('imagens')}
+                  />
+                  <span>Imagens</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="descricao">{conteudoTipo === 'texto' ? 'Descrição *' : 'Resumo / observação opcional'}</Label>
               <textarea
                 id="descricao"
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Texto completo do aviso..."
+                placeholder={conteudoTipo === 'texto' ? 'Texto completo do aviso...' : 'Resumo breve ou observação opcional...'}
                 rows={4}
                 className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
@@ -277,9 +312,46 @@ export function AvisoFormPage({ id }: Props) {
                   <input type="file" accept="image/*" className="hidden" onChange={handleBannerChange} />
                 </label>
               )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Recomendado: 1200 x 900 px, proporcao 4:3.
+              </p>
             </div>
+            {conteudoTipo === 'texto' ? (
+              <div className="space-y-3">
+                <div>
+                  <Label>Layout das imagens</Label>
+                  <div className="mt-1 flex gap-3">
+                    <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="imagens_layout"
+                        checked={imagensLayout === 'carrossel'}
+                        onChange={() => setImagensLayout('carrossel')}
+                      />
+                      <span>Carrossel</span>
+                    </label>
+                    <label className="flex flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="imagens_layout"
+                        checked={imagensLayout === 'lista'}
+                        onChange={() => setImagensLayout('lista')}
+                      />
+                      <span>Lista vertical</span>
+                    </label>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  O tipo texto pode exibir as imagens como carrossel ou uma abaixo da outra.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                O tipo imagens sempre será exibido em lista vertical no app.
+              </p>
+            )}
             <div>
-              <Label>Carrossel de imagens (opcional, máx. 5)</Label>
+              <Label>{conteudoTipo === 'texto' ? 'Imagens do aviso (opcional, máx. 5)' : 'Imagens do aviso (mínimo 1 recomendado, máx. 5)'}</Label>
               <div className="mt-1 flex flex-wrap gap-2">
                 {carrosselPreviews.map((src, i) => {
                   const isExisting = i < carrosselUrls.length

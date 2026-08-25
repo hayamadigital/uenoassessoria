@@ -99,6 +99,11 @@ function QuestaoDialog({
             url: img.url,
             ordem: img.ordem,
           })),
+          explicacao_imagens: questao.explicacao_imagens.map((img) => ({
+            id: img.id,
+            url: img.url,
+            ordem: img.ordem,
+          })),
         }
       : {
           enunciado: '',
@@ -107,6 +112,7 @@ function QuestaoDialog({
           categoria_id: '',
           opcoes: OPCOES_BOOLEANO,
           imagens: [],
+          explicacao_imagens: [],
         },
   })
 
@@ -122,6 +128,12 @@ function QuestaoDialog({
     append: appendImagem,
     remove: removeImagem,
   } = useFieldArray({ control, name: 'imagens' })
+
+  const {
+    fields: explicacaoImagensFields,
+    append: appendExplicacaoImagem,
+    remove: removeExplicacaoImagem,
+  } = useFieldArray({ control, name: 'explicacao_imagens' })
 
   const tipoOpcao = watch('tipo_opcao')
   const opcoes = watch('opcoes')
@@ -193,6 +205,7 @@ function QuestaoDialog({
         },
         data.opcoes,
         data.imagens,
+        data.explicacao_imagens,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questoes'] })
@@ -213,6 +226,7 @@ function QuestaoDialog({
         },
         data.opcoes,
         data.imagens,
+        data.explicacao_imagens,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questoes'] })
@@ -487,6 +501,53 @@ function QuestaoDialog({
             />
           </div>
 
+          {/* Imagens da explicação */}
+          <div className="space-y-2">
+            <Label>
+              Imagens da explicação
+              <span className="text-xs text-muted-foreground ml-2">
+                (opcional, aparecem junto da resposta correta no app)
+              </span>
+            </Label>
+            <div className="space-y-2">
+              {explicacaoImagensFields.map((field, index) => (
+                <div key={field.id} className="flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Input
+                    {...register(`explicacao_imagens.${index}.url`)}
+                    placeholder="https://..."
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeExplicacaoImagem(index)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  appendExplicacaoImagem({ url: '', ordem: explicacaoImagensFields.length })
+                }
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Adicionar imagem da explicação
+              </Button>
+            </div>
+            {errors.explicacao_imagens && (
+              <p className="text-xs text-destructive">
+                {errors.explicacao_imagens.message}
+              </p>
+            )}
+          </div>
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
@@ -555,6 +616,27 @@ function QuestaoFlyout({
     queryKey: ['questao-simulados', questao.id],
     queryFn: () => listSimuladosByQuestao(db, questao.id),
   })
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({})
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    setLoadedImages({})
+    setFailedImages({})
+  }, [questao.id])
+
+  const imageUrls = useMemo(
+    () => questao.imagens.map((img) => ({ id: img.id, url: img.url.trim() })).filter((img) => img.url.length > 0),
+    [questao.imagens],
+  )
+  const explicacaoImageUrls = useMemo(
+    () =>
+      questao.explicacao_imagens
+        .map((img) => ({ id: img.id, url: img.url.trim() }))
+        .filter((img) => img.url.length > 0),
+    [questao.explicacao_imagens],
+  )
+  const failedCount = Object.values(failedImages).filter(Boolean).length
+  const loadedCount = Object.values(loadedImages).filter(Boolean).length
 
   return (
     <div className="fixed inset-0 z-50">
@@ -598,6 +680,54 @@ function QuestaoFlyout({
             </p>
           </section>
 
+          {imageUrls.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>Imagens</Label>
+                <Badge variant={failedCount > 0 ? 'destructive' : 'success'}>
+                  {failedCount > 0
+                    ? `${failedCount} com erro`
+                    : loadedCount === imageUrls.length
+                      ? 'Todas ok'
+                      : `${loadedCount}/${imageUrls.length} carregadas`}
+                </Badge>
+              </div>
+              <div className="space-y-3">
+                {imageUrls.map((img, index) => {
+                  const isLoaded = !!loadedImages[img.id]
+                  const isFailed = !!failedImages[img.id]
+                  return (
+                    <div key={img.id} className="overflow-hidden rounded-md border bg-muted/10">
+                      <img
+                        src={img.url}
+                        alt={`Imagem da questão ${index + 1}`}
+                        className={`block w-full max-h-80 object-contain bg-background transition-opacity ${isLoaded ? 'opacity-100' : 'opacity-80'}`}
+                        loading="lazy"
+                        onLoad={() =>
+                          setLoadedImages((prev) => ({
+                            ...prev,
+                            [img.id]: true,
+                          }))
+                        }
+                        onError={() =>
+                          setFailedImages((prev) => ({
+                            ...prev,
+                            [img.id]: true,
+                          }))
+                        }
+                      />
+                      {isFailed && (
+                        <div className="border-t bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                          Não foi possível carregar esta imagem.
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
           <section className="space-y-2">
             <Label>Opções</Label>
             <div className="space-y-2">
@@ -631,11 +761,34 @@ function QuestaoFlyout({
             </section>
           )}
 
+          {explicacaoImageUrls.length > 0 && (
+            <section className="space-y-2">
+              <Label>Imagens da explicação</Label>
+              <div className="space-y-3">
+                {explicacaoImageUrls.map((img, index) => (
+                  <div key={img.id} className="overflow-hidden rounded-md border bg-muted/10">
+                    <img
+                      src={img.url}
+                      alt={`Imagem da explicação ${index + 1}`}
+                      className="block w-full max-h-80 object-contain bg-background"
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label>Simulados que usam esta questão</Label>
               <Badge variant="outline">{usageCount}</Badge>
             </div>
+            {simulados.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Esta questão está vinculada a {simulados.length} simulado(s).
+              </p>
+            )}
             {isLoading ? (
               <div className="py-3">
                 <Spinner />

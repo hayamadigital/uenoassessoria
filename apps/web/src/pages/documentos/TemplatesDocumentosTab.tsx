@@ -171,6 +171,8 @@ export function TemplatesDocumentosTab() {
         descricao: data.descricao || null,
         obrigatorio: data.obrigatorio,
         servico_id: data.servico_id || null,
+        variacao_id: null,
+        variacao_ids: [],
         ordem: data.ordem,
       }),
     onSuccess: () => {
@@ -186,6 +188,7 @@ export function TemplatesDocumentosTab() {
         descricao: data.descricao || null,
         obrigatorio: data.obrigatorio,
         servico_id: data.servico_id || null,
+        variacao_ids: editingTemplate!.variacao_ids,
         ordem: data.ordem,
       }),
     onSuccess: () => {

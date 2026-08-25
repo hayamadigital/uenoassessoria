@@ -54,6 +54,11 @@ import {
   deleteEtapaTemplate,
 } from '@ueno/firebase/queries/etapa_templates'
 import {
+  listDocumentoTemplates,
+  createDocumentoTemplate,
+  deleteDocumentoTemplate,
+} from '@ueno/firebase/queries/documentos'
+import {
   servicoSchema,
   servicoVariacaoSchema,
   etapaTemplateSchema,
@@ -61,7 +66,7 @@ import {
   type ServicoVariacaoInput,
   type EtapaTemplateInput,
 } from '@ueno/utils/validators'
-import type { EtapaTemplate, ResponsavelEtapa, ServicoVariacao } from '@ueno/firebase'
+import type { DocumentoTemplate, EtapaTemplate, ResponsavelEtapa, ServicoVariacao } from '@ueno/firebase'
 
 const responsavelLabel: Record<ResponsavelEtapa, string> = {
   cliente: 'Cliente',
@@ -75,6 +80,17 @@ const responsavelCsvValues = Object.keys(responsavelLabel) as ResponsavelEtapa[]
 function getTemplateVariacoesLabel(template: EtapaTemplate, variacoes: ServicoVariacao[]) {
   if (template.variacao_ids.length === 0) return 'Todas as variações'
   const names = template.variacao_ids.map((id) => variacoes.find((v) => v.id === id)?.nome ?? id)
+  return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')
+}
+
+function getDocumentoVariacaoLabel(template: DocumentoTemplate, variacoes: ServicoVariacao[]) {
+  const variacaoIds = template.variacao_ids.length > 0
+    ? template.variacao_ids
+    : template.variacao_id
+      ? [template.variacao_id]
+      : []
+  if (variacaoIds.length === 0) return 'Todas as variações'
+  const names = variacaoIds.map((id) => variacoes.find((v) => v.id === id)?.nome ?? id)
   return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')
 }
 
@@ -676,8 +692,10 @@ function ImportarVariacoesDialog({
           preco_variavel: row.preco_variavel,
           preco_min_jpy: row.preco_min_jpy,
           preco_max_jpy: row.preco_max_jpy,
-          duracao_texto: row.duracao_texto,
+          usa_variacoes: false,
           ativo: row.ativo,
+          is_active: row.ativo,
+          duracao_texto: row.duracao_texto,
           ordem: baseOrdem + i,
         })
         ok += 1
@@ -1331,6 +1349,13 @@ export function ServicosDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showImportarVariacoes, setShowImportarVariacoes] = useState(false)
   const [showImportarEtapas, setShowImportarEtapas] = useState(false)
+  const [addDocumentoOpen, setAddDocumentoOpen] = useState(false)
+  const [documentoForm, setDocumentoForm] = useState({
+    nome: '',
+    descricao: '',
+    obrigatorio: true,
+    variacao_ids: [] as string[],
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -1360,6 +1385,17 @@ export function ServicosDetailPage() {
     enabled: !!id,
   })
 
+  const { data: documentoTemplates = [] } = useQuery({
+    queryKey: ['documento-templates', id],
+    queryFn: async () => {
+      const all = await listDocumentoTemplates(db)
+      return all
+        .filter((template) => template.servico_id === id)
+        .sort((a, b) => a.ordem - b.ordem)
+    },
+    enabled: !!id,
+  })
+
   // Serviço edit form
   const {
     register,
@@ -1379,7 +1415,7 @@ export function ServicosDetailPage() {
         nome: servico.nome,
         descricao: servico.descricao ?? '',
         duracao_texto: servico.duracao_texto ?? '',
-        preco_jpy: servico.usa_variacoes || servico.preco_variavel ? null : servico.preco_jpy,
+        preco_jpy: servico.preco_jpy ?? 0,
         preco_variavel: servico.preco_variavel,
         preco_min_jpy: servico.preco_min_jpy,
         preco_max_jpy: servico.preco_max_jpy,
@@ -1397,7 +1433,7 @@ export function ServicosDetailPage() {
         ...data,
         descricao: data.descricao || null,
         duracao_texto: data.duracao_texto || null,
-        preco_jpy: data.usa_variacoes || data.preco_variavel ? null : data.preco_jpy ?? 0,
+        preco_jpy: data.usa_variacoes || data.preco_variavel ? 0 : data.preco_jpy ?? 0,
         preco_variavel: data.usa_variacoes ? false : data.preco_variavel,
         preco_min_jpy: data.usa_variacoes || !data.preco_variavel ? null : data.preco_min_jpy ?? null,
         preco_max_jpy: data.usa_variacoes || !data.preco_variavel ? null : data.preco_max_jpy ?? null,
@@ -1498,8 +1534,10 @@ export function ServicosDetailPage() {
         preco_variavel: data.preco_variavel,
         preco_min_jpy: data.preco_variavel ? data.preco_min_jpy ?? null : null,
         preco_max_jpy: data.preco_variavel ? data.preco_max_jpy ?? null : null,
+        usa_variacoes: data.usa_variacoes,
         duracao_texto: data.duracao_texto || null,
         ativo: data.ativo,
+        is_active: data.is_active,
         ordem: variacoes.length,
       }),
     onSuccess: () => {
@@ -1517,8 +1555,10 @@ export function ServicosDetailPage() {
         preco_variavel: data.preco_variavel,
         preco_min_jpy: data.preco_variavel ? data.preco_min_jpy ?? null : null,
         preco_max_jpy: data.preco_variavel ? data.preco_max_jpy ?? null : null,
+        usa_variacoes: data.usa_variacoes,
         duracao_texto: data.duracao_texto || null,
         ativo: data.ativo,
+        is_active: data.is_active,
         ordem: data.ordem,
       }),
     onSuccess: () => {
@@ -1544,6 +1584,41 @@ export function ServicosDetailPage() {
     mutationFn: (updates: Array<{ id: string; ordem: number }>) =>
       reorderServicoVariacoes(db, updates),
   })
+
+  const addDocumentoTemplateMutation = useMutation({
+    mutationFn: () => {
+      const nome = documentoForm.nome.trim()
+      if (!nome) throw new Error('Informe o nome do documento.')
+      return createDocumentoTemplate(db, {
+        nome,
+        descricao: documentoForm.descricao.trim() || null,
+        obrigatorio: documentoForm.obrigatorio,
+        servico_id: id!,
+        variacao_id: null,
+        variacao_ids: documentoForm.variacao_ids,
+        ordem: documentoTemplates.length,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documento-templates', id] })
+      setDocumentoForm({ nome: '', descricao: '', obrigatorio: true, variacao_ids: [] })
+      setAddDocumentoOpen(false)
+    },
+  })
+
+  const deleteDocumentoTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => deleteDocumentoTemplate(db, templateId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documento-templates', id] }),
+  })
+
+  function toggleDocumentoVariacaoId(variacaoId: string, checked: boolean) {
+    setDocumentoForm((current) => ({
+      ...current,
+      variacao_ids: checked
+        ? [...new Set([...current.variacao_ids, variacaoId])]
+        : current.variacao_ids.filter((id) => id !== variacaoId),
+    }))
+  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -1604,6 +1679,64 @@ export function ServicosDetailPage() {
       </div>
 
       <div className="p-8 space-y-6">
+        {/* Imagem do serviço */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Imagem do Serviço</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start gap-6">
+              <div
+                className="relative flex h-40 w-64 cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-muted/30 transition-colors hover:bg-muted/50"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadingImage ? (
+                  <Spinner />
+                ) : currentImage ? (
+                  <img
+                    src={currentImage}
+                    alt="Imagem do serviço"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <ImageIcon className="h-10 w-10" />
+                    <span className="text-xs">Nenhuma imagem</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  isLoading={uploadingImage}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  {currentImage ? 'Trocar imagem' : 'Carregar imagem'}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Recomendado: JPG ou PNG, 1760 x 1120 px, proporcao 11:7.
+                </p>
+                {uploadSuccess && (
+                  <p className="text-xs text-green-600">Imagem salva com sucesso!</p>
+                )}
+                {uploadError && (
+                  <p className="text-xs text-destructive max-w-[200px]">{uploadError}</p>
+                )}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+          </CardContent>
+        </Card>
+
         {/* Dados do serviço */}
         <Card>
           <CardHeader>
@@ -1760,63 +1893,148 @@ export function ServicosDetailPage() {
           </Card>
         )}
 
-        {/* Imagem do serviço */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Imagem do Serviço</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Documentos para Análise</CardTitle>
+            <Button
+              size="sm"
+              onClick={() => {
+                addDocumentoTemplateMutation.reset()
+                setAddDocumentoOpen(true)
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Adicionar
+            </Button>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-start gap-6">
-              <div
-                className="relative flex h-40 w-64 cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed bg-muted/30 hover:bg-muted/50 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {uploadingImage ? (
-                  <Spinner />
-                ) : currentImage ? (
-                  <img
-                    src={currentImage}
-                    alt="Imagem do serviço"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <ImageIcon className="h-10 w-10" />
-                    <span className="text-xs">Nenhuma imagem</span>
+          <CardContent className="space-y-5">
+            {documentoTemplates.length === 0 ? (
+              <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                Nenhum documento configurado. Adicione os documentos que o cliente deve enviar na contratação.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {documentoTemplates.map((template) => (
+                  <div key={template.id} className="flex items-start gap-3 rounded-md border bg-background px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-sm">{template.nome}</span>
+                        <Badge variant={template.obrigatorio ? 'default' : 'outline'}>
+                          {template.obrigatorio ? 'Obrigatório' : 'Opcional'}
+                        </Badge>
+                        <Badge variant="secondary">{getDocumentoVariacaoLabel(template, variacoes)}</Badge>
+                      </div>
+                      {template.descricao && (
+                        <p className="mt-1 text-xs text-muted-foreground">{template.descricao}</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteDocumentoTemplateMutation.mutate(template.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
-                )}
+                ))}
               </div>
-              <div className="flex flex-col gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  isLoading={uploadingImage}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  {currentImage ? 'Trocar imagem' : 'Carregar imagem'}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Recomendado: JPG ou PNG, proporção 16:9
-                </p>
-                {uploadSuccess && (
-                  <p className="text-xs text-green-600">Imagem salva com sucesso!</p>
-                )}
-                {uploadError && (
-                  <p className="text-xs text-destructive max-w-[200px]">{uploadError}</p>
-                )}
-              </div>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageChange}
-            />
+            )}
           </CardContent>
         </Card>
+
+        <Dialog open={addDocumentoOpen} onOpenChange={setAddDocumentoOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Adicionar documento para análise</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Documento</Label>
+                <Input
+                  value={documentoForm.nome}
+                  onChange={(event) => setDocumentoForm((current) => ({ ...current, nome: event.target.value }))}
+                  placeholder="Ex: Zairyu Card frente e verso"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição para o cliente</Label>
+                <textarea
+                  value={documentoForm.descricao}
+                  onChange={(event) => setDocumentoForm((current) => ({ ...current, descricao: event.target.value }))}
+                  placeholder="Ex: Envie uma foto nítida, sem cortes e com todos os dados legíveis."
+                  className="min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <label className="flex items-start gap-3 rounded-md border bg-muted/20 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={documentoForm.obrigatorio}
+                  onChange={(event) => setDocumentoForm((current) => ({ ...current, obrigatorio: event.target.checked }))}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">Obrigatório</span>
+                  <span className="block text-xs text-muted-foreground">
+                    O cliente precisa enviar este documento para concluir a contratação.
+                  </span>
+                </span>
+              </label>
+              {variacoes.length > 0 && (
+                <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Label>Variações que usam este documento</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Deixe sem seleção para aplicar este documento a todas as variações.
+                      </p>
+                    </div>
+                    {documentoForm.variacao_ids.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDocumentoForm((current) => ({ ...current, variacao_ids: [] }))}
+                      >
+                        Todas
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {variacoes.map((variacao) => (
+                      <label key={variacao.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={documentoForm.variacao_ids.includes(variacao.id)}
+                          onChange={(event) => toggleDocumentoVariacaoId(variacao.id, event.target.checked)}
+                        />
+                        <span>{variacao.nome}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {addDocumentoTemplateMutation.error && (
+                <p className="text-sm text-destructive">
+                  {addDocumentoTemplateMutation.error instanceof Error
+                    ? addDocumentoTemplateMutation.error.message
+                    : 'Não foi possível adicionar o documento.'}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setAddDocumentoOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => addDocumentoTemplateMutation.mutate()}
+                isLoading={addDocumentoTemplateMutation.isPending}
+              >
+                Salvar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Etapas padrão (templates) */}
         <Card>

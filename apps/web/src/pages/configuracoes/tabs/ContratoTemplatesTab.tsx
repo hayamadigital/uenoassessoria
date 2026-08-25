@@ -178,7 +178,10 @@ export function ContratoTemplatesTab() {
       updateContratoTemplate(db, editTarget!.id, {
         nome: data.nome,
         corpo_html: data.corpo_html ?? '',
-        secoes: data.secoes ?? [],
+        secoes: (data.secoes ?? []).map((section) => ({
+          ...section,
+          servico_id: section.servico_id ?? '',
+        })),
         is_default: data.is_default,
       }),
     onSuccess: () => { invalidate(); setEditTarget(null) },
@@ -236,12 +239,12 @@ export function ContratoTemplatesTab() {
                       {(tpl.secoes?.length ?? 0) > 0 && (
                         <Badge variant="secondary" className="gap-1">
                           <Layers className="h-3 w-3" />
-                          {tpl.secoes.length} seções
+                              {tpl.secoes?.length ?? 0} seções
                         </Badge>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {tpl.secoes?.map((s) => s.titulo).join(' · ') || '—'}
+                      {tpl.secoes?.map((s) => s.titulo).join(' · ') ?? '—'}
                     </p>
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -288,7 +291,12 @@ export function ContratoTemplatesTab() {
               defaultValues={{
                 nome:       editTarget.nome,
                 corpo_html: editTarget.corpo_html,
-                secoes:     editTarget.secoes ?? [],
+                secoes:     (editTarget.secoes ?? []).map((section) => ({
+                  ...section,
+                  titulo: section.titulo ?? undefined,
+                  conteudo_html: section.conteudo_html ?? undefined,
+                  servico_id: section.servico_id ?? '',
+                })),
                 servico_id: editTarget.servico_id ?? '',
                 is_default: editTarget.is_default,
               }}

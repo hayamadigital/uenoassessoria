@@ -314,7 +314,7 @@ function parseServicosCsvRows(text: string, nextOrdem: number): ParsedServicoRow
     }
 
     const commonPrice = {
-      preco_jpy: precoJpy,
+      preco_jpy: precoJpy ?? 0,
       preco_variavel: precoVariavel,
       preco_min_jpy: precoMinJpy,
       preco_max_jpy: precoMaxJpy,
@@ -341,6 +341,8 @@ function parseServicosCsvRows(text: string, nextOrdem: number): ParsedServicoRow
         duracao_texto: duracaoTexto,
         ...commonPrice,
         ativo: isActive,
+        is_active: isActive,
+        usa_variacoes: false,
         ordem,
       } : undefined,
       errors,
@@ -928,7 +930,7 @@ export function ServicosPage() {
         nome: data.nome,
         descricao: data.descricao || null,
         duracao_texto: data.duracao_texto || null,
-        preco_jpy: data.usa_variacoes || data.preco_variavel ? null : data.preco_jpy ?? 0,
+        preco_jpy: data.usa_variacoes || data.preco_variavel ? 0 : data.preco_jpy ?? 0,
         preco_variavel: data.usa_variacoes ? false : data.preco_variavel,
         preco_min_jpy: data.usa_variacoes || !data.preco_variavel ? null : data.preco_min_jpy ?? null,
         preco_max_jpy: data.usa_variacoes || !data.preco_variavel ? null : data.preco_max_jpy ?? null,

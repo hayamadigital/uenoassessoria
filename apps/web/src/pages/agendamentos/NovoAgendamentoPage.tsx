@@ -113,6 +113,7 @@ export function NovoAgendamentoPage() {
     try {
       await mutation.mutateAsync({
         ...parsed.data,
+        tipo_evento: 'ueno',
         data_hora_inicio,
         data_hora_fim,
         local: parsed.data.local ?? null,
@@ -184,14 +185,12 @@ export function NovoAgendamentoPage() {
 
               {/* Instrutor */}
               <div className="space-y-2">
-                <Label>
-                  Instrutor <span className="text-destructive">*</span>
-                </Label>
+                <Label>Instrutor</Label>
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  {...register('instrutor_id', { required: 'Selecione um instrutor' })}
+                  {...register('instrutor_id')}
                 >
-                  <option value="">Selecionar instrutor</option>
+                  <option value="">Sem instrutor</option>
                   {instrutores?.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.full_name}
