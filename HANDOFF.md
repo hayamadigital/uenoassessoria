@@ -1,6 +1,6 @@
 # HANDOFF — UENO ASSESSORIA
 
-Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-08-25.
+Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-08-26.
 
 ---
 
@@ -48,10 +48,18 @@ vercel --prod --yes --force --archive=tgz
 
 Qualquer fluxo do client SDK que passe `url`/`continueUrl` (ex: `sendPasswordResetEmail(auth, email, { url })`) só funciona se esse domínio estiver na lista de **Authorized domains** do Firebase Auth (Console → Authentication → Settings, ou via `identitytoolkit.googleapis.com/v2/projects/{project}/config`). Em 2026-08-25 faltava `ueno-assessoria.vercel.app` nessa lista — só havia `localhost`, `.firebaseapp.com` e `.web.app` — o que quebrava o botão "Esqueceu a senha?" com `UNAUTHORIZED_DOMAIN`. Já corrigido, mas **se um domínio próprio for configurado no futuro, ele também precisa ser adicionado aqui** ou qualquer fluxo com `continueUrl` vai quebrar do mesmo jeito.
 
+## Validação Zod — cuidado ao adicionar campos que referenciam documentos do Firestore
+
+Em 2026-08-26 encontramos e corrigimos dois bugs sistêmicos em `packages/utils/src/validators.ts` que travavam a criação/edição de praticamente tudo (processos, agendamentos, pagamentos, contratos, materiais, avaliações):
+
+1. **Nunca use `.uuid()` para um ID do Firestore.** IDs do Firestore não são UUIDs (resquício da migração do Supabase). Use `z.string().min(1, 'mensagem')`.
+2. **Campo opcional alimentado por `<select>` nativo precisa aceitar `""` além de `undefined`.** Um `<select>` sem seleção manda `value=""`, mas `z.string().optional()` / `z.enum([...]).optional()` só aceitam `undefined` — isso rejeita o formulário **sem nenhum erro visível na tela** (react-hook-form só bloqueia o submit silenciosamente). Sempre use `.optional().or(z.literal(''))` para esses campos.
+
+Testado ao vivo em 2026-08-26: criação de cliente, processo, agendamento, cobrança, material, aviso, serviço e convite de usuário — todos funcionando após essas correções. Isso provavelmente resolve o "erro ao criar clientes e várias coisas" relatado originalmente, em conjunto com o redeploy das Cloud Functions.
+
 ## Pendências conhecidas
 
 - **Fluxo de convite/reset de senha para clientes não é automático**: `createCliente` e `inviteUser` (Cloud Functions em `functions/src/index.ts`) geram um `reset_link` via `admin.auth().generatePasswordResetLink()`, mas isso só gera a URL — **não envia e-mail nem WhatsApp**. O admin precisa copiar/colar manualmente o link mostrado na tela (`UsuariosTab.tsx`) ou o que abre automaticamente ao criar um cliente (`NovoClientePage.tsx`). O campo `whatsapp_url`, que o frontend espera para abrir o WhatsApp automaticamente, **nunca é retornado por nenhuma function** — é código morto.
-- **Teste ponta a ponta da criação de clientes ainda não foi feito** — o motivo original desta sessão foi um relato de que "criar clientes dá erro". A causa mais provável identificada foi o `main` desatualizado (builds quebrados / funções desalinhadas com o frontend), já corrigido. Falta validar na prática com uma conta admin.
 - **Push para o GitHub requer a conta `hayamadigital`** (não `natielly-narumi`) — só ela tem permissão de push no repo `hayamadigital/uenoassessoria`. Se `git push` der 403, rodar:
   ```
   gh auth switch --hostname github.com --user hayamadigital
@@ -66,7 +74,6 @@ Qualquer fluxo do client SDK que passe `url`/`continueUrl` (ex: `sendPasswordRes
 
 ## Próximos passos sugeridos
 
-1. Validar login + criação de cliente ponta a ponta com uma conta admin real
-2. Decidir como o convite de cliente/usuário deve chegar de fato (e-mail transacional? WhatsApp de verdade?) e implementar o envio — hoje depende 100% de ação manual do admin
-3. Configurar domínio próprio na Vercel para não depender do alias manual
-4. Primeiro build/publicação do app mobile via EAS
+1. Decidir como o convite de cliente/usuário deve chegar de fato (e-mail transacional? WhatsApp de verdade?) e implementar o envio — hoje depende 100% de ação manual do admin
+2. Configurar domínio próprio na Vercel para não depender do alias manual
+3. Primeiro build/publicação do app mobile via EAS

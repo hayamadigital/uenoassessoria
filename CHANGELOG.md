@@ -5,6 +5,17 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-08-26] — Testes end-to-end + correção de validação Zod (causa raiz confirmada)
+
+### Validação (Zod) — causa raiz confirmada do "erro ao criar/salvar várias coisas"
+- **`z.string().uuid()` em campos que são IDs do Firestore**: 24 campos em `packages/utils/src/validators.ts` (`servico_id`, `cliente_id`, `instrutor_id`, `agendamento_id`, `variacao_id`/`variacao_ids`, `material_id`, `categoria_id` de questões, etc.) validavam como UUID — resquício da migração Supabase→Firebase. IDs do Firestore não são UUIDs, então a validação falhava **sempre**, mesmo com o campo preenchido corretamente. Reproduzido ao vivo: criar um "Processo" mostrava "Selecione um serviço" com o serviço já selecionado, botão de salvar travado. Trocado `.uuid()` por `.min(1)` em todos os pontos (incluindo os 2 schemas inline em `FinanceiroPage.tsx`/`ClienteFinanceiroTab.tsx`).
+- **Campos opcionais via `<select>` nativo ficam `""` (string vazia), não `undefined`**: `z.string().optional()` e `z.enum([...]).optional()` só aceitam `undefined`, rejeitam `""` — isso travava a submissão **sem nenhum erro visível**, pior que o bug do UUID porque não mostra mensagem nenhuma. Afetava `categoria`, `recebido_por`, `servico_id` opcional, `instrutor_id` opcional, `categoria_id` de questões, etc. Corrigido com `.optional().or(z.literal(''))`, seguindo o padrão que já existia em alguns pontos do arquivo (`contratoTemplateSchema`, `documentoTemplateSchema.variacao_id`) mas não era usado de forma consistente.
+
+### Testes end-to-end realizados (conta de teste, dados removidos ao final)
+Testado e confirmado funcionando após as correções: criação de cliente, criação de processo, criação de agendamento, registro de cobrança (com e sem campos opcionais), criação de material, criação de aviso (com upload de banner), criação de serviço, convite de usuário. Toda a bateria de testes usou uma conta admin temporária (`claude.teste.admin@ueno-assessoria.test`) e dados de teste claramente identificados, todos removidos do Firestore/Auth ao final — o dashboard voltou ao estado original (1 cliente real, 1 processo).
+
+---
+
 ## [2026-08-25] — Deploy Vercel via GitHub + Recuperação de Senha + Sincronização do main
 
 ### Infraestrutura / Deploy
