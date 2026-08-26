@@ -57,7 +57,7 @@ export const clienteSchema = z.object({
   data_entrada_japao: z.string().optional(),
   visto_tipo: z.string().optional(),
   observacoes: z.string().optional(),
-  assigned_instrutor_id: z.string().min(1).optional(),
+  assigned_instrutor_id: z.string().min(1).optional().or(z.literal('')),
 })
 
 export type ClienteInput = z.infer<typeof clienteSchema>
@@ -129,8 +129,8 @@ export type AgendamentoInput = z.infer<typeof agendamentoSchema>
 
 export const pagamentoSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um cliente'),
-  servico_id: z.string().min(1).optional(),
-  agendamento_id: z.string().min(1).optional(),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
+  agendamento_id: z.string().min(1).optional().or(z.literal('')),
   descricao: z.string().min(2, 'Descrição obrigatória'),
   valor_jpy: z.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
@@ -184,7 +184,7 @@ export type ContratoSecaoInput = z.infer<typeof contratoSecaoSchema>
 
 export const contratoSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um cliente'),
-  servico_id: z.string().min(1).optional(),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
   titulo: z.string().min(2, 'Título obrigatório'),
   corpo_html: z.string().min(10, 'Conteúdo do contrato obrigatório'),
 })
@@ -250,7 +250,7 @@ export const documentoTemplateSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório'),
   descricao: z.string().optional(),
   obrigatorio: z.boolean().default(true),
-  servico_id: z.string().min(1).optional(),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
   variacao_id: z.string().min(1).optional().or(z.literal('')),
   variacao_ids: z.array(z.string().min(1)).default([]),
   ordem: z.number().int().default(0),
@@ -342,7 +342,7 @@ export const questaoSchema = z
     enunciado: z.string().min(5, 'Enunciado deve ter pelo menos 5 caracteres'),
     explicacao: z.string().optional(),
     tipo_opcao: z.enum(['booleano', 'multipla']),
-    categoria_id: optionalFirestoreIdSchema,
+    categoria_id: optionalFirestoreIdOrEmptySchema,
     opcoes: z
       .array(questaoOpcaoInputSchema)
       .min(2, 'Mínimo de 2 opções')

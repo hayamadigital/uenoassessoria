@@ -34,12 +34,12 @@ import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, t
 
 const registrarSchema = z.object({
   cliente_id: z.string().min(1, 'Selecione um cliente'),
-  servico_id: z.string().min(1).optional(),
+  servico_id: z.string().min(1).optional().or(z.literal('')),
   descricao: z.string().min(2, 'Descrição obrigatória'),
   valor_jpy: z.coerce.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
-  categoria: z.enum(['habilitacao', 'taxa', 'material', 'aula', 'outro']).optional(),
-  recebido_por: z.string().min(1).optional(),
+  categoria: z.enum(['habilitacao', 'taxa', 'material', 'aula', 'outro']).optional().or(z.literal('')),
+  recebido_por: z.string().min(1).optional().or(z.literal('')),
   data_vencimento: z.string().optional(),
   notas: z.string().optional(),
 })
