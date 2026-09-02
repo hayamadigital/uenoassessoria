@@ -6,54 +6,87 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isAdminByClaim() {
-      return isSignedIn() && request.auth.token.role == 'admin';
-    }
-
-    function isAdminByProfile() {
-      return isSignedIn()
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
     function isAdmin() {
-      return isAdminByClaim() || isAdminByProfile();
+      return isSignedIn() && request.auth.token.role == 'admin';
     }
 
     function isInstrutor() {
       return isSignedIn() && request.auth.token.role == 'instrutor';
     }
 
+    function ownsCliente(clienteId) {
+      return isSignedIn()
+        && firestore.get(/databases/(default)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid;
+    }
+
+    function isAssignedToCliente(clienteId) {
+      return isInstrutor()
+        && firestore.get(/databases/(default)/documents/clientes/$(clienteId)).data.assigned_instrutor_id == request.auth.uid;
+    }
+
+    function ownsPagamento(pagamentoId) {
+      return isSignedIn()
+        && firestore.get(/databases/(default)/documents/pagamentos/$(pagamentoId)).data.cliente_id != null
+        && ownsCliente(firestore.get(/databases/(default)/documents/pagamentos/$(pagamentoId)).data.cliente_id);
+    }
+
+    function isAssignedToPagamento(pagamentoId) {
+      return isInstrutor()
+        && firestore.get(/databases/(default)/documents/pagamentos/$(pagamentoId)).data.cliente_id != null
+        && isAssignedToCliente(firestore.get(/databases/(default)/documents/pagamentos/$(pagamentoId)).data.cliente_id);
+    }
+
+    function isImage(maxBytes) {
+      return request.resource != null
+        && request.resource.size <= maxBytes
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    function isDocument(maxBytes) {
+      return request.resource != null
+        && request.resource.size <= maxBytes
+        && request.resource.contentType.matches('(application/pdf|image/.*)');
+    }
+
     // ── avatares/{uid}/ ─────────────────────────────────────────
     // Owner writes, everyone reads (public)
     match /avatares/{uid}/{fileName} {
       allow read: if true;
-      allow write: if isSignedIn() && request.auth.uid == uid;
-      allow delete: if isAdmin() || request.auth.uid == uid;
+      allow create, update: if isSignedIn()
+        && request.auth.uid == uid
+        && isImage(5 * 1024 * 1024);
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
     }
 
     // ── documentos/{clienteId}/ ────────────────────────────────
     // Admin: full; Cliente: read own + create; Instrutor: read assigned (server-enforced via rules approximation)
     match /documentos/{clienteId}/{fileName} {
-      allow read: if isAdmin() || isInstrutor() || request.auth.uid != null;
-      allow create: if isSignedIn()
-        && request.resource.size <= 50 * 1024 * 1024;
+      allow read: if isAdmin() || ownsCliente(clienteId) || isAssignedToCliente(clienteId);
+      allow create: if (isAdmin() || ownsCliente(clienteId) || isAssignedToCliente(clienteId))
+        && isDocument(20 * 1024 * 1024);
       allow update, delete: if isAdmin();
     }
 
     // ── contratos/{clienteId}/{contratoId}/ ───────────────────
     // Admin: full; Cliente: read only
     match /contratos/{clienteId}/{contratoId}/{fileName} {
-      allow read: if isAdmin() || isSignedIn();
+      allow read: if isAdmin() || ownsCliente(clienteId) || isAssignedToCliente(clienteId);
       allow write: if isAdmin();
     }
 
     // ── comprovantes/{pagamentoId}/ ───────────────────────────
     // Admin: full; Cliente: read own; Instrutor: read
     match /comprovantes/{pagamentoId}/{fileName} {
-      allow read: if isAdmin() || isInstrutor() || isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.size <= 50 * 1024 * 1024;
+      allow read: if isAdmin() || ownsPagamento(pagamentoId) || isAssignedToPagamento(pagamentoId);
+      allow create: if (isAdmin() || ownsPagamento(pagamentoId))
+        && isDocument(20 * 1024 * 1024);
       allow update, delete: if isAdmin();
+    }
+
+    // Legacy expense receipts without a payment id are restricted to admins.
+    match /comprovantes/{fileName} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin() && isDocument(20 * 1024 * 1024);
     }
 
     // ── materiais/ ────────────────────────────────────────────
@@ -73,9 +106,9 @@ service firebase.storage {
     // ── assinaturas/{clienteId}/ ──────────────────────────────
     // Cliente uploads own signature; Admin: full
     match /assinaturas/{clienteId}/{fileName} {
-      allow read: if isAdmin() || isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.size <= 10 * 1024 * 1024;
+      allow read: if isAdmin() || ownsCliente(clienteId);
+      allow create: if ownsCliente(clienteId)
+        && isImage(5 * 1024 * 1024);
       allow update, delete: if isAdmin();
     }
 

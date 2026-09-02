@@ -6,6 +6,8 @@ export const colors = {
   navy100: '#E6ECFB',
   navy50: '#F2F5FD',
   green: '#2BA84A',
+  green800: '#166534',
+  green50: '#ECFDF3',
   red: '#D7263D',
   amber: '#E0A700',
   ink900: '#0B1020',

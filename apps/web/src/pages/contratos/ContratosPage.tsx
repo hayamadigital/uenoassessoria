@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, FileText, User, Send, X, Pencil, Search } from 'lucide-react'
 import { z } from 'zod'
+import DOMPurify from 'dompurify'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -844,7 +845,9 @@ export function ContratosPage() {
           </div>
           <div
             className="max-h-[55vh] overflow-y-auto rounded-md border bg-background p-4 text-sm leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: viewContrato?.corpo_html ?? '' }}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(viewContrato?.corpo_html ?? ''),
+            }}
           />
           {viewContrato?.pdf_url && (
             <a

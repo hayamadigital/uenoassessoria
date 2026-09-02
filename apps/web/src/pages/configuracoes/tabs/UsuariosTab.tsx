@@ -28,9 +28,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { db } from '@/lib/firebase'
 import {
   listProfiles,
-  listAdminsEInstrutores,
-  activateProfile,
-  deactivateProfile,
+  listStaffProfiles,
 } from '@ueno/firebase/queries/perfis'
 import { inviteUserSchema, type InviteUserInput } from '@ueno/utils/validators'
 import { cn } from '@/lib/cn'
@@ -63,12 +61,17 @@ export function UsuariosTab() {
   const { data: profiles = [], isLoading } = useQuery({
     queryKey: ['profiles', roleFilter],
     queryFn: () =>
-      roleFilter ? listProfiles(db, roleFilter) : listAdminsEInstrutores(db),
+      roleFilter ? listProfiles(db, roleFilter) : listStaffProfiles(db),
   })
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      isActive ? deactivateProfile(db, id) : activateProfile(db, id),
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const setUserActive = httpsCallable<
+        { uid: string; is_active: boolean },
+        { success: boolean }
+      >(getFunctions(), 'setUserActive')
+      await setUserActive({ uid: id, is_active: !isActive })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] })
     },

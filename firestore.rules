@@ -7,17 +7,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdminByClaim() {
-      return isSignedIn() && request.auth.token.role == 'admin';
-    }
-
-    function isAdminByProfile() {
-      return isSignedIn()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-
     function isAdmin() {
-      return isAdminByClaim() || isAdminByProfile();
+      return isSignedIn() && request.auth.token.role == 'admin';
     }
 
     function isInstrutor() {
@@ -30,6 +21,43 @@ service cloud.firestore {
 
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function ownsCliente(clienteId) {
+      return isCliente()
+        && exists(/databases/$(database)/documents/clientes/$(clienteId))
+        && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid;
+    }
+
+    function isAssignedToCliente(clienteId) {
+      return isInstrutor()
+        && exists(/databases/$(database)/documents/clientes/$(clienteId))
+        && get(/databases/$(database)/documents/clientes/$(clienteId)).data.assigned_instrutor_id == request.auth.uid;
+    }
+
+    function ownsProcesso(processoId) {
+      return isCliente()
+        && exists(/databases/$(database)/documents/cliente_processos/$(processoId))
+        && ownsCliente(get(/databases/$(database)/documents/cliente_processos/$(processoId)).data.cliente_id);
+    }
+
+    function isAssignedToProcesso(processoId) {
+      return isInstrutor()
+        && exists(/databases/$(database)/documents/cliente_processos/$(processoId))
+        && isAssignedToCliente(get(/databases/$(database)/documents/cliente_processos/$(processoId)).data.cliente_id);
+    }
+
+    function userSelfEditableFields() {
+      return [
+        'full_name',
+        'phone',
+        'whatsapp',
+        'avatar_url',
+        'preferred_lang',
+        'endereco_jp',
+        'mapa_link_jp',
+        'updated_at'
+      ];
     }
 
     function clienteSelfEditableFields() {
@@ -64,11 +92,13 @@ service cloud.firestore {
 
     // ── /users/{uid} — profiles ────────────────────────────────────
     match /users/{uid} {
-      allow read: if isAdminByClaim() || isOwner(uid)
-        || (isInstrutor() && resource.data.role in ['cliente', 'admin']);
-      allow create: if isAdminByClaim();
-      allow update: if isAdminByClaim() || isOwner(uid);
-      allow delete: if isAdminByClaim();
+      allow read: if isAdmin() || isOwner(uid)
+        || (isInstrutor() && resource.data.role == 'cliente');
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(userSelfEditableFields()));
+      allow delete: if isAdmin();
     }
 
     // ── /clientes/{clienteId} ──────────────────────────────────────
@@ -92,7 +122,18 @@ service cloud.firestore {
           || (isInstrutor() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.assigned_instrutor_id == request.auth.uid)
           || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
         allow create: if isAdmin()
-          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+          || (ownsCliente(clienteId)
+              && request.resource.data.cliente_id == clienteId
+              && request.resource.data.status == 'enviado'
+              && request.resource.data.revisado_por == null
+              && request.resource.data.revisado_em == null
+              && request.resource.data.arquivo_url is string
+              && request.resource.data.arquivo_url.matches('^documentos/' + clienteId + '/[^/]+$')
+              && request.resource.data.keys().hasOnly([
+                'cliente_id', 'template_id', 'nome_custom', 'status', 'arquivo_url',
+                'arquivo_nome', 'arquivo_tamanho', 'arquivo_tipo', 'data_validade',
+                'observacao', 'revisado_por', 'revisado_em', 'created_at', 'updated_at'
+              ]));
         allow update: if isAdmin();
         allow delete: if isAdmin();
       }
@@ -115,7 +156,7 @@ service cloud.firestore {
       match /historico/{id} {
         allow read: if isAdmin()
           || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
-        allow create: if isAdmin() || isInstrutor();
+        allow create: if isAdmin() || isAssignedToCliente(clienteId);
         allow update, delete: if isAdmin();
       }
 
@@ -135,7 +176,8 @@ service cloud.firestore {
 
     // Collection group: documentos (for listPendingDocumentos)
     match /{path=**}/documentos/{docId} {
-      allow read: if isAdmin() || isInstrutor();
+      allow read: if isAdmin()
+        || (resource.data.cliente_id != null && isAssignedToCliente(resource.data.cliente_id));
     }
 
     // ── /agendamentos/{id} ─────────────────────────────────────────
@@ -144,9 +186,16 @@ service cloud.firestore {
         || (isInstrutor() && resource.data.instrutor_id == request.auth.uid)
         || (isCliente() && resource.data.cliente_id != null
             && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
-      allow create: if isAdmin() || isInstrutor();
+      allow create: if isAdmin()
+        || (isInstrutor()
+            && request.resource.data.instrutor_id == request.auth.uid
+            && request.resource.data.cliente_id != null
+            && isAssignedToCliente(request.resource.data.cliente_id));
       allow update: if isAdmin()
-        || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
+        || (isInstrutor()
+            && resource.data.instrutor_id == request.auth.uid
+            && request.resource.data.instrutor_id == request.auth.uid
+            && request.resource.data.cliente_id == resource.data.cliente_id);
       allow delete: if isAdmin();
     }
 
@@ -191,7 +240,11 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isCliente() && resource.data.cliente_id != null
             && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid
-            && request.resource.data.keys().hasOnly(['status', 'assinatura_url', 'ip_assinatura', 'assinado_em', 'updated_at']));
+            && resource.data.status == 'enviado'
+            && request.resource.data.status == 'assinado'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'assinatura_url', 'ip_assinatura', 'assinado_em', 'updated_at'
+            ]));
       allow delete: if isAdmin();
     }
 
@@ -259,7 +312,7 @@ service cloud.firestore {
 
       match /erros/{errId} {
         allow read: if isAdmin();
-        allow create: if isSignedIn();
+        allow create: if isAdmin();
         allow update, delete: if isAdmin();
       }
     }
@@ -267,7 +320,17 @@ service cloud.firestore {
     // ── /questao_erro_reports/{id} ────────────────────────────────
     match /questao_erro_reports/{id} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
+      allow create: if (isAdmin()
+          || (isSignedIn() && request.resource.data.reportado_por == request.auth.uid))
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.descricao is string
+        && request.resource.data.descricao.size() >= 5
+        && request.resource.data.descricao.size() <= 2000
+        && request.resource.data.questao_id is string
+        && exists(/databases/$(database)/documents/questoes/$(request.resource.data.questao_id))
+        && request.resource.data.keys().hasOnly([
+          'questao_id', 'reportado_por', 'descricao', 'status', 'created_at', 'updated_at'
+        ]);
       allow update, delete: if isAdmin();
     }
 
@@ -306,7 +369,7 @@ service cloud.firestore {
         || (isInstrutor() && resource.data.instrutor_id == request.auth.uid)
         || (isCliente() && resource.data.cliente_id != null
             && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
-      allow create: if isSignedIn();
+      allow create: if isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
@@ -318,21 +381,33 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.destinatario_id == request.auth.uid
-            && request.resource.data.keys().hasOnly(['lida', 'lida_em']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lida', 'lida_em']));
       allow delete: if isAdmin();
     }
 
     // ── /push_tokens/{id} ─────────────────────────────────────────
     match /push_tokens/{id} {
-      allow read, create, update, delete: if isSignedIn()
-        && request.auth.uid != null;
+      allow read, delete: if isSignedIn()
+        && resource.data.profile_id == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.profile_id == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'profile_id', 'token', 'platform', 'created_at', 'updated_at'
+        ]);
+      allow update: if isSignedIn()
+        && resource.data.profile_id == request.auth.uid
+        && request.resource.data.profile_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'token', 'platform', 'updated_at'
+        ]);
     }
 
     // ── /rotas_dia/{id} ───────────────────────────────────────────
     match /rotas_dia/{id} {
       allow read: if isAdmin()
         || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
-      allow create: if isAdmin() || isInstrutor();
+      allow create: if isAdmin()
+        || (isInstrutor() && request.resource.data.instrutor_id == request.auth.uid);
       allow update: if isAdmin()
         || (isInstrutor() && resource.data.instrutor_id == request.auth.uid);
       allow delete: if isAdmin();
@@ -366,6 +441,7 @@ service cloud.firestore {
         || (
           isCliente()
           && request.resource.data.status == 'analise'
+          && request.resource.data.valor_acordado_jpy == null
           && request.resource.data.cliente_id != null
           && get(/databases/$(database)/documents/clientes/$(request.resource.data.cliente_id)).data.profile_id == request.auth.uid
           && request.resource.data.keys().hasOnly([
@@ -385,8 +461,10 @@ service cloud.firestore {
 
     // ── /processo_etapas/{id} ─────────────────────────────────────
     match /processo_etapas/{id} {
-      allow read: if isAdmin() || isInstrutor()
-        || (isCliente() && get(/databases/$(database)/documents/cliente_processos/$(resource.data.processo_id)).data.cliente_id != null);
+      allow read: if isAdmin()
+        || (resource.data.processo_id != null
+            && (ownsProcesso(resource.data.processo_id)
+                || isAssignedToProcesso(resource.data.processo_id)));
       allow write: if isAdmin();
     }
 

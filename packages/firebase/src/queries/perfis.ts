@@ -47,6 +47,16 @@ export async function listAdminsEInstrutores(db: Firestore): Promise<Profile[]> 
   return snap.docs.map((d) => toProfile(d.id, d.data()))
 }
 
+export async function listStaffProfiles(db: Firestore): Promise<Profile[]> {
+  const [admins, instrutores] = await Promise.all([
+    listProfiles(db, 'admin'),
+    listProfiles(db, 'instrutor'),
+  ])
+  return [...admins, ...instrutores].sort((a, b) =>
+    a.full_name.localeCompare(b.full_name, 'pt-BR'),
+  )
+}
+
 export async function upsertProfile(db: Firestore, input: ProfileInsert): Promise<Profile> {
   const now = new Date().toISOString()
   const raw = { ...input, updated_at: now, created_at: now }
@@ -63,12 +73,4 @@ export async function updateProfile(
   const now = new Date().toISOString()
   await updateDoc(doc(db, 'users', id), { ...input, updated_at: now })
   return getProfile(db, id)
-}
-
-export async function deactivateProfile(db: Firestore, id: string): Promise<void> {
-  await updateDoc(doc(db, 'users', id), { is_active: false, updated_at: new Date().toISOString() })
-}
-
-export async function activateProfile(db: Firestore, id: string): Promise<void> {
-  await updateDoc(doc(db, 'users', id), { is_active: true, updated_at: new Date().toISOString() })
 }

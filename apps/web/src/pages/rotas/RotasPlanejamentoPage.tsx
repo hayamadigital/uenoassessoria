@@ -464,7 +464,7 @@ export function RotasPlanejamentoPage() {
       const otimizarRota = httpsCallable<
         { ponto_partida: string; ponto_destino: string; paradas: Array<{ id: string; endereco: string }> },
         OtimizacaoRotaResultado
-      >(functions, 'otimizar-rota')
+      >(functions, 'otimizarRota')
       const { data: resultado } = await otimizarRota({
         ponto_partida: veiculo.pontoPartida.endereco,
         ponto_destino: pontoDestino,

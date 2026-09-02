@@ -102,7 +102,11 @@ export default function LoginScreen() {
             {errors.password && <Text style={s.errTxt}>{errors.password.message}</Text>}
           </View>
 
-          <TouchableOpacity style={s.forgotWrap}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => router.push('/(auth)/forgot-password')}
+            style={s.forgotWrap}
+          >
             <Text style={s.forgotTxt}>Esqueci minha senha</Text>
           </TouchableOpacity>
 

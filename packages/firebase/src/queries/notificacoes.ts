@@ -90,7 +90,11 @@ export async function upsertPushToken(
   input: PushTokenInsert,
 ): Promise<PushToken> {
   const snap = await getDocs(
-    query(collection(db, 'push_tokens'), where('token', '==', input.token)),
+    query(
+      collection(db, 'push_tokens'),
+      where('profile_id', '==', input.profile_id),
+      where('token', '==', input.token),
+    ),
   )
   if (!snap.empty) {
     const tokenDoc = snap.docs[0]!
@@ -102,9 +106,17 @@ export async function upsertPushToken(
   return { id: ref.id, ...input, created_at: now }
 }
 
-export async function deletePushToken(db: Firestore, token: string): Promise<void> {
+export async function deletePushToken(
+  db: Firestore,
+  profileId: string,
+  token: string,
+): Promise<void> {
   const snap = await getDocs(
-    query(collection(db, 'push_tokens'), where('token', '==', token)),
+    query(
+      collection(db, 'push_tokens'),
+      where('profile_id', '==', profileId),
+      where('token', '==', token),
+    ),
   )
   await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
 }

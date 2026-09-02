@@ -1,10 +1,11 @@
 import * as admin from 'firebase-admin'
-import { onRequest, onCall, type CallableRequest } from 'firebase-functions/v2/https'
+import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import { getStorage } from 'firebase-admin/storage'
 import axios from 'axios'
+import sanitizeHtml from 'sanitize-html'
 
 admin.initializeApp()
 
@@ -12,18 +13,42 @@ const db = getFirestore()
 const auth = getAuth()
 const storage = getStorage()
 
-const CORS = { cors: ['*'] }
+const CORS = {
+  invoker: 'public' as const,
+  cors: [
+    'https://ueno-assessoria.vercel.app',
+    /^http:\/\/localhost:\d+$/,
+    /^http:\/\/127\.0\.0\.1:\d+$/,
+  ],
+}
 
 async function assertAdmin(request: CallableRequest) {
   if (request.auth?.token?.role === 'admin') return
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  throw new HttpsError('permission-denied', 'Apenas admins podem executar esta ação')
+}
 
-  const uid = request.auth?.uid
-  if (!uid) throw new Error('Não autenticado')
-
-  const profileSnap = await db.collection('users').doc(uid).get()
-  if (profileSnap.data()?.role !== 'admin') {
-    throw new Error('Apenas admins podem executar esta ação')
+function assertStaff(request: CallableRequest) {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  if (!['admin', 'instrutor'].includes(String(request.auth.token.role))) {
+    throw new HttpsError('permission-denied', 'Apenas admins e instrutores podem executar esta ação')
   }
+}
+
+function requiredString(value: unknown, field: string, maxLength: number) {
+  if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
+    throw new HttpsError('invalid-argument', `${field} é inválido`)
+  }
+  return value.trim()
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 // ── Auth trigger: set custom claims + create /users doc ────────────
@@ -41,7 +66,7 @@ export const onUserCreated = onDocumentCreated(
 // Uses admin SDK to bypass Firestore rules, sets role claim, creates profile + cliente.
 
 export const selfRegister = onCall({ ...CORS }, async (request) => {
-  if (!request.auth) throw new Error('Não autenticado')
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
 
   const uid = request.auth.uid
   const { full_name, email, data_nascimento, provincia_jp, cidade_jp } = request.data as {
@@ -52,11 +77,15 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
     cidade_jp: string
   }
 
-  if (!full_name || !email) throw new Error('full_name e email são obrigatórios')
+  const normalizedName = requiredString(full_name, 'full_name', 120)
+  const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
+  if (normalizedEmail !== String(request.auth.token.email ?? '').toLowerCase()) {
+    throw new HttpsError('permission-denied', 'O email deve corresponder ao usuário autenticado')
+  }
 
   // Prevent overwriting an existing profile (e.g. invited user trying to re-register)
   const existingSnap = await db.collection('users').doc(uid).get()
-  if (existingSnap.exists) throw new Error('Perfil já existe para este usuário')
+  if (existingSnap.exists) throw new HttpsError('already-exists', 'Perfil já existe para este usuário')
 
   await auth.setCustomUserClaims(uid, { role: 'cliente' })
 
@@ -64,8 +93,8 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
   await db.collection('users').doc(uid).set({
     id: uid,
     role: 'cliente',
-    full_name,
-    email,
+    full_name: normalizedName,
+    email: normalizedEmail,
     phone: null,
     whatsapp: null,
     avatar_url: null,
@@ -114,12 +143,20 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
 })
 
 export const setRoleClaim = onCall({ ...CORS }, async (request) => {
-  // Admin-only: set a user's role custom claim
-  if (!request.auth?.token?.role || request.auth.token.role !== 'admin') {
-    throw new Error('Apenas admins podem alterar roles')
+  await assertAdmin(request)
+  const uid = requiredString(request.data?.uid, 'uid', 128)
+  const role = request.data?.role
+  if (!['admin', 'instrutor', 'cliente'].includes(role)) {
+    throw new HttpsError('invalid-argument', 'role inválida')
   }
-  const { uid, role } = request.data as { uid: string; role: string }
-  await auth.setCustomUserClaims(uid, { role })
+  if (uid === request.auth!.uid && role !== 'admin') {
+    throw new HttpsError('failed-precondition', 'Você não pode remover a própria função de admin')
+  }
+
+  const user = await auth.getUser(uid)
+  await auth.setCustomUserClaims(uid, { ...user.customClaims, role })
+  await db.collection('users').doc(uid).update({ role, updated_at: new Date().toISOString() })
+  await auth.revokeRefreshTokens(uid)
   return { success: true }
 })
 
@@ -135,18 +172,15 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
     nacionalidade?: string
   }
 
-  if (!full_name || !email) {
-    throw new Error('full_name e email são obrigatórios')
-  }
+  const normalizedName = requiredString(full_name, 'full_name', 120)
+  const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
 
-  const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12)
   let userId: string | undefined
 
   try {
     const userRecord = await auth.createUser({
-      email,
-      password: tempPassword,
-      displayName: full_name,
+      email: normalizedEmail,
+      displayName: normalizedName,
       emailVerified: true,
     })
     userId = userRecord.uid
@@ -159,8 +193,8 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
     await db.collection('users').doc(userId).set({
       id: userId,
       role: 'cliente',
-      full_name,
-      email,
+      full_name: normalizedName,
+      email: normalizedEmail,
       phone: null,
       whatsapp: whatsapp ?? null,
       avatar_url: null,
@@ -206,7 +240,7 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
       updated_at: now,
     })
 
-    const resetLink = await auth.generatePasswordResetLink(email)
+    const resetLink = await auth.generatePasswordResetLink(normalizedEmail)
 
     return { cliente_id: clienteRef.id, user_id: userId, reset_link: resetLink }
   } catch (err) {
@@ -220,9 +254,7 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
 // ── inviteUser ─────────────────────────────────────────────────────
 
 export const inviteUser = onCall({ ...CORS }, async (request) => {
-  if (!request.auth?.token?.role || request.auth.token.role !== 'admin') {
-    throw new Error('Apenas admins podem convidar usuários')
-  }
+  await assertAdmin(request)
 
   const { email, full_name, role } = request.data as {
     email: string
@@ -230,15 +262,15 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
     role: 'admin' | 'instrutor'
   }
 
-  if (!email || !full_name || !role) {
-    throw new Error('email, full_name e role são obrigatórios')
+  if (!['admin', 'instrutor'].includes(role)) {
+    throw new HttpsError('invalid-argument', 'role deve ser admin ou instrutor')
   }
+  const normalizedName = requiredString(full_name, 'full_name', 120)
+  const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
 
-  const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12)
   const userRecord = await auth.createUser({
-    email,
-    password: tempPassword,
-    displayName: full_name,
+    email: normalizedEmail,
+    displayName: normalizedName,
     emailVerified: false,
   })
 
@@ -248,8 +280,8 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
   await db.collection('users').doc(userRecord.uid).set({
     id: userRecord.uid,
     role,
-    full_name,
-    email,
+    full_name: normalizedName,
+    email: normalizedEmail,
     phone: null,
     whatsapp: null,
     avatar_url: null,
@@ -261,7 +293,7 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
   })
 
   // Generate password reset link to send via email
-  const resetLink = await auth.generatePasswordResetLink(email)
+  const resetLink = await auth.generatePasswordResetLink(normalizedEmail)
 
   return { user_id: userRecord.uid, reset_link: resetLink }
 })
@@ -269,9 +301,7 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
 // ── regenerateInviteLink ───────────────────────────────────────────
 
 export const regenerateInviteLink = onCall({ ...CORS }, async (request) => {
-  if (!request.auth?.token?.role || request.auth.token.role !== 'admin') {
-    throw new Error('Apenas admins podem regerar links de convite')
-  }
+  await assertAdmin(request)
 
   const { email } = request.data as { email: string }
   const normalizedEmail = email?.trim().toLowerCase()
@@ -294,57 +324,88 @@ export const regenerateInviteLink = onCall({ ...CORS }, async (request) => {
   return { user_id: userRecord.uid, email: normalizedEmail, reset_link: resetLink }
 })
 
-// ── generateContractPdf ────────────────────────────────────────────
+export const setUserActive = onCall({ ...CORS }, async (request) => {
+  await assertAdmin(request)
 
-export const generateContractPdf = onRequest({ ...CORS }, async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed')
-    return
+  const uid = requiredString(request.data?.uid, 'uid', 128)
+  const isActive = request.data?.is_active
+  if (typeof isActive !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'is_active deve ser booleano')
+  }
+  if (uid === request.auth!.uid && !isActive) {
+    throw new HttpsError('failed-precondition', 'Você não pode desativar a própria conta')
   }
 
-  try {
-    const { contrato_id } = req.body as { contrato_id: string }
-    if (!contrato_id) {
-      res.status(400).json({ error: 'contrato_id é obrigatório' })
-      return
+  const profileRef = db.collection('users').doc(uid)
+  const profileSnap = await profileRef.get()
+  if (!profileSnap.exists) throw new HttpsError('not-found', 'Usuário não encontrado')
+
+  await auth.updateUser(uid, { disabled: !isActive })
+  if (!isActive) await auth.revokeRefreshTokens(uid)
+  await profileRef.update({ is_active: isActive, updated_at: new Date().toISOString() })
+
+  return { success: true }
+})
+
+// ── generateContractPdf ────────────────────────────────────────────
+
+export const generateContractPdf = onCall({ ...CORS }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+
+  const contratoId = requiredString(request.data?.contrato_id, 'contrato_id', 128)
+  const contratoSnap = await db.collection('contratos').doc(contratoId).get()
+  if (!contratoSnap.exists) {
+    throw new HttpsError('not-found', 'Contrato não encontrado')
+  }
+
+  const contrato = contratoSnap.data()!
+  if (contrato.status !== 'assinado') {
+    throw new HttpsError('failed-precondition', 'Contrato ainda não foi assinado')
+  }
+
+  const clienteId = requiredString(contrato.cliente_id, 'cliente_id', 128)
+  const clienteSnap = await db.collection('clientes').doc(clienteId).get()
+  if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado')
+  const profileId = clienteSnap.data()?.profile_id as string
+
+  if (request.auth.token.role !== 'admin' && request.auth.uid !== profileId) {
+    throw new HttpsError('permission-denied', 'Você não tem acesso a este contrato')
+  }
+
+  const profileSnap = await db.collection('users').doc(profileId).get()
+  const clienteNome = escapeHtml(profileSnap.data()?.full_name ?? 'Cliente')
+  const titulo = escapeHtml(contrato.titulo)
+  const ipAssinatura = escapeHtml(contrato.ip_assinatura ?? 'N/A')
+  const corpoContrato = sanitizeHtml(String(contrato.corpo_html ?? ''), {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'h3', 'span']),
+    allowedAttributes: {
+      a: ['href', 'target', 'rel'],
+      '*': ['class'],
+    },
+    allowedSchemes: ['https', 'mailto'],
+    allowProtocolRelative: false,
+  })
+
+  let assinaturaBase64 = ''
+  if (contrato.assinatura_url) {
+    const signaturePath = requiredString(contrato.assinatura_url, 'assinatura_url', 1024)
+    if (!signaturePath.startsWith(`assinaturas/${clienteId}/`)) {
+      throw new HttpsError('failed-precondition', 'Caminho da assinatura inválido')
     }
+    const [buffer] = await storage.bucket().file(signaturePath).download()
+    assinaturaBase64 = `data:image/png;base64,${buffer.toString('base64')}`
+  }
 
-    const contratoSnap = await db.collection('contratos').doc(contrato_id).get()
-    if (!contratoSnap.exists) {
-      res.status(404).json({ error: 'Contrato não encontrado' })
-      return
-    }
+  const dataAssinatura = contrato.assinado_em
+    ? new Date(contrato.assinado_em as string).toLocaleDateString('pt-BR', {
+        timeZone: 'Asia/Tokyo',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : ''
 
-    const contrato = contratoSnap.data()!
-    if (contrato.status !== 'assinado') {
-      res.status(400).json({ error: 'Contrato ainda não foi assinado' })
-      return
-    }
-
-    // Fetch client name
-    const clienteSnap = await db.collection('clientes').doc(contrato.cliente_id as string).get()
-    const profileId = clienteSnap.data()?.profile_id as string
-    const profileSnap = await db.collection('users').doc(profileId).get()
-    const clienteNome = (profileSnap.data()?.full_name as string) ?? 'Cliente'
-
-    let assinaturaBase64 = ''
-    if (contrato.assinatura_url) {
-      const bucket = storage.bucket()
-      const file = bucket.file(contrato.assinatura_url as string)
-      const [buffer] = await file.download()
-      assinaturaBase64 = `data:image/png;base64,${buffer.toString('base64')}`
-    }
-
-    const dataAssinatura = contrato.assinado_em
-      ? new Date(contrato.assinado_em as string).toLocaleDateString('pt-BR', {
-          timeZone: 'Asia/Tokyo',
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-        })
-      : ''
-
-    const htmlContent = `<!DOCTYPE html>
+  const htmlContent = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -364,58 +425,61 @@ export const generateContractPdf = onRequest({ ...CORS }, async (req, res) => {
     <div class="logo">UENO ASSESSORIA</div>
     <div>Data: ${dataAssinatura}</div>
   </div>
-  <h1>${contrato.titulo as string}</h1>
-  <div class="contract-body">${contrato.corpo_html as string}</div>
+  <h1>${titulo}</h1>
+  <div class="contract-body">${corpoContrato}</div>
   <div class="signature-section">
     <p><strong>Assinado por:</strong> ${clienteNome}</p>
     <p><strong>Data da assinatura:</strong> ${dataAssinatura}</p>
-    <p><strong>IP:</strong> ${(contrato.ip_assinatura as string) ?? 'N/A'}</p>
+    <p><strong>IP:</strong> ${ipAssinatura}</p>
     ${assinaturaBase64 ? `<img class="signature-img" src="${assinaturaBase64}" alt="Assinatura" />` : ''}
   </div>
   <div class="footer">
-    Documento gerado eletronicamente pela plataforma UENO ASSESSORIA. ID: ${contrato_id}
+    Documento gerado eletronicamente pela plataforma UENO ASSESSORIA. ID: ${contratoId}
   </div>
 </body>
 </html>`
 
-    const pdfPath = `contratos/${contrato.cliente_id as string}/${contrato_id}/contrato.html`
-    const bucket = storage.bucket()
-    const file = bucket.file(pdfPath)
-    await file.save(Buffer.from(htmlContent, 'utf-8'), { contentType: 'text/html' })
+  const pdfPath = `contratos/${clienteId}/${contratoId}/contrato.html`
+  const file = storage.bucket().file(pdfPath)
+  await file.save(Buffer.from(htmlContent, 'utf-8'), {
+    contentType: 'text/html',
+    metadata: { cacheControl: 'private, no-store' },
+  })
 
-    await db.collection('contratos').doc(contrato_id).update({
-      pdf_url: pdfPath,
-      updated_at: new Date().toISOString(),
-    })
+  await contratoSnap.ref.update({
+    pdf_url: pdfPath,
+    updated_at: new Date().toISOString(),
+  })
 
-    res.json({ success: true, pdf_url: pdfPath })
-  } catch (err) {
-    console.error('generateContractPdf error:', err)
-    res.status(500).json({ error: String(err) })
-  }
+  return { success: true, pdf_url: pdfPath }
 })
 
 // ── sendNotification ───────────────────────────────────────────────
 
-export const sendNotification = onRequest({ ...CORS }, async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed')
-    return
-  }
+export const sendNotification = onCall({ ...CORS }, async (request) => {
+  await assertAdmin(request)
 
-  try {
-    const { destinatario_id, titulo, corpo, tipo, referencia_id, referencia_tipo } = req.body as {
+  const { referencia_id, referencia_tipo } = request.data as {
       destinatario_id: string
       titulo: string
       corpo: string
       tipo: string
       referencia_id?: string
       referencia_tipo?: string
-    }
+  }
+  const destinatarioId = requiredString(request.data?.destinatario_id, 'destinatario_id', 128)
+  const titulo = requiredString(request.data?.titulo, 'titulo', 120)
+  const corpo = requiredString(request.data?.corpo, 'corpo', 1000)
+  const tipo = requiredString(request.data?.tipo, 'tipo', 64)
 
-    const now = new Date().toISOString()
-    const notifRef = await db.collection('notificacoes').add({
-      destinatario_id,
+  const recipient = await db.collection('users').doc(destinatarioId).get()
+  if (!recipient.exists || recipient.data()?.is_active === false) {
+    throw new HttpsError('not-found', 'Destinatário ativo não encontrado')
+  }
+
+  const now = new Date().toISOString()
+  const notifRef = await db.collection('notificacoes').add({
+      destinatario_id: destinatarioId,
       titulo,
       corpo,
       tipo,
@@ -425,11 +489,11 @@ export const sendNotification = onRequest({ ...CORS }, async (req, res) => {
       lida_em: null,
       push_enviado: false,
       created_at: now,
-    })
+  })
 
-    const tokensSnap = await db
+  const tokensSnap = await db
       .collection('push_tokens')
-      .where('profile_id', '==', destinatario_id)
+      .where('profile_id', '==', destinatarioId)
       .get()
 
     if (!tokensSnap.empty) {
@@ -445,6 +509,8 @@ export const sendNotification = onRequest({ ...CORS }, async (req, res) => {
       try {
         await axios.post('https://exp.host/--/api/v2/push/send', messages, {
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          timeout: 10_000,
+          maxContentLength: 1_000_000,
         })
         await notifRef.update({ push_enviado: true })
       } catch (pushErr) {
@@ -452,69 +518,62 @@ export const sendNotification = onRequest({ ...CORS }, async (req, res) => {
       }
     }
 
-    res.json({ success: true, id: notifRef.id })
-  } catch (err) {
-    console.error('sendNotification error:', err)
-    res.status(500).json({ error: String(err) })
-  }
+  return { success: true, id: notifRef.id }
 })
 
 // ── otimizarRota ───────────────────────────────────────────────────
 
-export const otimizarRota = onRequest({ ...CORS }, async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed')
-    return
-  }
+export const otimizarRota = onCall({ ...CORS }, async (request) => {
+  assertStaff(request)
 
-  try {
-    const { ponto_partida, ponto_destino, paradas } = req.body as {
+  const { paradas } = request.data as {
       ponto_partida: string
       ponto_destino: string
       paradas: Array<{ id: string; endereco: string }>
-    }
+  }
+  const pontoPartida = requiredString(request.data?.ponto_partida, 'ponto_partida', 500)
+  const pontoDestino = requiredString(request.data?.ponto_destino, 'ponto_destino', 500)
 
-    if (!ponto_partida || !ponto_destino || !paradas?.length) {
-      res.status(400).json({ error: 'ponto_partida, ponto_destino e paradas são obrigatórios' })
-      return
-    }
+  if (!Array.isArray(paradas) || paradas.length < 1 || paradas.length > 23) {
+    throw new HttpsError('invalid-argument', 'paradas deve conter entre 1 e 23 itens')
+  }
+  const validParadas = paradas.map((parada, index) => ({
+    id: requiredString(parada?.id, `paradas[${index}].id`, 128),
+    endereco: requiredString(parada?.endereco, `paradas[${index}].endereco`, 500),
+  }))
 
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY
-    if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY não configurada')
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) throw new HttpsError('failed-precondition', 'GOOGLE_MAPS_API_KEY não configurada')
 
-    const enc = (s: string) => encodeURIComponent(s)
-    let url: string
+  const waypoints = validParadas.length === 1
+    ? validParadas[0].endereco
+    : `optimize:true|${validParadas.map((p) => p.endereco).join('|')}`
 
-    if (paradas.length === 1) {
-      url = `https://maps.googleapis.com/maps/api/directions/json` +
-        `?origin=${enc(ponto_partida)}&destination=${enc(ponto_destino)}` +
-        `&waypoints=${enc(paradas[0].endereco)}&language=ja&key=${apiKey}`
-    } else {
-      const intermediarios = paradas.map((p) => enc(p.endereco)).join('|')
-      url = `https://maps.googleapis.com/maps/api/directions/json` +
-        `?origin=${enc(ponto_partida)}&destination=${enc(ponto_destino)}` +
-        `&waypoints=optimize:true|${intermediarios}&language=ja&key=${apiKey}`
-    }
-
-    const { data: gmData } = await axios.get(url)
-    if (gmData.status !== 'OK') throw new Error(`Google Maps status: ${gmData.status as string}`)
+  const { data: gmData } = await axios.get(
+    'https://maps.googleapis.com/maps/api/directions/json',
+    {
+      params: { origin: pontoPartida, destination: pontoDestino, waypoints, language: 'ja', key: apiKey },
+      timeout: 10_000,
+      maxContentLength: 2_000_000,
+    },
+  )
+  if (gmData.status !== 'OK') {
+    console.error('Google Maps Directions status:', gmData.status, gmData.error_message)
+    throw new HttpsError('internal', 'Não foi possível calcular a rota')
+  }
 
     const route = gmData.routes[0]
     const legs: Array<{ distance: { value: number }; duration: { value: number } }> = route.legs
     const waypointOrder: number[] = route.waypoint_order ?? []
 
-    const ordemOtimizada = paradas.length === 1
-      ? [paradas[0].id]
-      : waypointOrder.map((i) => paradas[i].id)
+  const ordemOtimizada = validParadas.length === 1
+    ? [validParadas[0].id]
+    : waypointOrder.map((i) => validParadas[i].id)
 
     const trechoKm = legs.slice(1).map((l) => Math.round((l.distance.value / 1000) * 10) / 10)
     const trechoMin = legs.slice(1).map((l) => Math.round(l.duration.value / 60))
     const totalKm = Math.round([...legs].reduce((a, l) => a + l.distance.value / 1000, 0) * 10) / 10
     const totalMin = [...legs].reduce((a, l) => a + Math.round(l.duration.value / 60), 0)
 
-    res.json({ ordem_otimizada: ordemOtimizada, trecho_km: trechoKm, trecho_min: trechoMin, total_km: totalKm, total_min: totalMin })
-  } catch (err) {
-    console.error('otimizarRota error:', err)
-    res.status(500).json({ error: String(err) })
-  }
+  return { ordem_otimizada: ordemOtimizada, trecho_km: trechoKm, trecho_min: trechoMin, total_km: totalKm, total_min: totalMin }
 })
