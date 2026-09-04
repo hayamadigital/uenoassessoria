@@ -1,4 +1,5 @@
 import { createFirebaseClient } from '@ueno/firebase'
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,4 +14,14 @@ if (Object.values(firebaseConfig).some((v) => !v)) {
   throw new Error('Missing Firebase environment variables. Check VITE_FIREBASE_* in .env.local')
 }
 
-export const { db, auth, storage, functions } = createFirebaseClient(firebaseConfig)
+const firebaseClient = createFirebaseClient(firebaseConfig)
+const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY?.trim()
+
+if (appCheckSiteKey) {
+  initializeAppCheck(firebaseClient.app, {
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  })
+}
+
+export const { db, auth, storage, functions } = firebaseClient

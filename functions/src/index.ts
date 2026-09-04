@@ -1,6 +1,7 @@
 import * as admin from 'firebase-admin'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { defineBoolean } from 'firebase-functions/params'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import { getStorage } from 'firebase-admin/storage'
@@ -12,9 +13,11 @@ admin.initializeApp()
 const db = getFirestore()
 const auth = getAuth()
 const storage = getStorage()
+const enforceAppCheck = defineBoolean('ENFORCE_APP_CHECK', { default: false })
 
 const CORS = {
   invoker: 'public' as const,
+  enforceAppCheck,
   cors: [
     'https://ueno-assessoria.vercel.app',
     /^http:\/\/localhost:\d+$/,

@@ -30,6 +30,7 @@ export function createFirebaseClient(
   const app = getFirebaseApp(config)
   const auth = options?.createAuth ? options.createAuth(app) : getAuth(app)
   return {
+    app,
     db: getFirestore(app),
     auth,
     storage: getStorage(app),
