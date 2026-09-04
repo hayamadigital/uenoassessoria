@@ -16,7 +16,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "firebase": "^11.0.0"
+    "firebase": "^12.18.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
