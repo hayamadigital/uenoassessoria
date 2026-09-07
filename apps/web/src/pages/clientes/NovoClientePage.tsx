@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -66,7 +67,7 @@ export function NovoClientePage() {
       await queryClient.invalidateQueries({ queryKey: ['clientes'] })
       navigate(`/clientes/${respData.cliente_id}/processo`)
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Erro ao criar cliente')
+      setServerError(safeErrorMessage(err, 'Erro ao criar cliente'))
     }
   }
 

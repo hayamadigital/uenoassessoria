@@ -92,8 +92,7 @@ service cloud.firestore {
 
     // ── /users/{uid} — profiles ────────────────────────────────────
     match /users/{uid} {
-      allow read: if isAdmin() || isOwner(uid)
-        || (isInstrutor() && resource.data.role == 'cliente');
+      allow read: if isAdmin() || isOwner(uid);
       allow create: if isAdmin();
       allow update: if isAdmin()
         || (isOwner(uid)
@@ -269,7 +268,8 @@ service cloud.firestore {
     // ── /app_config/{id} ──────────────────────────────────────────
     // Public app preferences used by client/mobile screens
     match /app_config/{id} {
-      allow read: if true;
+      allow get: if id == 'public' || isAdmin();
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 

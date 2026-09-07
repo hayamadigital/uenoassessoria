@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { useParams, Link, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -67,7 +68,7 @@ function ReenviarCredenciaisButton({
     } catch (err) {
       setFeedback({
         tipo: 'erro',
-        msg: err instanceof Error ? err.message : 'Erro ao enviar credenciais',
+        msg: safeErrorMessage(err, 'Erro ao enviar credenciais'),
       })
     } finally {
       setSending(false)

@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -123,7 +124,7 @@ export function NovoAgendamentoPage() {
         status: 'agendado',
       })
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Erro ao criar agendamento')
+      setServerError(safeErrorMessage(err, 'Erro ao criar agendamento'))
     }
   }
 

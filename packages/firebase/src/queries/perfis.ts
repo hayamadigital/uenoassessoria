@@ -1,3 +1,4 @@
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import {
   collection,
   doc,
@@ -17,9 +18,15 @@ function toProfile(id: string, data: Record<string, unknown>): Profile {
 }
 
 export async function getProfile(db: Firestore, userId: string): Promise<Profile> {
-  const snap = await getDoc(doc(db, 'users', userId))
-  if (!snap.exists()) throw new Error('Profile not found')
-  return toProfile(snap.id, snap.data())
+  try {
+    const snap = await getDoc(doc(db, 'users', userId))
+    if (!snap.exists()) throw new Error('Perfil indisponível')
+    return toProfile(snap.id, snap.data())
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'permission-denied') throw error
+    const resolve = httpsCallable<{ uid: string }, Profile>(getFunctions(db.app), 'getAssignedClientProfile')
+    return (await resolve({ uid: userId })).data
+  }
 }
 
 export async function listProfiles(db: Firestore, role?: UserRole): Promise<Profile[]> {

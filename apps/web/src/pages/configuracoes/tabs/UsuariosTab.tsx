@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -190,9 +191,7 @@ export function UsuariosTab() {
             </div>
             {regenerateLinkMutation.isError && (
               <p className="text-sm text-destructive">
-                {regenerateLinkMutation.error instanceof Error
-                  ? regenerateLinkMutation.error.message
-                  : 'Erro ao regerar link'}
+                {safeErrorMessage(regenerateLinkMutation.error, 'Erro ao regerar link')}
               </p>
             )}
           </CardContent>
@@ -404,16 +403,12 @@ export function UsuariosTab() {
                   )}
                   {inviteMutation.isError && (
                     <p className="text-sm text-destructive">
-                      {inviteMutation.error instanceof Error
-                        ? inviteMutation.error.message
-                        : 'Erro ao enviar convite'}
+                      {safeErrorMessage(inviteMutation.error, 'Erro ao enviar convite')}
                     </p>
                   )}
                   {regenerateLinkMutation.isError && (
                     <p className="text-sm text-destructive">
-                      {regenerateLinkMutation.error instanceof Error
-                        ? regenerateLinkMutation.error.message
-                        : 'Erro ao regerar link'}
+                      {safeErrorMessage(regenerateLinkMutation.error, 'Erro ao regerar link')}
                     </p>
                   )}
                 </>

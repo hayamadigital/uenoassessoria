@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useRef, useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -225,7 +226,7 @@ export function MeuPerfilTab() {
           {successMsg && <p className="text-sm text-green-600">{successMsg}</p>}
           {mutation.isError && (
             <p className="text-sm text-destructive">
-              {mutation.error instanceof Error ? mutation.error.message : 'Erro ao salvar'}
+              {safeErrorMessage(mutation.error, 'Erro ao salvar')}
             </p>
           )}
         </div>

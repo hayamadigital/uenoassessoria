@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -65,7 +66,7 @@ export function SegurancaTab() {
               {successMsg && <p className="text-sm text-green-600">{successMsg}</p>}
               {mutation.isError && (
                 <p className="text-sm text-destructive">
-                  {mutation.error instanceof Error ? mutation.error.message : 'Erro ao alterar senha'}
+                  {safeErrorMessage(mutation.error, 'Erro ao alterar senha')}
                 </p>
               )}
             </div>

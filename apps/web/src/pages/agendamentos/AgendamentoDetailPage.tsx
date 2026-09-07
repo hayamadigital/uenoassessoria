@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -175,7 +176,7 @@ export function AgendamentoDetailPage() {
         notas_admin: parsed.data.notas_admin ?? null,
       })
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Erro ao salvar agendamento')
+      setServerError(safeErrorMessage(err, 'Erro ao salvar agendamento'))
     }
   }
 

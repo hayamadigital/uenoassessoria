@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useMemo, useState, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -154,7 +155,7 @@ export function LocaisTab() {
       handleCloseDialog()
     },
     onError: (err) => {
-      setSaveError(`Erro ao salvar: ${err instanceof Error ? err.message : String(err)}`)
+      setSaveError(`Erro ao salvar: ${safeErrorMessage(err)}`)
     },
   })
 

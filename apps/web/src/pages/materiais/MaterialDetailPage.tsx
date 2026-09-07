@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -668,7 +669,7 @@ function MaterialCardDialog({
 
           {mutation.error && (
             <p className="text-xs text-destructive">
-              {mutation.error instanceof Error ? mutation.error.message : String(mutation.error)}
+              {safeErrorMessage(mutation.error)}
             </p>
           )}
 
@@ -854,9 +855,7 @@ function MaterialCardsCsvDialog({
 
           {importMutation.error && (
             <p className="text-xs text-destructive">
-              {importMutation.error instanceof Error
-                ? importMutation.error.message
-                : String(importMutation.error)}
+              {safeErrorMessage(importMutation.error)}
             </p>
           )}
         </div>

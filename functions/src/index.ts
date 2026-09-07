@@ -6,6 +6,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getStorage } from 'firebase-admin/storage'
 import axios from 'axios'
 import sanitizeHtml from 'sanitize-html'
+import { enforceRateLimit } from './rate-limit'
 
 admin.initializeApp()
 
@@ -69,6 +70,7 @@ export const onUserCreated = onDocumentCreated(
 
 export const selfRegister = onCall({ ...CORS }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  await enforceRateLimit(db, request, 'selfRegister', 5)
 
   const uid = request.auth.uid
   const { full_name, email, data_nascimento, provincia_jp, cidade_jp } = request.data as {
@@ -146,6 +148,7 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
 
 export const setRoleClaim = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'setRoleClaim', 10)
   const uid = requiredString(request.data?.uid, 'uid', 128)
   const role = request.data?.role
   if (!['admin', 'instrutor', 'cliente'].includes(role)) {
@@ -166,6 +169,7 @@ export const setRoleClaim = onCall({ ...CORS }, async (request) => {
 
 export const createCliente = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'createCliente', 20)
 
   const { full_name, email, whatsapp, nacionalidade } = request.data as {
     full_name: string
@@ -257,6 +261,7 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
 
 export const inviteUser = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'inviteUser', 10)
 
   const { email, full_name, role } = request.data as {
     email: string
@@ -304,6 +309,7 @@ export const inviteUser = onCall({ ...CORS }, async (request) => {
 
 export const regenerateInviteLink = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'regenerateInviteLink', 5)
 
   const { email } = request.data as { email: string }
   const normalizedEmail = email?.trim().toLowerCase()
@@ -328,6 +334,7 @@ export const regenerateInviteLink = onCall({ ...CORS }, async (request) => {
 
 export const setUserActive = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'setUserActive', 20)
 
   const uid = requiredString(request.data?.uid, 'uid', 128)
   const isActive = request.data?.is_active
@@ -353,25 +360,27 @@ export const setUserActive = onCall({ ...CORS }, async (request) => {
 
 export const generateContractPdf = onCall({ ...CORS }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  await enforceRateLimit(db, request, 'generateContractPdf', 5)
 
   const contratoId = requiredString(request.data?.contrato_id, 'contrato_id', 128)
   const contratoSnap = await db.collection('contratos').doc(contratoId).get()
   if (!contratoSnap.exists) {
-    throw new HttpsError('not-found', 'Contrato não encontrado')
+    throw new HttpsError('permission-denied', 'Contrato indisponível')
   }
 
   const contrato = contratoSnap.data()!
-  if (contrato.status !== 'assinado') {
-    throw new HttpsError('failed-precondition', 'Contrato ainda não foi assinado')
-  }
 
   const clienteId = requiredString(contrato.cliente_id, 'cliente_id', 128)
   const clienteSnap = await db.collection('clientes').doc(clienteId).get()
-  if (!clienteSnap.exists) throw new HttpsError('not-found', 'Cliente não encontrado')
+  if (!clienteSnap.exists) throw new HttpsError('permission-denied', 'Contrato indisponível')
   const profileId = clienteSnap.data()?.profile_id as string
 
   if (request.auth.token.role !== 'admin' && request.auth.uid !== profileId) {
-    throw new HttpsError('permission-denied', 'Você não tem acesso a este contrato')
+    throw new HttpsError('permission-denied', 'Contrato indisponível')
+  }
+
+  if (contrato.status !== 'assinado') {
+    throw new HttpsError('failed-precondition', 'Contrato ainda não foi assinado')
   }
 
   const profileSnap = await db.collection('users').doc(profileId).get()
@@ -460,6 +469,7 @@ export const generateContractPdf = onCall({ ...CORS }, async (request) => {
 
 export const sendNotification = onCall({ ...CORS }, async (request) => {
   await assertAdmin(request)
+  await enforceRateLimit(db, request, 'sendNotification', 30)
 
   const { referencia_id, referencia_tipo } = request.data as {
       destinatario_id: string
@@ -516,7 +526,7 @@ export const sendNotification = onCall({ ...CORS }, async (request) => {
         })
         await notifRef.update({ push_enviado: true })
       } catch (pushErr) {
-        console.error('Push notification error:', pushErr)
+        console.error('Push notification failed', axios.isAxiosError(pushErr) ? pushErr.response?.status : 'unknown')
       }
     }
 
@@ -527,6 +537,7 @@ export const sendNotification = onCall({ ...CORS }, async (request) => {
 
 export const otimizarRota = onCall({ ...CORS }, async (request) => {
   assertStaff(request)
+  await enforceRateLimit(db, request, 'otimizarRota', 10)
 
   const { paradas } = request.data as {
       ponto_partida: string
@@ -545,7 +556,7 @@ export const otimizarRota = onCall({ ...CORS }, async (request) => {
   }))
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
-  if (!apiKey) throw new HttpsError('failed-precondition', 'GOOGLE_MAPS_API_KEY não configurada')
+  if (!apiKey) throw new HttpsError('failed-precondition', 'Serviço de rotas temporariamente indisponível')
 
   const waypoints = validParadas.length === 1
     ? validParadas[0].endereco
@@ -578,4 +589,23 @@ export const otimizarRota = onCall({ ...CORS }, async (request) => {
     const totalMin = [...legs].reduce((a, l) => a + Math.round(l.duration.value / 60), 0)
 
   return { ordem_otimizada: ordemOtimizada, trecho_km: trechoKm, trecho_min: trechoMin, total_km: totalKm, total_min: totalMin }
+})
+
+// Direct profile reads are restricted to admins and the profile owner.
+// Instructors resolve assigned clients here because Rules cannot query a reverse relation.
+export const getAssignedClientProfile = onCall({ ...CORS }, async (request) => {
+  assertStaff(request)
+  await enforceRateLimit(db, request, 'getAssignedClientProfile', 300)
+  const uid = requiredString(request.data?.uid, 'uid', 128)
+  if (request.auth!.token.role !== 'admin') {
+    const clients = await db.collection('clientes').where('profile_id', '==', uid).get()
+    if (!clients.docs.some((client) => client.data().assigned_instrutor_id === request.auth!.uid)) {
+      throw new HttpsError('permission-denied', 'Perfil indisponível')
+    }
+  }
+  const profile = await db.collection('users').doc(uid).get()
+  if (!profile.exists || profile.data()?.role !== 'cliente') {
+    throw new HttpsError('permission-denied', 'Perfil indisponível')
+  }
+  return { ...profile.data(), id: profile.id }
 })

@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -103,7 +104,7 @@ export function PreferenciasTab() {
             {successMsg && <p className="text-sm text-green-600">{successMsg}</p>}
             {mutation.isError && (
               <p className="text-sm text-destructive">
-                {mutation.error instanceof Error ? mutation.error.message : 'Erro ao salvar'}
+                {safeErrorMessage(mutation.error, 'Erro ao salvar')}
               </p>
             )}
           </div>
@@ -162,7 +163,7 @@ export function PreferenciasTab() {
             </Button>
             {supportMutation.isError && (
               <p className="text-sm text-destructive">
-                {supportMutation.error instanceof Error ? supportMutation.error.message : 'Erro ao salvar'}
+                {safeErrorMessage(supportMutation.error, 'Erro ao salvar')}
               </p>
             )}
           </div>

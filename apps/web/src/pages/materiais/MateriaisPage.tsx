@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -578,7 +579,7 @@ function EditarMaterialDialog({
       queryClient.invalidateQueries({ queryKey: ['materiais'] })
       onClose()
     },
-    onError: (err) => setSaveError(err instanceof Error ? err.message : String(err)),
+    onError: (err) => setSaveError(safeErrorMessage(err)),
   })
 
   const showUrl = material.tipo === 'link' || material.tipo === 'video'
@@ -754,7 +755,7 @@ function NovoSimuladoDialog({
       setSelectedIds([])
       setStep(2)
     },
-    onError: (err) => setCreateError(err instanceof Error ? err.message : String(err)),
+    onError: (err) => setCreateError(safeErrorMessage(err)),
   })
 
   const finalizeMutation = useMutation({
@@ -938,9 +939,7 @@ function NovoSimuladoDialog({
               ) : hasRandomQuestoesError ? (
                 <p className="text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
                   Não foi possível carregar as questões para sorteio:{' '}
-                  {randomQuestoesError instanceof Error
-                    ? randomQuestoesError.message
-                    : 'erro desconhecido'}
+                  {safeErrorMessage(randomQuestoesError, 'erro desconhecido')}
                 </p>
               ) : randomPreview.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">

@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -423,7 +424,7 @@ function FaqDialog({
       queryClient.invalidateQueries({ queryKey: ['faq'] })
       onClose()
     },
-    onError: (err) => setError(err instanceof Error ? err.message : String(err)),
+    onError: (err) => setError(safeErrorMessage(err)),
   })
 
   return (
@@ -957,7 +958,7 @@ export function FaqPage() {
           <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-5 text-sm">
             <p className="font-medium text-destructive">Não foi possível carregar o FAQ.</p>
             <p className="mt-1 text-muted-foreground">
-              {error instanceof Error ? error.message : 'Tente novamente em instantes.'}
+              {safeErrorMessage(error, 'Tente novamente em instantes.')}
             </p>
           </div>
         ) : faqsFiltradas.length === 0 ? (

@@ -1,3 +1,4 @@
+import { safeErrorMessage } from '@/lib/error-message'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -627,9 +628,7 @@ function formatVariacaoPreco(row: Pick<ParsedVariacaoRow, 'preco_variavel' | 'pr
 }
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return 'Erro desconhecido'
+  return safeErrorMessage(error)
 }
 
 function ImportarVariacoesDialog({
@@ -1085,7 +1084,7 @@ function ImportarEtapasDialog({
         setRows(parseEtapasCsvRows(String(e.target?.result ?? ''), variacoes, baseOrdem))
       } catch (err) {
         setRows([])
-        setParseError(getErrorMessage(err))
+        setParseError(err instanceof Error ? err.message : String(err))
       }
     }
     reader.onerror = () => {
@@ -1490,7 +1489,7 @@ export function ServicosDetailPage() {
       setAddOpen(false)
     },
     onError: (err) => {
-      setAddError(err instanceof Error ? err.message : String(err))
+      setAddError(safeErrorMessage(err))
     },
   })
 
@@ -1507,7 +1506,7 @@ export function ServicosDetailPage() {
       setEditTemplate(null)
     },
     onError: (err) => {
-      setEditError(err instanceof Error ? err.message : String(err))
+      setEditError(safeErrorMessage(err))
     },
   })
 
@@ -1857,9 +1856,7 @@ export function ServicosDetailPage() {
                 </div>
               ) : isVariacoesError ? (
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                  {variacoesError instanceof Error
-                    ? variacoesError.message
-                    : 'Não foi possível carregar as variações deste serviço.'}
+                  {safeErrorMessage(variacoesError, 'Não foi possível carregar as variações deste serviço.')}
                 </div>
               ) : variacoes.length === 0 ? (
                 <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
@@ -2015,9 +2012,7 @@ export function ServicosDetailPage() {
               )}
               {addDocumentoTemplateMutation.error && (
                 <p className="text-sm text-destructive">
-                  {addDocumentoTemplateMutation.error instanceof Error
-                    ? addDocumentoTemplateMutation.error.message
-                    : 'Não foi possível adicionar o documento.'}
+                  {safeErrorMessage(addDocumentoTemplateMutation.error, 'Não foi possível adicionar o documento.')}
                 </p>
               )}
             </div>
