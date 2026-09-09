@@ -9,41 +9,30 @@ import { auth, db, storage } from '@/lib/firebase'
 import { getClienteByProfileId, updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { avatarPath } from '@ueno/firebase/storage'
+import { PAISES, nacionalidadeToISO } from '@ueno/utils/paises'
+import { PROFISSOES, profissaoUsaEmpresa, type ProfissaoTipo } from '@ueno/utils/profissoes'
+import { dadosPessoaisSchema } from '@ueno/utils/validators'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
+import { DateField } from '@/components/DateField'
 import { ProfileHeader } from '@/components/ProfileHeader'
 import { colors } from '@/theme'
-import type { ClienteInsert, ProfissaoTipo } from '@ueno/firebase'
+import type { ClienteInsert } from '@ueno/firebase'
 
-const PROFISSOES: Array<{ value: ProfissaoTipo; label: string }> = [
-  { value: 'autonomo', label: 'Autonomo' },
-  { value: 'nao_trabalha', label: 'Nao trabalha' },
-  { value: 'empreiteira', label: 'Empreiteira' },
-  { value: 'fabrica', label: 'Fabrica' },
-  { value: 'outros', label: 'Outros' },
-]
-
-const NACIONALIDADES = ['Brasil', 'Japao', 'Portugal', 'Estados Unidos', 'Peru', 'Bolivia', 'Paraguai', 'Filipinas', 'Outros']
+const NACIONALIDADE_OPTIONS = PAISES.map((p) => ({ value: p.code, label: `${p.flag} ${p.nome}` }))
 
 type Form = {
   full_name: string
-  phone: string
-  whatsapp: string
   nome_japones: string
   data_nascimento: string
   nacionalidade: string
   cpf: string
-  zairyu_card: string
   visto_tipo: string
   visto_validade: string
   data_entrada_japao: string
   profissao_tipo: ProfissaoTipo | ''
   profissao_empresa: string
-  cnh_numero: string
-  cnh_categoria: string
-  cnh_validade: string
-  cnh_estado_emissor: string
-  observacoes: string
+  observacoes_cliente: string
 }
 
 function emptyToNull(value: string) {
@@ -98,19 +87,23 @@ function OptionGroup<T extends string>({
   options,
   value,
   onChange,
+  emptyLabel,
 }: {
   label: string
   options: Array<{ value: T; label: string }>
   value: T | ''
   onChange: (value: T | '') => void
+  emptyLabel?: string
 }) {
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.optionsRow}>
-        <TouchableOpacity style={[s.option, !value && s.optionActive]} onPress={() => onChange('')}>
-          <Text style={[s.optionText, !value && s.optionTextActive]}>Selecionar</Text>
-        </TouchableOpacity>
+        {emptyLabel ? (
+          <TouchableOpacity style={[s.option, !value && s.optionActive]} onPress={() => onChange('')}>
+            <Text style={[s.optionText, !value && s.optionTextActive]}>{emptyLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
         {options.map((option) => {
           const active = value === option.value
           return (
@@ -131,23 +124,16 @@ export default function DadosPessoaisScreen() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [form, setForm] = useState<Form>({
     full_name: '',
-    phone: '',
-    whatsapp: '',
     nome_japones: '',
     data_nascimento: '',
     nacionalidade: '',
     cpf: '',
-    zairyu_card: '',
     visto_tipo: '',
     visto_validade: '',
     data_entrada_japao: '',
     profissao_tipo: '',
     profissao_empresa: '',
-    cnh_numero: '',
-    cnh_categoria: '',
-    cnh_validade: '',
-    cnh_estado_emissor: '',
-    observacoes: '',
+    observacoes_cliente: '',
   })
 
   const { data: cliente, isLoading } = useQuery({
@@ -160,23 +146,16 @@ export default function DadosPessoaisScreen() {
     if (!cliente) return
     setForm({
       full_name: cliente.profile.full_name ?? '',
-      phone: cliente.profile.phone ?? '',
-      whatsapp: cliente.profile.whatsapp ?? '',
       nome_japones: cliente.nome_japones ?? '',
       data_nascimento: cliente.data_nascimento ?? '',
-      nacionalidade: cliente.nacionalidade ?? '',
+      nacionalidade: nacionalidadeToISO(cliente.nacionalidade) ?? cliente.nacionalidade ?? '',
       cpf: cliente.cpf ?? '',
-      zairyu_card: cliente.zairyu_card ?? '',
       visto_tipo: cliente.visto_tipo ?? '',
       visto_validade: cliente.visto_validade ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
       profissao_tipo: cliente.profissao_tipo ?? '',
       profissao_empresa: cliente.profissao_empresa ?? '',
-      cnh_numero: cliente.cnh_numero ?? '',
-      cnh_categoria: cliente.cnh_categoria ?? '',
-      cnh_validade: cliente.cnh_validade ?? '',
-      cnh_estado_emissor: cliente.cnh_estado_emissor ?? '',
-      observacoes: cliente.observacoes ?? '',
+      observacoes_cliente: cliente.observacoes_cliente ?? '',
     })
   }, [cliente])
 
@@ -248,31 +227,40 @@ export default function DadosPessoaisScreen() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!cliente || !session) return
-      if (form.full_name.trim().length < 2) throw new Error('Nome completo obrigatorio')
+
+      const parsed = dadosPessoaisSchema.safeParse({
+        full_name: form.full_name.trim(),
+        nome_japones: form.nome_japones,
+        data_nascimento: form.data_nascimento,
+        nacionalidade: form.nacionalidade,
+        cpf: form.cpf,
+        visto_tipo: form.visto_tipo,
+        visto_validade: form.visto_validade,
+        data_entrada_japao: form.data_entrada_japao,
+        profissao_tipo: form.profissao_tipo || undefined,
+        profissao_empresa: form.profissao_empresa,
+        observacoes_cliente: form.observacoes_cliente,
+      })
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? 'Confira os campos e tente novamente.')
+      }
 
       const clientePayload: Partial<ClienteInsert> = {
         nome_japones: emptyToNull(form.nome_japones),
         data_nascimento: emptyToNull(form.data_nascimento),
         nacionalidade: emptyToNull(form.nacionalidade),
         cpf: emptyToNull(form.cpf),
-        zairyu_card: emptyToNull(form.zairyu_card),
         visto_tipo: emptyToNull(form.visto_tipo),
         visto_validade: emptyToNull(form.visto_validade),
         data_entrada_japao: emptyToNull(form.data_entrada_japao),
         profissao_tipo: form.profissao_tipo ? form.profissao_tipo : null,
         profissao_empresa: emptyToNull(form.profissao_empresa),
-        cnh_numero: emptyToNull(form.cnh_numero),
-        cnh_categoria: emptyToNull(form.cnh_categoria),
-        cnh_validade: emptyToNull(form.cnh_validade),
-        cnh_estado_emissor: emptyToNull(form.cnh_estado_emissor),
-        observacoes: emptyToNull(form.observacoes),
+        observacoes_cliente: emptyToNull(form.observacoes_cliente),
       }
 
       await Promise.all([
         updateProfile(db, cliente.profile_id, {
           full_name: form.full_name.trim(),
-          phone: emptyToNull(form.phone),
-          whatsapp: emptyToNull(form.whatsapp),
         }),
         updateCliente(db, cliente.id, clientePayload),
       ])
@@ -319,38 +307,38 @@ export default function DadosPessoaisScreen() {
             </View>
             <Field label="Nome completo" value={form.full_name} onChangeText={(v) => updateField('full_name', v)} />
             <Field label="Nome em japones" value={form.nome_japones} onChangeText={(v) => updateField('nome_japones', v)} placeholder="Katakana ou Kanji" />
-            <Field label="Data de nascimento" value={form.data_nascimento} onChangeText={(v) => updateField('data_nascimento', v)} placeholder="AAAA-MM-DD" />
-            <OptionGroup label="Nacionalidade" value={form.nacionalidade} onChange={(v) => updateField('nacionalidade', v)} options={NACIONALIDADES.map((n) => ({ value: n, label: n }))} />
+            <DateField label="Data de nascimento" value={form.data_nascimento} onChange={(v) => updateField('data_nascimento', v)} />
+            <OptionGroup label="Nacionalidade" value={form.nacionalidade} onChange={(v) => updateField('nacionalidade', v)} options={NACIONALIDADE_OPTIONS} emptyLabel="Não informado" />
             <Field label="CPF" value={form.cpf} onChangeText={(v) => updateField('cpf', v)} placeholder="000.000.000-00" keyboardType="number-pad" />
-            <Field label="Telefone" value={form.phone} onChangeText={(v) => updateField('phone', v)} placeholder="+81 90 0000 0000" keyboardType="phone-pad" />
-            <Field label="WhatsApp" value={form.whatsapp} onChangeText={(v) => updateField('whatsapp', v)} placeholder="+81 90 0000 0000" keyboardType="phone-pad" />
           </View>
 
           <View style={s.card}>
             <View style={s.cardTitleRow}>
               <Ionicons name="card-outline" size={18} color={colors.navy800} />
-              <Text style={s.cardTitle}>Visto e documentos</Text>
+              <Text style={s.cardTitle}>Visto e entrada no Japão</Text>
             </View>
-            <Field label="Zairyu Card / Japanese ID" value={form.zairyu_card} onChangeText={(v) => updateField('zairyu_card', v)} />
             <Field label="Tipo de visto" value={form.visto_tipo} onChangeText={(v) => updateField('visto_tipo', v)} placeholder="Conjuge, Trabalho, Estudante..." />
-            <Field label="Validade do visto" value={form.visto_validade} onChangeText={(v) => updateField('visto_validade', v)} placeholder="AAAA-MM-DD" />
-            <Field label="Entrada no Japao" value={form.data_entrada_japao} onChangeText={(v) => updateField('data_entrada_japao', v)} placeholder="AAAA-MM-DD" />
+            <DateField label="Validade do visto" value={form.visto_validade} onChange={(v) => updateField('visto_validade', v)} />
+            <DateField label="Entrada no Japão" value={form.data_entrada_japao} onChange={(v) => updateField('data_entrada_japao', v)} />
           </View>
 
           <View style={s.card}>
             <View style={s.cardTitleRow}>
               <Ionicons name="briefcase-outline" size={18} color={colors.navy800} />
-              <Text style={s.cardTitle}>Profissao e CNH</Text>
+              <Text style={s.cardTitle}>Profissão</Text>
             </View>
-            <OptionGroup label="Tipo de trabalho" value={form.profissao_tipo} onChange={(v) => updateField('profissao_tipo', v)} options={PROFISSOES} />
-            {form.profissao_tipo && form.profissao_tipo !== 'nao_trabalha' ? (
+            <OptionGroup label="Tipo de trabalho" value={form.profissao_tipo} onChange={(v) => updateField('profissao_tipo', v)} options={PROFISSOES} emptyLabel="Não informado" />
+            {profissaoUsaEmpresa(form.profissao_tipo) ? (
               <Field label="Empreiteira / fabrica / empresa" value={form.profissao_empresa} onChangeText={(v) => updateField('profissao_empresa', v)} />
             ) : null}
-            <Field label="Numero da CNH" value={form.cnh_numero} onChangeText={(v) => updateField('cnh_numero', v)} />
-            <Field label="Categoria" value={form.cnh_categoria} onChangeText={(v) => updateField('cnh_categoria', v)} placeholder="Ex: B, AB" />
-            <Field label="Validade da CNH" value={form.cnh_validade} onChangeText={(v) => updateField('cnh_validade', v)} placeholder="AAAA-MM-DD" />
-            <Field label="Estado emissor" value={form.cnh_estado_emissor} onChangeText={(v) => updateField('cnh_estado_emissor', v)} placeholder="Ex: SP" />
-            <Field label="Observacoes" value={form.observacoes} onChangeText={(v) => updateField('observacoes', v)} multiline />
+          </View>
+
+          <View style={s.card}>
+            <View style={s.cardTitleRow}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.navy800} />
+              <Text style={s.cardTitle}>Recado para a equipe</Text>
+            </View>
+            <Field label="Observações" value={form.observacoes_cliente} onChangeText={(v) => updateField('observacoes_cliente', v)} placeholder="Algo que a equipe precise saber?" multiline />
           </View>
 
           <TouchableOpacity style={[s.saveBtn, saveMutation.isPending && s.saveBtnDisabled]} onPress={() => saveMutation.mutate()} disabled={saveMutation.isPending}>

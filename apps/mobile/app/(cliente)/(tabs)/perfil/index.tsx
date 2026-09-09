@@ -124,15 +124,12 @@ export default function PerfilScreen() {
         <View style={s.headerCircle} />
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>Meu perfil</Text>
-          <TouchableOpacity onPress={() => router.push('/perfil/preferencias' as any)}>
-            <Ionicons name="settings-outline" size={20} color="white" />
-          </TouchableOpacity>
         </View>
 
         <View style={s.avatarRow}>
           <View style={{ position: 'relative' }}>
             <Avatar name={session?.fullName ?? 'Cliente'} size={64} url={session?.avatarUrl} />
-            <TouchableOpacity style={s.avatarEditBtn} onPress={() => router.push('/perfil/dados-pessoais' as any)}>
+            <TouchableOpacity style={s.avatarEditBtn} onPress={() => router.push('/(cliente)/(tabs)/perfil/dados-pessoais' as any)}>
               <Ionicons name="add" size={12} color={colors.navy800} />
             </TouchableOpacity>
           </View>
@@ -163,16 +160,18 @@ export default function PerfilScreen() {
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Section title="Dados pessoais">
-          <Row icon="person-outline" label="Informações cadastrais" onPress={() => router.push('/perfil/dados-pessoais' as any)} />
-          <Row icon="document-text-outline" label="Documentos" onPress={() => router.push('/documentos' as any)} />
-          <Row icon="call-outline" label="Contatos" value={cliente?.profile?.phone ?? '—'} onPress={() => router.push('/perfil/contatos' as any)} />
-          <Row icon="location-outline" label="Endereço no Japão" value={cliente?.cidade_jp ?? '—'} onPress={() => router.push('/perfil/endereco' as any)} last />
+          <Row icon="person-outline" label="Informações cadastrais" onPress={() => router.push('/(cliente)/(tabs)/perfil/dados-pessoais' as any)} />
+          <Row icon="car-outline" label="Habilitações" onPress={() => router.push('/(cliente)/(tabs)/perfil/habilitacoes' as any)} />
+          <Row icon="airplane-outline" label="Entrada e saída do Japão" onPress={() => router.push('/(cliente)/(tabs)/perfil/entrada-saida' as any)} />
+          <Row icon="document-text-outline" label="Documentos" onPress={() => router.push('/(cliente)/documentos' as any)} />
+          <Row icon="call-outline" label="Contatos" value={cliente?.profile?.phone ?? '—'} onPress={() => router.push('/(cliente)/(tabs)/perfil/contatos' as any)} />
+          <Row icon="location-outline" label="Endereço no Japão" value={cliente?.cidade_jp ?? '—'} onPress={() => router.push('/(cliente)/(tabs)/perfil/endereco' as any)} last />
         </Section>
 
         <Section title="Preferências">
-          <Row icon="globe-outline" label="Idioma" value={session?.preferredLang === 'pt-BR' ? 'Português (BR)' : 'English'} onPress={() => router.push('/perfil/preferencias' as any)} />
-          <Row icon="notifications-outline" label="Notificações" onPress={() => router.push('/perfil/notificacoes' as any)} />
-          <Row icon="lock-closed-outline" label="Privacidade e segurança" onPress={() => router.push('/perfil/alterar-senha' as any)} last />
+          <Row icon="globe-outline" label="Idioma" value={session?.preferredLang === 'pt-BR' ? 'Português (BR)' : 'English'} onPress={() => router.push('/(cliente)/(tabs)/perfil/preferencias' as any)} />
+          <Row icon="notifications-outline" label="Notificações" onPress={() => router.push('/(cliente)/(tabs)/perfil/notificacoes' as any)} />
+          <Row icon="lock-closed-outline" label="Privacidade e segurança" onPress={() => router.push('/(cliente)/(tabs)/perfil/alterar-senha' as any)} last />
         </Section>
 
         <Section title="Sobre">

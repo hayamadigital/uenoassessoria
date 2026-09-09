@@ -16,7 +16,9 @@ service cloud.firestore {
     }
 
     function isCliente() {
-      return isSignedIn() && request.auth.token.role == 'cliente';
+      return isSignedIn()
+        && request.auth.token.role == 'cliente'
+        && request.auth.token.email_verified == true;
     }
 
     function isOwner(uid) {
@@ -67,13 +69,9 @@ service cloud.firestore {
         'endereco_jp',
         'cidade_jp',
         'cep_jp',
-        'cnh_numero',
-        'cnh_categoria',
-        'cnh_validade',
-        'cnh_estado_emissor',
         'data_entrada_japao',
         'visto_tipo',
-        'observacoes',
+        'observacoes_cliente',
         'nome_japones',
         'nacionalidade',
         'zairyu_card',

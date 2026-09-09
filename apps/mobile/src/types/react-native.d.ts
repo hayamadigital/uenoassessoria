@@ -30,6 +30,16 @@ declare module 'react-native' {
     alert: (...args: any[]) => void
   }
 
+  export type AppStateStatus = 'active' | 'background' | 'inactive' | 'unknown' | 'extension'
+
+  export const AppState: {
+    currentState: AppStateStatus
+    addEventListener: (
+      type: 'change',
+      listener: (state: AppStateStatus) => void,
+    ) => { remove: () => void }
+  }
+
   export const Linking: {
     openURL: (url: string) => Promise<void>
   }

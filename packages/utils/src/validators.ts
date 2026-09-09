@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateCPF } from './cpf'
+import { PROFISSAO_TIPOS } from './profissoes'
 
 const optionalFirestoreIdSchema = z.string().min(1).optional()
 const optionalFirestoreIdOrEmptySchema = optionalFirestoreIdSchema.or(z.literal(''))
@@ -33,34 +34,6 @@ export const registerSchema = z.object({
 })
 
 export type RegisterInput = z.infer<typeof registerSchema>
-
-// ─────────────────────────────────────────────
-// Clientes
-// ─────────────────────────────────────────────
-
-export const clienteSchema = z.object({
-  full_name: z.string().min(2, 'Nome completo obrigatório'),
-  email: z.string().email('Email inválido'),
-  phone: z.string().optional(),
-  cpf: z
-    .string()
-    .optional()
-    .refine((val) => !val || validateCPF(val), { message: 'CPF inválido' }),
-  data_nascimento: z.string().optional(),
-  endereco_jp: z.string().optional(),
-  cidade_jp: z.string().optional(),
-  cep_jp: z.string().optional(),
-  cnh_numero: z.string().optional(),
-  cnh_categoria: z.string().optional(),
-  cnh_validade: z.string().optional(),
-  cnh_estado_emissor: z.string().optional(),
-  data_entrada_japao: z.string().optional(),
-  visto_tipo: z.string().optional(),
-  observacoes: z.string().optional(),
-  assigned_instrutor_id: z.string().min(1).optional().or(z.literal('')),
-})
-
-export type ClienteInput = z.infer<typeof clienteSchema>
 
 // ─────────────────────────────────────────────
 // Serviços
@@ -466,6 +439,7 @@ export const dadosPessoaisSchema = z.object({
   full_name: z.string().min(2, 'Nome completo obrigatório'),
   nome_japones: z.string().optional(),
   data_nascimento: z.string().optional(),
+  /** Código ISO 3166-1 alpha-2 (ver packages/utils/paises) */
   nacionalidade: z.string().optional(),
   cpf: z
     .string()
@@ -474,10 +448,13 @@ export const dadosPessoaisSchema = z.object({
   zairyu_card: z.string().optional(),
   visto_tipo: z.string().optional(),
   visto_validade: z.string().optional(),
-  profissao_tipo: z
-    .enum(['autonomo', 'nao_trabalha', 'empreiteira', 'fabrica', 'outros'])
-    .optional(),
+  data_entrada_japao: z.string().optional(),
+  profissao_tipo: z.enum(PROFISSAO_TIPOS).optional(),
   profissao_empresa: z.string().optional(),
+  /** Observações internas da assessoria — só o web preenche */
+  observacoes_internas: z.string().optional(),
+  /** Recado do cliente para a assessoria — editável no app do cliente */
+  observacoes_cliente: z.string().optional(),
 })
 
 export type DadosPessoaisInput = z.infer<typeof dadosPessoaisSchema>

@@ -156,6 +156,7 @@ export default function TabsLayout() {
         name="perfil"
         options={{
           title: 'Perfil',
+          popToTopOnBlur: true,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
           ),

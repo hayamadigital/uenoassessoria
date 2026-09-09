@@ -10,6 +10,7 @@ import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '@/stores/auth.store'
+import { useSimuladoDraftsStore } from '@/stores/simulado-drafts.store'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
 import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import {
@@ -20,9 +21,10 @@ import {
   listSimuladoQuestoes,
 } from '@ueno/firebase/queries/materiais'
 import { createErroReport } from '@ueno/firebase/queries/questoes'
+import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import type { CategoriaMaterial, ClienteSimuladoResultado, Material, QuestaoWithDetails, SimuladoResultadoResposta } from '@ueno/firebase'
 
-type SimuladosView = 'home' | 'categoria' | 'pre' | 'questao' | 'analisando' | 'resultado' | 'historico' | 'revisao'
+type SimuladosView = 'home' | 'categoria' | 'entrada' | 'retomar' | 'pre' | 'questao' | 'analisando' | 'resultado' | 'historico' | 'revisao'
 
 type CategoryCard = {
   id: string
@@ -200,11 +202,12 @@ async function resolveQuestionImageUrl(url: string) {
   return getDownloadURL(ref(storage, cleanUrl))
 }
 
-const SIMULADO_VIEWS: SimuladosView[] = ['pre', 'questao', 'analisando', 'resultado', 'revisao']
+const SIMULADO_VIEWS: SimuladosView[] = ['entrada', 'retomar', 'pre', 'questao', 'analisando', 'resultado', 'revisao']
 
 export default function SimuladosScreen() {
   const { simuladoId: routeSimuladoId } = useLocalSearchParams<{ simuladoId?: string }>()
   const { session } = useAuthStore()
+  const { drafts, hydrated: draftsHydrated, saveDraft, removeDraft } = useSimuladoDraftsStore()
   const queryClient = useQueryClient()
   const navigation = useNavigation()
   const [view, setView] = useState<SimuladosView>('home')
@@ -225,6 +228,19 @@ export default function SimuladosScreen() {
   const [reportText, setReportText] = useState('')
   const [respostaModo, setRespostaModo] = useState<RespostaModo>('durante')
   const openedRouteSimuladoRef = useRef<string | null>(null)
+  const selectedDraft = session && selectedSimuladoId ? drafts[session.userId]?.[selectedSimuladoId] : undefined
+
+  useEffect(() => {
+    if (view === 'entrada' && draftsHydrated) setView(selectedDraft ? 'retomar' : 'pre')
+  }, [view, draftsHydrated, selectedDraft])
+
+  useEffect(() => {
+    if (view !== 'questao' || isCompleted || !session || !selectedSimuladoId || !draftsHydrated) return
+    saveDraft(session.userId, selectedSimuladoId, {
+      currentQuestionIndex, answers, confirmedAnswers, elapsedSeconds, respostaModo,
+    })
+  }, [view, isCompleted, session?.userId, selectedSimuladoId, draftsHydrated,
+    currentQuestionIndex, answers, confirmedAnswers, elapsedSeconds, respostaModo, saveDraft])
 
   useEffect(() => {
     const isInSimulado = SIMULADO_VIEWS.includes(view)
@@ -260,6 +276,11 @@ export default function SimuladosScreen() {
     enabled: !!cliente,
   })
 
+  const { data: publicConfig } = useQuery({
+    queryKey: ['public-app-config'],
+    queryFn: () => getPublicAppConfig(db),
+  })
+
   const canViewPrivateMaterials = (processos ?? []).some((processo) => processo.status === 'ativo' || processo.status === 'analise')
 
   const { data: categorias = [], isLoading: loadingCategorias } = useQuery({
@@ -281,7 +302,7 @@ export default function SimuladosScreen() {
   const { data: questoesSimulado, isLoading: loadingQuestoesSimulado } = useQuery({
     queryKey: ['cliente-simulado-questoes', selectedSimuladoId],
     queryFn: () => listSimuladoQuestoes(db, selectedSimuladoId!),
-    enabled: !!selectedSimuladoId && ['pre', 'questao', 'resultado', 'revisao'].includes(view),
+    enabled: !!selectedSimuladoId && ['entrada', 'retomar', 'pre', 'questao', 'resultado', 'revisao'].includes(view),
   })
 
   const reportMutation = useMutation({
@@ -418,9 +439,6 @@ export default function SimuladosScreen() {
     }, 0),
     [answers, simuladoQuestions],
   )
-  const emAndamento = allResultados[0]
-    ? allSimulados.find((m) => m.id === allResultados[0].simulado_id)
-    : null
   const questionCount = simuladoQuestions.length || 20
 
   const historyItems = useMemo(() => {
@@ -477,6 +495,27 @@ export default function SimuladosScreen() {
     setSelectedSimuladoId(simuladoId)
     resetSimuladoState()
     setRespostaModo('durante')
+    setSelectedHistoryResult(null)
+    setView('entrada')
+  }
+
+  const resumeSimulado = () => {
+    if (!selectedDraft) return
+    setCurrentQuestionIndex(Math.min(selectedDraft.currentQuestionIndex, Math.max(0, simuladoQuestions.length - 1)))
+    setAnswers(selectedDraft.answers)
+    setConfirmedAnswers(selectedDraft.confirmedAnswers)
+    setElapsedSeconds(selectedDraft.elapsedSeconds)
+    setRespostaModo(selectedDraft.respostaModo)
+    setSelectedHistoryResult(null)
+    setIsCompleted(false)
+    setHasSavedResult(false)
+    setView('questao')
+  }
+
+  const restartSimulado = () => {
+    if (session && selectedSimuladoId) removeDraft(session.userId, selectedSimuladoId)
+    resetSimuladoState()
+    setRespostaModo('durante')
     setView('pre')
   }
 
@@ -503,6 +542,9 @@ export default function SimuladosScreen() {
   }
 
   const answerQuestion = (question: QuestaoWithDetails, optionId: string) => {
+    // Depois de confirmar, a resposta fica bloqueada para preservar a integridade da tentativa.
+    if (confirmedAnswers[question.id]) return
+
     setAnswers((prev) => {
       const current = prev[question.id]
       if (question.tipo_opcao === 'multipla') {
@@ -535,6 +577,7 @@ export default function SimuladosScreen() {
   }
 
   const finishSimulado = () => {
+    if (session && selectedSimuladoId) removeDraft(session.userId, selectedSimuladoId)
     setSelectedHistoryResult(null)
     setIsCompleted(true)
     setView('analisando')
@@ -717,6 +760,43 @@ export default function SimuladosScreen() {
     )
   }
 
+  if (view === 'entrada' || view === 'retomar') {
+    return (
+      <SafeAreaView style={s.safe}>
+        <TopPlainHeader title="Simulado em andamento" eyebrow="Simulados" onBack={closeSimulado} />
+        {view === 'entrada' ? (
+          <ActivityIndicator color={colors.navy800} style={{ marginVertical: 24 }} />
+        ) : (
+          <ScrollView contentContainerStyle={s.resumeContent}>
+            <Ionicons name="pause-circle-outline" size={48} color={colors.navy800} />
+            <Text style={s.resumeTitle}>Deseja continuar de onde parou?</Text>
+            <Text style={s.resumeName}>{selectedSimulado?.titulo ?? 'Simulado'}</Text>
+            <Text style={s.resumeDescription}>
+              Suas respostas foram guardadas. Continue a tentativa ou comece novamente do zero.
+            </Text>
+            <Text style={s.resumeDetails}>
+              Questão {(selectedDraft?.currentQuestionIndex ?? 0) + 1} · Tempo: {formatElapsed(selectedDraft?.elapsedSeconds ?? 0)}
+            </Text>
+            <TouchableOpacity
+              style={[s.primaryAction, loadingQuestoesSimulado && { opacity: 0.5 }]}
+              onPress={resumeSimulado}
+              disabled={loadingQuestoesSimulado}
+              activeOpacity={0.86}
+              accessibilityRole="button"
+            >
+              <Text style={s.primaryActionTxt}>{loadingQuestoesSimulado ? 'Carregando questões...' : 'Continuar simulado'}</Text>
+              <Ionicons name="arrow-forward" size={16} color={colors.white} />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.ghostAction} onPress={restartSimulado} activeOpacity={0.75} accessibilityRole="button">
+              <Text style={s.ghostActionTxt}>Começar de novo</Text>
+            </TouchableOpacity>
+            <Text style={s.resumeFootnote}>Ao começar de novo, as respostas desta tentativa serão descartadas.</Text>
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    )
+  }
+
   if (view === 'pre') {
     const minutes = estimateMinutes(selectedSimulado, simuladoQuestions.length)
     return (
@@ -880,8 +960,9 @@ export default function SimuladosScreen() {
                   return (
                     <TouchableOpacity
                       key={op.id}
-                      style={[s.examOption, isSelected && s.examOptionSelected, showCorrect && s.examOptionCorrect, showWrong && s.examOptionWrong]}
+                      style={[s.examOption, isSelected && s.examOptionSelected, showCorrect && s.examOptionCorrect, showWrong && s.examOptionWrong, isQuestionConfirmed && s.examOptionLocked]}
                       onPress={() => answerQuestion(currentQuestion, op.id)}
+                      disabled={isQuestionConfirmed}
                       activeOpacity={0.85}
                     >
                       <View style={[s.examOptionIcon, showCorrect && { backgroundColor: '#DCFCE7' }, showWrong && { backgroundColor: '#FEE2E2' }]}>
@@ -1056,6 +1137,7 @@ export default function SimuladosScreen() {
     const resultadoTitle = selectedHistoryResult?.title ?? selectedSimulado?.titulo ?? 'Simulado'
     const resultadoTentativa = selectedHistoryResult?.attempt ?? null
     const resultadoData = selectedHistoryResult?.createdAt ? formatShortDateTime(selectedHistoryResult.createdAt) : null
+    const passingPercentage = publicConfig?.simulado_passing_percentage ?? 70
     const isHistoricalResult = !!selectedHistoryResult
     return (
       <SafeAreaView style={s.safe}>
@@ -1071,7 +1153,7 @@ export default function SimuladosScreen() {
 
             <View style={s.scoreRing}>
               <View style={s.scoreRingTrack}>
-                <View style={[s.scoreRingFill, { borderTopColor: resultadoPct >= 70 ? '#FBBF24' : colors.ink300, borderRightColor: resultadoPct >= 70 ? '#FBBF24' : colors.ink300 }]} />
+                <View style={[s.scoreRingFill, { borderTopColor: resultadoPct >= passingPercentage ? '#FBBF24' : colors.ink300, borderRightColor: resultadoPct >= passingPercentage ? '#FBBF24' : colors.ink300 }]} />
                 <View style={s.scoreRingInner}>
                   <Text style={s.scorePct}>{resultadoPct}%</Text>
                   <Text style={s.scoreSub}>{resultadoScore} de {resultadoTotal} corretas</Text>
@@ -1080,8 +1162,8 @@ export default function SimuladosScreen() {
             </View>
 
             <View style={s.resultBadge}>
-              <Ionicons name={resultadoPct >= 70 ? 'star-outline' : 'trending-up-outline'} size={13} color="#FBBF24" />
-              <Text style={s.resultBadgeTxt}>{resultadoPct >= 70 ? 'Aprovado · acima da média' : 'Continue praticando'}</Text>
+              <Ionicons name={resultadoPct >= passingPercentage ? 'star-outline' : 'trending-up-outline'} size={13} color="#FBBF24" />
+              <Text style={s.resultBadgeTxt}>{resultadoPct >= passingPercentage ? 'Aprovado · acima da média' : 'Continue praticando'}</Text>
             </View>
           </View>
 
@@ -1093,54 +1175,6 @@ export default function SimuladosScreen() {
 
           {resultadoData && (
             <Text style={[s.sectionLabel, { paddingHorizontal: 20, marginBottom: 12 }]}>Realizado em {resultadoData}</Text>
-          )}
-
-          {!isHistoricalResult && (
-            <>
-            <Text style={[s.sectionLabel, { paddingHorizontal: 20 }]}>Revisão rápida</Text>
-            <View style={s.reviewList}>
-              {simuladoQuestions.map((q, index) => {
-                const answerValue = answers[q.id]
-                const selectedIds = Array.isArray(answerValue) ? answerValue : answerValue ? [answerValue] : []
-                const selectedOptions = q.opcoes.filter((op) => selectedIds.includes(op.id))
-                const correctOptions = q.opcoes.filter((op) => op.is_correta)
-                const isCorrect =
-                  selectedIds.length > 0 &&
-                  selectedIds.length === correctOptions.length &&
-                  selectedIds.every((id) => correctOptions.some((op) => op.id === id)) &&
-                  correctOptions.every((op) => selectedIds.includes(op.id))
-                return (
-                <View key={q.id} style={s.reviewRow}>
-                  <View style={[s.reviewIcon, { backgroundColor: isCorrect ? '#DCFCE7' : '#FEE2E2' }]}>
-                    <Ionicons name={isCorrect ? 'checkmark' : 'close'} size={16} color={isCorrect ? colors.ok : colors.err} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.reviewTitle} numberOfLines={2}>Questão {index + 1}</Text>
-                    <Text style={s.reviewMeta} numberOfLines={1}>
-                      {showImmediateFeedback
-                        ? (selectedOptions.map((op) => op.texto).join(', ') || 'Sem resposta')
-                        : `Sua resposta: ${selectedOptions.map((op) => op.texto).join(', ') || 'Sem resposta'}`}
-                    </Text>
-                    {!showImmediateFeedback && (
-                      <View style={s.reviewCorrectBlock}>
-                        <Text style={s.reviewMetaSecondary}>Correta:</Text>
-                        {correctOptions.length > 0 ? (
-                          <View style={s.reviewCorrectList}>
-                            {correctOptions.map((op) => (
-                              <Text key={op.id} style={s.reviewCorrectChip} numberOfLines={2}>{op.texto}</Text>
-                            ))}
-                          </View>
-                        ) : (
-                          <Text style={s.reviewMetaSecondary}>Não definida</Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                </View>
-              )
-            })}
-            </View>
-            </>
           )}
 
           <View style={s.resultActions}>
@@ -1427,19 +1461,6 @@ export default function SimuladosScreen() {
         </View>
 
         <View style={s.quickGrid}>
-          <TouchableOpacity
-            style={s.quickCardLarge}
-            activeOpacity={0.84}
-            onPress={() => emAndamento ? openPreSimulado(emAndamento.id) : openCategory(categoryCards[0]?.id ?? FALLBACK_CATEGORIES[0].id)}
-          >
-            <View style={[s.quickIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="star-outline" size={18} color="#92400E" />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.quickEyebrow}>Continuar</Text>
-              <Text style={s.quickTitle} numberOfLines={1}>{emAndamento?.titulo ?? 'Escolher simulado'}</Text>
-            </View>
-          </TouchableOpacity>
           <TouchableOpacity style={s.quickCard} activeOpacity={0.84} onPress={() => setView('historico')}>
             <View style={[s.quickIcon, { backgroundColor: colors.navy50 }]}>
               <Ionicons name="time-outline" size={18} color={colors.navy800} />
@@ -1772,10 +1793,6 @@ const s = StyleSheet.create({
   heroDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,.4)' },
 
   quickGrid: { flexDirection: 'row', gap: 10, marginBottom: 22 },
-  quickCardLarge: {
-    flex: 1.45, backgroundColor: colors.white, borderRadius: 14, padding: 11,
-    borderWidth: 1, borderColor: colors.ink100, flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
   quickCard: {
     flex: 1, backgroundColor: colors.white, borderRadius: 14, padding: 11,
     borderWidth: 1, borderColor: colors.ink100, flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1783,6 +1800,13 @@ const s = StyleSheet.create({
   quickIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   quickEyebrow: { fontSize: 9.5, color: colors.ink400, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6 },
   quickTitle: { fontSize: 12, fontWeight: '700', color: colors.ink900, marginTop: 1 },
+
+  resumeContent: { padding: 24, paddingTop: 40, paddingBottom: 40 },
+  resumeTitle: { fontSize: 26, lineHeight: 32, fontWeight: '700', color: colors.ink900, marginTop: 20 },
+  resumeName: { fontSize: 17, lineHeight: 24, fontWeight: '600', color: colors.navy800, marginTop: 16 },
+  resumeDescription: { fontSize: 15, lineHeight: 23, color: colors.ink500, marginTop: 12 },
+  resumeDetails: { fontSize: 14, color: colors.ink700, marginTop: 20, marginBottom: 32 },
+  resumeFootnote: { fontSize: 12, lineHeight: 18, color: colors.ink500, textAlign: 'center', marginTop: 12 },
 
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: colors.ink500, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
@@ -1892,6 +1916,7 @@ const s = StyleSheet.create({
   examQuestionText: { fontSize: 18, fontWeight: '700', color: colors.ink900, lineHeight: 27, letterSpacing: -0.25, marginBottom: 22 },
   examOptions: { gap: 10, marginBottom: 14 },
   examOption: { minHeight: 62, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.ink200, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  examOptionLocked: { opacity: 0.96 },
   examOptionSelected: { borderColor: colors.navy800, backgroundColor: colors.navy50 },
   examOptionCorrect: { borderColor: '#86EFAC', backgroundColor: '#F0FDF4' },
   examOptionWrong: { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' },

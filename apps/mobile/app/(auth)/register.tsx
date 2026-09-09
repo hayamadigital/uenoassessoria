@@ -8,7 +8,7 @@ import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { httpsCallable } from 'firebase/functions'
 import { auth, functions } from '@/lib/firebase'
-import { signUp } from '@ueno/firebase'
+import { sendVerificationEmail, signUp } from '@ueno/firebase'
 import { registerSchema, type RegisterInput } from '@ueno/utils/validators'
 import { colors } from '@/theme'
 
@@ -27,6 +27,8 @@ export default function RegisterScreen() {
 
   const onSubmit = async (data: RegisterInput) => {
     let user: Awaited<ReturnType<typeof signUp>> | null = null
+    let profileCreated = false
+    let verificationEmailSent = true
     try {
       user = await signUp(auth, data.email, data.password)
       const selfRegister = httpsCallable(functions, 'selfRegister')
@@ -37,11 +39,26 @@ export default function RegisterScreen() {
         provincia_jp: data.provincia_jp,
         cidade_jp: data.cidade_jp,
       })
+      profileCreated = true
+      try {
+        await sendVerificationEmail(auth, user)
+      } catch (emailError) {
+        // The account and profile already exist. Keep them intact and let the
+        // confirmation screen offer a safe retry instead of deleting the user.
+        console.warn('[Auth] verification email was not sent:', emailError)
+        verificationEmailSent = false
+      }
       // Force token refresh so role claim is picked up by auth handler
       await user.getIdToken(true)
-      // auth change handler in _layout.tsx handles redirect
+      if (!verificationEmailSent) {
+        Alert.alert(
+          'Conta criada',
+          'Não conseguimos enviar a confirmação automaticamente. Use “Reenviar e-mail” na próxima tela.',
+        )
+      }
+      // The token listener in _layout.tsx reloads the profile and redirects.
     } catch (e: any) {
-      if (user && e?.code !== 'auth/email-already-in-use') {
+      if (user && !profileCreated && e?.code !== 'auth/email-already-in-use') {
         try { await user.delete() } catch (_) {}
       }
       const msg = e?.code === 'auth/email-already-in-use'

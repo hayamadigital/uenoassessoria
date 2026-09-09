@@ -17,10 +17,18 @@ function toProfile(id: string, data: Record<string, unknown>): Profile {
   return { id, ...data } as Profile
 }
 
+export const PROFILE_NOT_FOUND_CODE = 'profile/not-found'
+
+function profileNotFoundError() {
+  return Object.assign(new Error('Perfil indisponível'), {
+    code: PROFILE_NOT_FOUND_CODE,
+  })
+}
+
 export async function getProfile(db: Firestore, userId: string): Promise<Profile> {
   try {
     const snap = await getDoc(doc(db, 'users', userId))
-    if (!snap.exists()) throw new Error('Perfil indisponível')
+    if (!snap.exists()) throw profileNotFoundError()
     return toProfile(snap.id, snap.data())
   } catch (error) {
     if ((error as { code?: string }).code !== 'permission-denied') throw error

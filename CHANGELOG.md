@@ -5,6 +5,61 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-09-09] — Padronização dos "Dados Pessoais" do cliente (web + mobile)
+
+Web e mobile capturavam os dados pessoais do cliente de formas divergentes (web quebrado em abas/subcoleções, mobile num formulário só com campos achatados). Unificado em 5 fases.
+
+### Modelo canônico
+- `nacionalidade` e `habilitacao.pais` agora são **código ISO 3166-1 alpha-2** (`"BR"`). Lista única em `packages/utils/src/paises.ts`.
+- CNH deixou de ser campo achatado no doc `cliente` → subcoleção `clientes/{id}/habilitacoes` (mobile ganhou CRUD).
+- `observacoes` (o cliente sobrescrevia a nota da assessoria) dividido em `observacoes_internas` (só web/assessoria) + `observacoes_cliente` (editável no app).
+- Datas em formato ISO `YYYY-MM-DD` com input mascarado no mobile (`apps/mobile/src/components/DateField.tsx`).
+
+### Packages
+- `packages/utils/src/paises.ts` (novo) — `PAISES`, helpers e `nacionalidadeToISO()` (converte valores legados).
+- `packages/utils/src/profissoes.ts` (novo) — `PROFISSOES`, `PROFISSAO_LABEL`, labels unificados.
+- `packages/utils/src/validators.ts` — `dadosPessoaisSchema` atualizado; `clienteSchema`/`ClienteInput` legados removidos.
+- `packages/firebase/src/types.ts` — `Cliente` ganhou `observacoes_internas`/`observacoes_cliente`; `cnh_*` e `observacoes` marcados `@deprecated` e opcionais.
+
+### Web
+- `ClienteDadosPessoaisTab` grava ISO, ganhou `data_entrada_japao` e `observacoes_internas`; usa `PROFISSOES` compartilhado.
+- `ClientePerfilTab` (aba/rota legada `perfil`) removida.
+- `NovoClientePage` e `ClienteHabilitacoesTab` gravam código ISO; `ProcessoDetailPage`/`ClientesPage` exibem via `nomePais`/`labelProfissao`.
+- `apps/web/src/lib/paises.ts` re-exporta de `@ueno/utils/paises`.
+
+### Mobile
+- `perfil/dados-pessoais.tsx` reescrito (sem bloco CNH, nacionalidade ISO, `observacoes_cliente`, valida com `dadosPessoaisSchema`).
+- `perfil/habilitacoes.tsx` e `perfil/entrada-saida.tsx` (novos) — CRUD.
+- `perfil/contatos.tsx` usa `PAISES` compartilhado (dedup por DDI).
+- `servicos/[id].tsx` (wizard) normaliza nacionalidade p/ ISO, grava `observacoes_cliente`, pré-preenche CNH da subcoleção `habilitacoes`.
+- `(admin)/(tabs)/clientes/[id].tsx` — removido round-trip dos `cnh_*` flat; `observacoes` → `observacoes_internas`; nacionalidade/pais normalizados p/ ISO.
+
+### Firebase
+- `firestore.rules` — `clienteSelfEditableFields()`: `+observacoes_cliente`, `-cnh_*`, `-observacoes`.
+- `functions/src/index.ts` — `selfRegister`/`createCliente` param de gravar `cnh_*`/`observacoes`; `selfRegister` grava `nacionalidade: 'BR'`.
+
+### Migração (pendente de rodar)
+- `scripts/migrate-dados-pessoais.mjs` (novo) — dry-run OK. Converte nacionalidades legadas → ISO, move `observacoes` → `observacoes_internas`, migra `cnh_*` → `habilitacoes`, normaliza `habilitacoes.pais`.
+- **Deploy pendente**: `node scripts/migrate-dados-pessoais.mjs --apply` + `firebase deploy --only firestore:rules,functions` + build EAS mobile.
+
+### Validação
+- Type-check de web, mobile, firebase e functions passou.
+- `/code-review high` rodado; 4 achados do escopo corrigidos.
+
+---
+
+## [2026-09-01] — Registro retroativo: build e submissão iOS do app mobile
+
+Descoberto ao revisar o EAS que o HANDOFF/CHANGELOG estavam desatualizados: o app mobile **já foi buildado e enviado**, não está mais "sem nenhum build".
+
+- **iOS build #4** (EAS `@hayamadigitals-team/ueno-assessoria`, SDK 54, perfil `production`, distribuição `store`, `1.0.0` / build 4, commit `9fde56e`) — **finished** em 25/08/2026 14:11. IPA gerado.
+- **iOS builds #2 e #3** — `errored` antes do #4 (mesma data).
+- **Submissão iOS** `a4c40199` — upload para App Store Connect concluído (ASC App ID `6804929737`), status EAS **finished** em 25/08/2026 14:12. Status de revisão da Apple / TestFlight não verificado (falta acesso à ASC).
+- **Android** — nenhum build ainda.
+- HANDOFF.md atualizado com a seção "Estado do build mobile (EAS)" e próximos passos revisados.
+
+---
+
 ## [2026-08-26] — Testes end-to-end + correção de validação Zod (causa raiz confirmada)
 
 ### Validação (Zod) — causa raiz confirmada do "erro ao criar/salvar várias coisas"
@@ -164,3 +219,18 @@ Ao finalizar uma feature ou correção, adicione uma entrada no topo neste forma
 ### Área (web/mobile/firebase/packages)
 - `caminho/do/arquivo.tsx` — o que mudou
 -->
+## [2026-09-08] — Simulados e configuração de aprovação
+
+### Mobile cliente
+- `apps/mobile/app/(cliente)/(tabs)/simulados/index.tsx` — bloqueio das alternativas após confirmar uma resposta; remoção da seção “Revisão rápida” da tela de resultado; selo de aprovação agora usa percentual configurável.
+- `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx` — correção dos destinos dos botões de simulados e serviços para as rotas reais das abas.
+
+### Web / Firebase
+- `apps/web/src/pages/configuracoes/tabs/PreferenciasTab.tsx` — campo para configurar o percentual mínimo de aprovação.
+- `packages/firebase/src/queries/public-config.ts` — leitura, normalização e persistência de `simulado_passing_percentage`, padrão 70%.
+- `packages/firebase/src/types.ts` — inclusão do campo de percentual na configuração pública.
+
+### Validação
+- Type-check do Firebase, mobile e web passou.
+- `git diff --check` passou.
+- Nenhum build, commit ou publicação foi realizado.

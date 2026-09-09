@@ -1,22 +1,11 @@
-import { useEffect, useState } from 'react'
 import { Redirect } from 'expo-router'
 import { useAuthStore } from '@/stores/auth.store'
 import { View, ActivityIndicator } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export default function Index() {
   const { session, isLoading } = useAuthStore()
-  const [checkingOnboarding, setCheckingOnboarding] = useState(true)
-  const [onboardingDone, setOnboardingDone] = useState(false)
 
-  useEffect(() => {
-    AsyncStorage.getItem('onboarding_done').then((val) => {
-      setOnboardingDone(val === '1')
-      setCheckingOnboarding(false)
-    })
-  }, [])
-
-  if (isLoading || checkingOnboarding) {
+  if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' }}>
         <ActivityIndicator size="large" color="#1a32f5" />
@@ -24,9 +13,7 @@ export default function Index() {
     )
   }
 
-  if (!onboardingDone) return <Redirect href="/(auth)/onboarding" />
-
-  if (!session) return <Redirect href="/(auth)/login" />
+  if (!session) return <Redirect href="/(auth)/onboarding" />
 
   switch (session.role) {
     case 'admin':

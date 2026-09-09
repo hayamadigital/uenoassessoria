@@ -230,7 +230,7 @@ function Header({
           <Text style={s.greetName}>{name}</Text>
         </View>
       </View>
-      <TouchableOpacity style={s.bellWrap} onPress={() => {}} activeOpacity={0.8}>
+      <TouchableOpacity style={s.bellWrap} onPress={() => router.push('/notificacoes' as any)} activeOpacity={0.8}>
         <Ionicons name="notifications-outline" size={20} color={colors.ink700} />
         {unread > 0 && <View style={s.bellDot} />}
       </TouchableOpacity>
@@ -415,11 +415,11 @@ function FreeHome({
         </Text>
 
         <View style={s.freeHeroButtons}>
-          <TouchableOpacity style={s.freeHeroPrimaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/simulados' as any)}>
+          <TouchableOpacity style={s.freeHeroPrimaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/(tabs)/simulados' as any)}>
             <Ionicons name="book-outline" size={14} color={colors.navy800} />
             <Text style={s.freeHeroPrimaryTxt}>Estudar agora</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.freeHeroSecondaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/catalogos' as any)}>
+          <TouchableOpacity style={s.freeHeroSecondaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/(tabs)/catalogos' as any)}>
             <Text style={s.freeHeroSecondaryTxt}>Ver serviços</Text>
           </TouchableOpacity>
         </View>
@@ -442,10 +442,26 @@ function FreeHome({
           {[
             { t: 'Crie sua conta', done: true },
             { t: 'Verifique seu e-mail', done: true },
-            { t: 'Complete dados pessoais', current: true },
-            { t: 'Faça seu primeiro simulado', done: false },
+            {
+              t: 'Complete dados pessoais',
+              current: true,
+              onPress: () => router.push('/(cliente)/(tabs)/perfil/dados-pessoais', { withAnchor: true }),
+            },
+            {
+              t: 'Faça seu primeiro simulado',
+              done: false,
+              onPress: () => router.push('/(cliente)/(tabs)/simulados' as any),
+            },
           ].map((item) => (
-            <View key={item.t} style={s.onboardRow}>
+            <TouchableOpacity
+              key={item.t}
+              style={s.onboardRow}
+              onPress={item.onPress}
+              disabled={!item.onPress}
+              activeOpacity={0.72}
+              accessibilityRole={item.onPress ? 'button' : undefined}
+              accessibilityLabel={item.onPress ? item.t : undefined}
+            >
               <View style={[
                 s.onboardDot,
                 item.done && s.onboardDotDone,
@@ -460,8 +476,8 @@ function FreeHome({
               ]}>
                 {item.t}
               </Text>
-              {item.current && <Ionicons name="chevron-forward" size={14} color={colors.navy800} />}
-            </View>
+              {item.onPress && <Ionicons name="chevron-forward" size={14} color={colors.navy800} />}
+            </TouchableOpacity>
           ))}
         </View>
       </View>
@@ -539,7 +555,7 @@ function FeaturedMaterialsSection({
           <Text style={s.sectionLabel}>{featuredMaterialCategory.nome.toUpperCase()}</Text>
           <Text style={s.materialSectionSub}>Recomendado para você</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/(cliente)/simulados' as any)}>
+        <TouchableOpacity onPress={() => router.push('/(cliente)/(tabs)/simulados' as any)}>
           <Text style={s.verTudo}>Ver tudo</Text>
         </TouchableOpacity>
       </View>

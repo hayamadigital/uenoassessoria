@@ -25,7 +25,7 @@ import {
   deleteHabilitacao,
 } from '@ueno/firebase/queries/habilitacoes'
 import { habilitacaoSchema, type HabilitacaoInput } from '@ueno/utils/validators'
-import { PAISES } from '@/lib/paises'
+import { PAISES, getPaisByCode } from '@/lib/paises'
 import { formatDateJST } from '@ueno/utils/date'
 import type { ClienteHabilitacao, ClienteWithProfile } from '@ueno/firebase'
 
@@ -64,7 +64,7 @@ function HabilitacaoForm({
           >
             <option value="">Selecionar</option>
             {PAISES.map((p) => (
-              <option key={p.code} value={p.nome}>
+              <option key={p.code} value={p.code}>
                 {p.flag} {p.nome}
               </option>
             ))}
@@ -176,7 +176,10 @@ export function ClienteHabilitacoesTab() {
     },
   })
 
-  const paisFlag = (nome: string) => PAISES.find((p) => p.nome === nome)?.flag ?? ''
+  const paisLabel = (code: string) => {
+    const p = getPaisByCode(code)
+    return p ? `${p.flag} ${p.nome}` : code
+  }
 
   return (
     <div className="space-y-4">
@@ -228,9 +231,7 @@ export function ClienteHabilitacoesTab() {
             <tbody className="divide-y">
               {habilitacoes?.map((h) => (
                 <tr key={h.id} className="hover:bg-muted/20">
-                  <td className="px-4 py-3">
-                    {paisFlag(h.pais)} {h.pais}
-                  </td>
+                  <td className="px-4 py-3">{paisLabel(h.pais)}</td>
                   <td className="px-4 py-3">{h.categoria ?? '—'}</td>
                   <td className="px-4 py-3">{h.numero ?? '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">

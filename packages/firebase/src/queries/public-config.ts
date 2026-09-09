@@ -9,11 +9,17 @@ function normalizeSupportWhatsapp(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function normalizePassingPercentage(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(0, Math.round(parsed))) : 70
+}
+
 function toPublicConfig(data: Record<string, unknown>): PublicAppConfig {
   const config: PublicAppConfig = {
     id: PUBLIC_CONFIG_ID,
     support_whatsapp: normalizeSupportWhatsapp(data.support_whatsapp ?? data.whatsapp_support ?? data.whatsapp),
     home_material_category_id: typeof data.home_material_category_id === 'string' ? data.home_material_category_id : null,
+    simulado_passing_percentage: normalizePassingPercentage(data.simulado_passing_percentage),
   }
   if (typeof data.created_at === 'string') config.created_at = data.created_at
   if (typeof data.updated_at === 'string') config.updated_at = data.updated_at
@@ -27,6 +33,7 @@ export async function getPublicAppConfig(db: Firestore): Promise<PublicAppConfig
       id: PUBLIC_CONFIG_ID,
       support_whatsapp: null,
       home_material_category_id: null,
+      simulado_passing_percentage: 70,
     }
   }
   return toPublicConfig(snap.data())
@@ -34,7 +41,7 @@ export async function getPublicAppConfig(db: Firestore): Promise<PublicAppConfig
 
 export async function updatePublicAppConfig(
   db: Firestore,
-  input: Pick<PublicAppConfig, 'support_whatsapp' | 'home_material_category_id'>,
+  input: Pick<PublicAppConfig, 'support_whatsapp' | 'home_material_category_id' | 'simulado_passing_percentage'>,
 ): Promise<PublicAppConfig> {
   const now = new Date().toISOString()
   const ref = doc(db, 'app_config', PUBLIC_CONFIG_ID)
@@ -42,6 +49,7 @@ export async function updatePublicAppConfig(
   const payload = {
     support_whatsapp: normalizeSupportWhatsapp(input.support_whatsapp),
     home_material_category_id: input.home_material_category_id ?? null,
+    simulado_passing_percentage: normalizePassingPercentage(input.simulado_passing_percentage),
     updated_at: now,
     ...(existing.exists() ? {} : { created_at: now }),
   }
@@ -50,7 +58,7 @@ export async function updatePublicAppConfig(
   const snap = await getDoc(ref)
   return snap.exists()
     ? toPublicConfig(snap.data())
-    : { id: PUBLIC_CONFIG_ID, support_whatsapp: null, home_material_category_id: null }
+    : { id: PUBLIC_CONFIG_ID, support_whatsapp: null, home_material_category_id: null, simulado_passing_percentage: 70 }
 }
 
 export function subscribePublicAppConfig(
@@ -62,6 +70,7 @@ export function subscribePublicAppConfig(
       id: PUBLIC_CONFIG_ID,
       support_whatsapp: null,
       home_material_category_id: null,
+      simulado_passing_percentage: 70,
     })
   })
 }

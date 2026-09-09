@@ -29,6 +29,7 @@ export function PreferenciasTab() {
   })
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
   const [homeMaterialCategoryId, setHomeMaterialCategoryId] = useState('')
+  const [simuladoPassingPercentage, setSimuladoPassingPercentage] = useState('70')
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const mutation = useMutation({
@@ -49,6 +50,7 @@ export function PreferenciasTab() {
       await updatePublicAppConfig(db, {
         support_whatsapp: supportWhatsapp,
         home_material_category_id: homeMaterialCategoryId || null,
+        simulado_passing_percentage: Number(simuladoPassingPercentage),
       })
       await queryClient.invalidateQueries({ queryKey: ['public-app-config'] })
     },
@@ -61,7 +63,8 @@ export function PreferenciasTab() {
   useEffect(() => {
     setSupportWhatsapp(publicConfig?.support_whatsapp ?? '')
     setHomeMaterialCategoryId(publicConfig?.home_material_category_id ?? '')
-  }, [publicConfig?.support_whatsapp, publicConfig?.home_material_category_id])
+    setSimuladoPassingPercentage(String(publicConfig?.simulado_passing_percentage ?? 70))
+  }, [publicConfig?.support_whatsapp, publicConfig?.home_material_category_id, publicConfig?.simulado_passing_percentage])
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -131,6 +134,20 @@ export function PreferenciasTab() {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="simulado-passing-percentage">Percentual mínimo para aprovação (%)</Label>
+            <Input
+              id="simulado-passing-percentage"
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={simuladoPassingPercentage}
+              onChange={(e) => setSimuladoPassingPercentage(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">O resultado será aprovado quando atingir este percentual. Padrão: 70%.</p>
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="home-material-category">Categoria fixa de materiais na home</Label>
             <select
               id="home-material-category"
@@ -156,7 +173,8 @@ export function PreferenciasTab() {
               isLoading={supportMutation.isPending}
               disabled={
                 supportWhatsapp.trim() === (publicConfig?.support_whatsapp ?? '').trim() &&
-                homeMaterialCategoryId === (publicConfig?.home_material_category_id ?? '')
+                homeMaterialCategoryId === (publicConfig?.home_material_category_id ?? '') &&
+                Number(simuladoPassingPercentage) === (publicConfig?.simulado_passing_percentage ?? 70)
               }
             >
               Salvar preferências

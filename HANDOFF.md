@@ -1,6 +1,16 @@
 # HANDOFF — UENO ASSESSORIA
 
-Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-08-26.
+Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-08.
+
+## Alterações recentes — 2026-09-08
+
+- O resultado dos simulados agora usa `app_config/public.simulado_passing_percentage` para determinar aprovação. O padrão é 70% quando o campo não existe.
+- O painel web permite editar esse percentual em **Configurações → Preferências**. O valor é normalizado entre 0 e 100.
+- No mobile, as alternativas ficam bloqueadas após “Confirmar resposta”; apenas “Próxima” e “Anterior” continuam disponíveis.
+- A tela de resultado do simulado não exibe mais a seção “Revisão rápida”; mantém somente os botões de ação.
+- Corrigidos os atalhos da home do cliente para apontarem para `/(cliente)/(tabs)/simulados` e `/(cliente)/(tabs)/catalogos`.
+- Validações executadas: type-check de Firebase, mobile e web; `git diff --check`.
+- Ainda não foi feito commit, build EAS ou publicação.
 
 ---
 
@@ -9,7 +19,7 @@ Documento de contexto para quem pegar o projeto a partir daqui. Última atualiza
 - **Monorepo**: Turborepo, `apps/web` (Vite + React), `apps/mobile` (Expo/React Native), `packages/*` compartilhados
 - **Backend**: Firebase (Firestore + Cloud Functions + Auth + Storage), projeto `ueno-assessoria-475b9`
 - **Deploy web**: Vercel, projeto `hayama-digital-s-projects/ueno-assessoria` — **este é o único projeto Vercel válido** (existe um projeto antigo chamado `web` no mesmo time, desativado/sem git conectado; ignorar)
-- **App mobile**: Expo, projeto EAS `@hayama-digital/ueno-assessoria` — **ainda sem nenhum build publicado** (nunca rodou `eas build`)
+- **App mobile**: Expo, projeto EAS `@hayamadigitals-team/ueno-assessoria` (SDK 54). **iOS já buildado e enviado para a App Store Connect** (ver seção "Estado do build mobile" abaixo). **Android ainda sem nenhum build.**
 
 ## Fluxo de deploy (web)
 
@@ -57,6 +67,17 @@ Em 2026-08-26 encontramos e corrigimos dois bugs sistêmicos em `packages/utils/
 
 Testado ao vivo em 2026-08-26: criação de cliente, processo, agendamento, cobrança, material, aviso, serviço e convite de usuário — todos funcionando após essas correções. Isso provavelmente resolve o "erro ao criar clientes e várias coisas" relatado originalmente, em conjunto com o redeploy das Cloud Functions.
 
+## Estado do build mobile (EAS)
+
+Conta EAS: `@hayamadigitals-team/ueno-assessoria`. Iniciado por `hayamadigital` em 2026-08-25.
+
+- **iOS build #4** — perfil `production`, distribuição `store`, SDK 54, `version 1.0.0` / `buildNumber 4`, commit `9fde56e`. Status **finished** (25/08/2026 14:11). IPA: `https://expo.dev/artifacts/eas/j6eC-ZuRVPMBpsV-x3sa4masqa_P3ZbWhqpfV169Fwc.ipa`
+- **iOS builds #2 e #3** — `errored` (mesma data, antes do #4).
+- **Submissão iOS** `a4c40199-4fca-4383-ae72-cbf7c3236c21` — enviada para App Store Connect (ASC App ID `6804929737`), status EAS **finished** (25/08/2026 14:12). Isso confirma só que o upload pra ASC deu certo — **o status de revisão da Apple / TestFlight não foi verificado** (precisa de acesso à App Store Connect).
+- **Android** — nenhum build ainda (`eas build --platform android` nunca rodou; sem envio pra Play Store).
+- `app.json`: `bundleIdentifier`/`package` = `com.ueno.assessoria`, `buildNumber: "4"`.
+- A pasta `apps/mobile/ios/` local (untracked, não está no `.gitignore`) é resultado de um `expo prebuild`. Com EAS + CNG normalmente não se commita — decidir se entra no `.gitignore`.
+
 ## Pendências conhecidas
 
 - **Fluxo de convite/reset de senha para clientes não é automático**: `createCliente` e `inviteUser` (Cloud Functions em `functions/src/index.ts`) geram um `reset_link` via `admin.auth().generatePasswordResetLink()`, mas isso só gera a URL — **não envia e-mail nem WhatsApp**. O admin precisa copiar/colar manualmente o link mostrado na tela (`UsuariosTab.tsx`) ou o que abre automaticamente ao criar um cliente (`NovoClientePage.tsx`). O campo `whatsapp_url`, que o frontend espera para abrir o WhatsApp automaticamente, **nunca é retornado por nenhuma function** — é código morto.
@@ -76,4 +97,6 @@ Testado ao vivo em 2026-08-26: criação de cliente, processo, agendamento, cobr
 
 1. Decidir como o convite de cliente/usuário deve chegar de fato (e-mail transacional? WhatsApp de verdade?) e implementar o envio — hoje depende 100% de ação manual do admin
 2. Configurar domínio próprio na Vercel para não depender do alias manual
-3. Primeiro build/publicação do app mobile via EAS
+3. Verificar o status da submissão iOS na App Store Connect (em revisão / aprovado / rejeitado) e liberar no TestFlight se ainda não estiver
+4. Primeiro build Android via EAS (`eas build --platform android`) + configurar submissão pra Play Store
+5. Decidir se `apps/mobile/ios/` vai pro `.gitignore`

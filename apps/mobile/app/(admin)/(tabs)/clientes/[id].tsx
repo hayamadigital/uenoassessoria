@@ -31,6 +31,7 @@ import { listPagamentos } from '@ueno/firebase/queries/financeiro'
 import { getClienteDocumentos } from '@ueno/firebase/queries/documentos'
 import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import { avatarPath } from '@ueno/firebase/storage'
+import { nacionalidadeToISO, nomePais } from '@ueno/utils/paises'
 import { Avatar } from '@/components/Avatar'
 import { colors } from '@/theme'
 import { format, parseISO, isValid } from 'date-fns'
@@ -129,11 +130,7 @@ type ClienteForm = Pick<
   | 'complemento_jp'
   | 'endereco_jp'
   | 'mapa_link_jp'
-  | 'cnh_numero'
-  | 'cnh_categoria'
-  | 'cnh_validade'
-  | 'cnh_estado_emissor'
-  | 'observacoes'
+  | 'observacoes_internas'
 >
 
 type ContatoForm = Omit<ClienteContatoInsert, 'cliente_id'>
@@ -358,11 +355,7 @@ export default function ClienteDetalheScreen() {
     complemento_jp: null,
     endereco_jp: null,
     mapa_link_jp: null,
-    cnh_numero: null,
-    cnh_categoria: null,
-    cnh_validade: null,
-    cnh_estado_emissor: null,
-    observacoes: null,
+    observacoes_internas: null,
   })
   const [contatoDrafts, setContatoDrafts] = useState<Record<string, ContatoForm>>({})
   const [habilitacaoDrafts, setHabilitacaoDrafts] = useState<Record<string, HabilitacaoForm>>({})
@@ -432,7 +425,7 @@ export default function ClienteDetalheScreen() {
       cpf: cliente.cpf,
       data_nascimento: cliente.data_nascimento,
       nome_japones: cliente.nome_japones,
-      nacionalidade: cliente.nacionalidade,
+      nacionalidade: nacionalidadeToISO(cliente.nacionalidade) ?? cliente.nacionalidade,
       zairyu_card: cliente.zairyu_card,
       visto_tipo: cliente.visto_tipo,
       visto_validade: cliente.visto_validade,
@@ -448,11 +441,7 @@ export default function ClienteDetalheScreen() {
       complemento_jp: cliente.complemento_jp,
       endereco_jp: cliente.endereco_jp,
       mapa_link_jp: cliente.mapa_link_jp,
-      cnh_numero: cliente.cnh_numero,
-      cnh_categoria: cliente.cnh_categoria,
-      cnh_validade: cliente.cnh_validade,
-      cnh_estado_emissor: cliente.cnh_estado_emissor,
-      observacoes: cliente.observacoes,
+      observacoes_internas: cliente.observacoes_internas ?? cliente.observacoes ?? null,
     })
   }, [cliente])
 
@@ -508,7 +497,7 @@ export default function ClienteDetalheScreen() {
           cpf: normalizeFormValue(clienteForm.cpf ?? ''),
           data_nascimento: normalizeFormValue(clienteForm.data_nascimento ?? ''),
           nome_japones: normalizeFormValue(clienteForm.nome_japones ?? ''),
-          nacionalidade: normalizeFormValue(clienteForm.nacionalidade ?? ''),
+          nacionalidade: nacionalidadeToISO(clienteForm.nacionalidade ?? '') ?? normalizeFormValue(clienteForm.nacionalidade ?? ''),
           zairyu_card: normalizeFormValue(clienteForm.zairyu_card ?? ''),
           visto_tipo: normalizeFormValue(clienteForm.visto_tipo ?? ''),
           visto_validade: normalizeFormValue(clienteForm.visto_validade ?? ''),
@@ -524,11 +513,7 @@ export default function ClienteDetalheScreen() {
           complemento_jp: normalizeFormValue(clienteForm.complemento_jp ?? ''),
           endereco_jp: normalizeFormValue(clienteForm.endereco_jp ?? ''),
           mapa_link_jp: normalizeFormValue(clienteForm.mapa_link_jp ?? ''),
-          cnh_numero: normalizeFormValue(clienteForm.cnh_numero ?? ''),
-          cnh_categoria: normalizeFormValue(clienteForm.cnh_categoria ?? ''),
-          cnh_validade: normalizeFormValue(clienteForm.cnh_validade ?? ''),
-          cnh_estado_emissor: normalizeFormValue(clienteForm.cnh_estado_emissor ?? ''),
-          observacoes: normalizeFormValue(clienteForm.observacoes ?? ''),
+          observacoes_internas: normalizeFormValue(clienteForm.observacoes_internas ?? ''),
         }),
       ])
     },
@@ -578,8 +563,9 @@ export default function ClienteDetalheScreen() {
     mutationFn: async () => {
       if (!id) return
       await Promise.all(Object.entries(habilitacaoDrafts).map(([habilitacaoId, draft]) => {
+        const paisRaw = normalizeFormValue(draft.pais) ?? ''
         const payload = {
-          pais: normalizeFormValue(draft.pais) ?? '',
+          pais: nacionalidadeToISO(paisRaw) ?? paisRaw,
           categoria: normalizeFormValue(draft.categoria ?? ''),
           nome_habilitacao: normalizeFormValue(draft.nome_habilitacao ?? ''),
           numero: normalizeFormValue(draft.numero ?? ''),
@@ -985,7 +971,7 @@ export default function ClienteDetalheScreen() {
               <EditableField label="Nome completo" value={profileForm.full_name} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('full_name', v)} />
               <EditableField label="Nome em Japonês (フリガナ)" value={clienteForm.nome_japones} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nome_japones', v)} placeholder="Katakana ou Kanji" />
               <EditableField label="Data de Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : safeDate(cliente.data_nascimento, 'd/MM/yyyy')} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} placeholder="AAAA-MM-DD" />
-              <EditableField label="Nacionalidade" value={clienteForm.nacionalidade} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nacionalidade', v)} />
+              <EditableField label="Nacionalidade" value={editingSection === 'pessoal' ? clienteForm.nacionalidade : nomePais(cliente.nacionalidade)} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nacionalidade', v)} placeholder="BR, JP, PT..." />
               <EditableField label="CPF" value={clienteForm.cpf} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('cpf', v)} keyboardType="number-pad" />
               <EditableField label="Email" value={profileForm.email} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('email', v)} keyboardType="email-address" />
               <EditableField label="Zairyu Card / Japanese ID" value={clienteForm.zairyu_card} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('zairyu_card', v)} placeholder="Número do cartão" />
@@ -1337,9 +1323,9 @@ export default function ClienteDetalheScreen() {
             <View style={s.infoCard}>
               <EditableField
                 label="Observações"
-                value={clienteForm.observacoes}
+                value={clienteForm.observacoes_internas}
                 editing={editingSection === 'observacoes'}
-                onChange={(v) => updateClienteField('observacoes', v)}
+                onChange={(v) => updateClienteField('observacoes_internas', v)}
                 multiline
                 placeholder="Preferências, restrições, documentos pendentes, contexto familiar..."
               />

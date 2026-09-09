@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet,
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
+import { WebView } from 'react-native-webview'
 import { db } from '@/lib/firebase'
 import { getClienteByProfileId, updateCliente } from '@ueno/firebase/queries/clientes'
 import { useAuthStore } from '@/stores/auth.store'
@@ -50,6 +51,19 @@ function mapsUrlFor(form: Form) {
   return address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : ''
 }
 
+function mapPreviewUrlFor(form: Form) {
+  const address = form.endereco_jp.trim() || [
+    form.provincia_jp,
+    form.cidade_jp,
+    form.bairro_jp,
+    form.numero_bloco_jp,
+    form.apartamento_jp,
+  ].filter(Boolean).join(' ')
+  return address
+    ? `https://maps.google.com/maps?q=${encodeURIComponent(address)}&z=16&output=embed`
+    : ''
+}
+
 function Field({
   label,
   value,
@@ -86,6 +100,7 @@ export default function EnderecoScreen() {
   const { session } = useAuthStore()
   const queryClient = useQueryClient()
   const [cepLoading, setCepLoading] = useState(false)
+  const [mapPreviewUrl, setMapPreviewUrl] = useState('')
   const [form, setForm] = useState<Form>({
     cep_jp: '',
     provincia_jp: '',
@@ -118,6 +133,12 @@ export default function EnderecoScreen() {
       mapa_link_jp: cliente.mapa_link_jp ?? '',
     })
   }, [cliente])
+
+  const nextMapPreviewUrl = mapPreviewUrlFor(form)
+  useEffect(() => {
+    const timer = setTimeout(() => setMapPreviewUrl(nextMapPreviewUrl), 600)
+    return () => clearTimeout(timer)
+  }, [nextMapPreviewUrl])
 
   const updateField = <K extends keyof Form>(field: K, value: Form[K]) => {
     setForm((current) => ({ ...current, [field]: value }))
@@ -194,6 +215,38 @@ export default function EnderecoScreen() {
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           {isLoading ? <Text style={s.loading}>Carregando endereco...</Text> : null}
 
+          <View style={s.mapCard}>
+            {mapPreviewUrl ? (
+              <View style={s.mapPreview} pointerEvents="none">
+                <WebView
+                  key={mapPreviewUrl}
+                  source={{ uri: mapPreviewUrl }}
+                  style={s.mapWebView}
+                  scrollEnabled={false}
+                  bounces={false}
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                />
+                <View style={s.mapPin}>
+                  <Ionicons name="location-sharp" size={31} color={colors.red} />
+                </View>
+              </View>
+            ) : (
+              <View style={[s.mapPreview, s.mapEmpty]}>
+                <Ionicons name="location-outline" size={30} color={colors.navy800} />
+                <Text style={s.mapEmptyTitle}>Localização do endereço</Text>
+                <Text style={s.mapEmptyText}>Preencha os campos abaixo para visualizar o pin no mapa.</Text>
+              </View>
+            )}
+            {mapPreviewUrl ? (
+              <TouchableOpacity style={s.mapOpenRow} onPress={openMaps} activeOpacity={0.75}>
+                <Ionicons name="navigate-outline" size={16} color={colors.navy800} />
+                <Text style={s.mapOpenText}>Abrir localização no mapa</Text>
+                <Ionicons name="open-outline" size={15} color={colors.ink400} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
           <View style={s.card}>
             <View style={s.cardTitleRow}>
               <Ionicons name="location-outline" size={18} color={colors.navy800} />
@@ -240,6 +293,15 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.ink50 },
   content: { padding: 16, paddingBottom: 32, gap: 14 },
   loading: { color: colors.ink500, textAlign: 'center', paddingVertical: 12 },
+  mapCard: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.ink100, borderRadius: 14, overflow: 'hidden' },
+  mapPreview: { height: 190, backgroundColor: colors.navy50, overflow: 'hidden' },
+  mapWebView: { flex: 1, backgroundColor: colors.navy50 },
+  mapPin: { position: 'absolute', left: '50%', top: '50%', marginLeft: -16, marginTop: -31 },
+  mapEmpty: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  mapEmptyTitle: { color: colors.ink900, fontSize: 14, fontWeight: '800', marginTop: 8 },
+  mapEmptyText: { color: colors.ink500, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 4 },
+  mapOpenRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: colors.ink100 },
+  mapOpenText: { flex: 1, color: colors.navy800, fontSize: 13, fontWeight: '800' },
   card: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.ink100, borderRadius: 14, padding: 14, gap: 12 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
   cardTitle: { color: colors.ink900, fontWeight: '800', fontSize: 15 },

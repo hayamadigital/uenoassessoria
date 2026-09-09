@@ -120,16 +120,13 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
     cpf: null,
     endereco_jp: null,
     cep_jp: null,
-    cnh_numero: null,
-    cnh_categoria: null,
-    cnh_validade: null,
-    cnh_estado_emissor: null,
     data_entrada_japao: null,
     visto_tipo: null,
-    observacoes: null,
+    observacoes_internas: null,
+    observacoes_cliente: null,
     assigned_instrutor_id: null,
     nome_japones: null,
-    nacionalidade: 'brasileira',
+    nacionalidade: 'BR',
     zairyu_card: null,
     visto_validade: null,
     profissao_tipo: null,
@@ -223,13 +220,10 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
       endereco_jp: null,
       cidade_jp: null,
       cep_jp: null,
-      cnh_numero: null,
-      cnh_categoria: null,
-      cnh_validade: null,
-      cnh_estado_emissor: null,
       data_entrada_japao: null,
       visto_tipo: null,
-      observacoes: null,
+      observacoes_internas: null,
+      observacoes_cliente: null,
       assigned_instrutor_id: null,
       nome_japones: null,
       zairyu_card: null,
@@ -360,6 +354,11 @@ export const setUserActive = onCall({ ...CORS }, async (request) => {
 
 export const generateContractPdf = onCall({ ...CORS }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  // Older test/admin-issued tokens may not carry the claim; Firebase email
+  // accounts explicitly report false until verification is completed.
+  if (request.auth.token.role === 'cliente' && request.auth.token.email_verified === false) {
+    throw new HttpsError('permission-denied', 'Contrato indisponível')
+  }
   await enforceRateLimit(db, request, 'generateContractPdf', 5)
 
   const contratoId = requiredString(request.data?.contrato_id, 'contrato_id', 128)

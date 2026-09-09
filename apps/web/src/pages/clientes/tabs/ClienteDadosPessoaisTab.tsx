@@ -13,20 +13,13 @@ import { uploadFile, avatarPath } from '@ueno/firebase/storage'
 import { updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { dadosPessoaisSchema, type DadosPessoaisInput } from '@ueno/utils/validators'
+import { PROFISSOES } from '@ueno/utils/profissoes'
 import { PAISES } from '@/lib/paises'
 import type { ClienteWithProfile } from '@ueno/firebase'
 
 interface Context {
   cliente: ClienteWithProfile
 }
-
-const profissaoOpcoes = [
-  { value: 'autonomo', label: 'Autônomo' },
-  { value: 'nao_trabalha', label: 'Não trabalha' },
-  { value: 'empreiteira', label: 'Trabalha para empreiteira' },
-  { value: 'fabrica', label: 'Trabalha para fábrica' },
-  { value: 'outros', label: 'Outros' },
-]
 
 export function ClienteDadosPessoaisTab() {
   const { cliente } = useOutletContext<Context>()
@@ -76,8 +69,10 @@ export function ClienteDadosPessoaisTab() {
       zairyu_card: cliente.zairyu_card ?? '',
       visto_tipo: cliente.visto_tipo ?? '',
       visto_validade: cliente.visto_validade ?? '',
+      data_entrada_japao: cliente.data_entrada_japao ?? '',
       profissao_tipo: cliente.profissao_tipo ?? undefined,
       profissao_empresa: cliente.profissao_empresa ?? '',
+      observacoes_internas: cliente.observacoes_internas ?? cliente.observacoes ?? '',
     },
   })
 
@@ -94,8 +89,10 @@ export function ClienteDadosPessoaisTab() {
           zairyu_card: data.zairyu_card || null,
           visto_tipo: data.visto_tipo || null,
           visto_validade: data.visto_validade || null,
+          data_entrada_japao: data.data_entrada_japao || null,
           profissao_tipo: data.profissao_tipo ?? null,
           profissao_empresa: data.profissao_empresa || null,
+          observacoes_internas: data.observacoes_internas || null,
         }),
         updateProfile(db, cliente.profile_id, { full_name: data.full_name }),
       ])
@@ -174,7 +171,7 @@ export function ClienteDadosPessoaisTab() {
             >
               <option value="">Selecionar</option>
               {PAISES.map((p) => (
-                <option key={p.code} value={p.nome}>
+                <option key={p.code} value={p.code}>
                   {p.flag} {p.nome}
                 </option>
               ))}
@@ -203,6 +200,10 @@ export function ClienteDadosPessoaisTab() {
             <Label>Validade do Visto / Documento</Label>
             <Input type="date" {...register('visto_validade')} />
           </div>
+          <div className="space-y-2">
+            <Label>Data de Entrada no Japão</Label>
+            <Input type="date" {...register('data_entrada_japao')} />
+          </div>
         </CardContent>
       </Card>
 
@@ -219,7 +220,7 @@ export function ClienteDadosPessoaisTab() {
               {...register('profissao_tipo')}
             >
               <option value="">Selecionar</option>
-              {profissaoOpcoes.map((o) => (
+              {PROFISSOES.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -235,6 +236,20 @@ export function ClienteDadosPessoaisTab() {
               />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Bloco 3: Observações internas */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Observações Internas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <textarea
+            {...register('observacoes_internas')}
+            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+            placeholder="Notas da assessoria sobre este cliente (não visíveis para o cliente)..."
+          />
         </CardContent>
       </Card>
 

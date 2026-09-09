@@ -1,8 +1,10 @@
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  reload,
+  sendEmailVerification,
   signOut as firebaseSignOut,
-  onAuthStateChanged,
+  onIdTokenChanged,
   type Auth,
   type User,
 } from 'firebase/auth'
@@ -23,8 +25,19 @@ export async function signOut(auth: Auth) {
   await firebaseSignOut(auth)
 }
 
+export async function sendVerificationEmail(auth: Auth, user: User) {
+  auth.languageCode = 'pt-BR'
+  await sendEmailVerification(user)
+}
+
+export async function reloadAuthUser(user: User) {
+  await reload(user)
+}
+
 export function onAuthChange(auth: Auth, callback: (user: User | null) => void) {
-  return onAuthStateChanged(auth, callback)
+  // Also notify consumers when custom claims are refreshed. New client
+  // registrations receive their role claim immediately after account creation.
+  return onIdTokenChanged(auth, callback)
 }
 
 export async function getIdTokenResult(user: User) {

@@ -119,16 +119,27 @@ export interface Cliente {
   endereco_jp: string | null
   cidade_jp: string | null
   cep_jp: string | null
-  cnh_numero: string | null
-  cnh_categoria: string | null
-  cnh_validade: string | null
-  cnh_estado_emissor: string | null
+  /** @deprecated removido — migrado para a subcoleção `habilitacoes` (pais: 'BR'). */
+  cnh_numero?: string | null
+  /** @deprecated removido — migrado para a subcoleção `habilitacoes`. */
+  cnh_categoria?: string | null
+  /** @deprecated removido — migrado para a subcoleção `habilitacoes`. */
+  cnh_validade?: string | null
+  /** @deprecated removido — migrado para a subcoleção `habilitacoes`. */
+  cnh_estado_emissor?: string | null
   status_processo: StatusProcesso
+  /** Data da entrada atual no Japão (`YYYY-MM-DD`); o histórico fica em `entrada_saida`. */
   data_entrada_japao: string | null
   visto_tipo: string | null
-  observacoes: string | null
+  /** @deprecated removido — usar `observacoes_internas` (assessoria) ou `observacoes_cliente` (app). */
+  observacoes?: string | null
+  /** Observações internas da assessoria — nunca expostas ao cliente. */
+  observacoes_internas: string | null
+  /** Recado do cliente para a assessoria — editável no app do cliente. */
+  observacoes_cliente: string | null
   assigned_instrutor_id: string | null
   nome_japones: string | null
+  /** Código ISO 3166-1 alpha-2 (ver packages/utils/paises). */
   nacionalidade: string | null
   zairyu_card: string | null
   visto_validade: string | null
@@ -319,6 +330,7 @@ export interface PublicAppConfig {
   id: string
   support_whatsapp: string | null
   home_material_category_id: string | null
+  simulado_passing_percentage: number
   created_at?: string
   updated_at?: string
 }
