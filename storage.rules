@@ -14,8 +14,14 @@ service firebase.storage {
       return isSignedIn() && request.auth.token.role == 'instrutor';
     }
 
-    function ownsCliente(clienteId) {
+    function isVerifiedCliente() {
       return isSignedIn()
+        && request.auth.token.role == 'cliente'
+        && request.auth.token.email_verified == true;
+    }
+
+    function ownsCliente(clienteId) {
+      return isVerifiedCliente()
         && firestore.get(/databases/(default)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid;
     }
 

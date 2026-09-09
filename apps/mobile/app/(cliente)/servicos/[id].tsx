@@ -34,6 +34,7 @@ import {
   listDocumentoTemplatesByServico,
   uploadDocumento,
 } from '@ueno/firebase/queries/documentos'
+import { nacionalidadeToISO } from '@ueno/utils/paises'
 import { getServico } from '@ueno/firebase/queries/servicos'
 import { listVariacoesByServico } from '@ueno/firebase/queries/servico_variacoes'
 import { listEtapaTemplatesByServico } from '@ueno/firebase/queries/etapa_templates'
@@ -219,6 +220,12 @@ export default function ServicoDetailScreen() {
     enabled: !!cliente,
   })
 
+  // Habilitação usada para pré-preencher o passo da CNH (os campos cnh_* achatados foram descontinuados).
+  const cnhHabilitacao = useMemo(
+    () => habilitacoesCliente.find((h) => h.pais === 'BR') ?? habilitacoesCliente[0] ?? null,
+    [habilitacoesCliente],
+  )
+
   const activeVariacoes = variacoes ?? []
   const selectedVariacao = activeVariacoes.find((variacao) => variacao.id === selectedVariacaoId) ?? null
 
@@ -245,7 +252,7 @@ export default function ServicoDetailScreen() {
       cnh_estado_emissor: cliente.cnh_estado_emissor ?? '',
       profissao_tipo: cliente.profissao_tipo ?? '',
       profissao_empresa: cliente.profissao_empresa ?? '',
-      observacoes: cliente.observacoes ?? '',
+      observacoes: cliente.observacoes_cliente ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
       visto_tipo: cliente.visto_tipo ?? '',
       visto_validade: cliente.visto_validade ?? '',
@@ -262,6 +269,24 @@ export default function ServicoDetailScreen() {
     })
   }, [cliente])
 
+  // Pré-preenche a CNH a partir da habilitação BR já cadastrada, sem sobrescrever o que o cliente já digitou.
+  useEffect(() => {
+    if (!cnhHabilitacao) return
+    const estadoEmissor = cnhHabilitacao.observacoes?.match(/Estado emissor:\s*(.+)/i)?.[1]?.trim() ?? ''
+    setContractForm((current) => {
+      if (current.cnh_numero || current.cnh_categoria || current.cnh_validade || current.cnh_estado_emissor) {
+        return current
+      }
+      return {
+        ...current,
+        cnh_numero: cnhHabilitacao.numero ?? '',
+        cnh_categoria: cnhHabilitacao.categoria ?? '',
+        cnh_validade: cnhHabilitacao.data_vencimento ?? '',
+        cnh_estado_emissor: estadoEmissor,
+      }
+    })
+  }, [cnhHabilitacao])
+
   const submitContractMutation = useMutation({
     mutationFn: async () => {
       if (!cliente) throw new Error('Cliente não encontrado.')
@@ -271,14 +296,10 @@ export default function ServicoDetailScreen() {
         cpf: emptyToNull(contractForm.cpf),
         data_nascimento: emptyToNull(contractForm.data_nascimento),
         nome_japones: emptyToNull(contractForm.nome_japones),
-        nacionalidade: emptyToNull(contractForm.nacionalidade),
-        cnh_numero: emptyToNull(contractForm.cnh_numero),
-        cnh_categoria: emptyToNull(contractForm.cnh_categoria),
-        cnh_validade: emptyToNull(contractForm.cnh_validade),
-        cnh_estado_emissor: emptyToNull(contractForm.cnh_estado_emissor),
+        nacionalidade: nacionalidadeToISO(contractForm.nacionalidade) ?? emptyToNull(contractForm.nacionalidade),
         profissao_tipo: contractForm.profissao_tipo || null,
         profissao_empresa: emptyToNull(contractForm.profissao_empresa),
-        observacoes: emptyToNull(contractForm.observacoes),
+        observacoes_cliente: emptyToNull(contractForm.observacoes),
         data_entrada_japao: emptyToNull(contractForm.data_entrada_japao),
         visto_tipo: emptyToNull(contractForm.visto_tipo),
         visto_validade: emptyToNull(contractForm.visto_validade),
@@ -324,7 +345,7 @@ export default function ServicoDetailScreen() {
       ) {
         await createHabilitacao(db, {
           cliente_id: clienteAtual.id,
-          pais: 'Brasil',
+          pais: 'BR',
           categoria: emptyToNull(contractForm.cnh_categoria),
           nome_habilitacao: null,
           numero: emptyToNull(contractForm.cnh_numero),

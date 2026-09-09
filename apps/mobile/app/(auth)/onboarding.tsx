@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { colors } from '@/theme'
 
 const SLIDES = [
@@ -15,8 +14,7 @@ const SLIDES = [
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0)
 
-  const finish = async () => {
-    await AsyncStorage.setItem('onboarding_done', '1')
+  const finish = () => {
     router.replace('/(auth)/login')
   }
 

@@ -6,12 +6,26 @@ import { Ionicons } from '@expo/vector-icons'
 import { db } from '@/lib/firebase'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
 import { createContato, deleteContato, listContatosByCliente, updateContato } from '@ueno/firebase/queries/contatos'
+import { PAISES } from '@ueno/utils/paises'
 import { useAuthStore } from '@/stores/auth.store'
 import { ProfileHeader } from '@/components/ProfileHeader'
 import { colors } from '@/theme'
 import type { ClienteContato, TipoResponsavelContato } from '@ueno/firebase'
 
-const DDIS = ['+81', '+55', '+1', '+351', '+595', '+51', '+63']
+// DDIs mais comuns primeiro, depois o resto da lista canônica.
+// Deduplica por DDI (ex.: +1 é EUA e Canadá) — o seletor é por código, não por país.
+const DDI_PRIORITARIOS = ['+81', '+55']
+const seenDdi = new Set<string>()
+const COUNTRIES = [
+  ...DDI_PRIORITARIOS.map((ddi) => PAISES.find((p) => p.ddi === ddi)!),
+  ...PAISES.filter((p) => !DDI_PRIORITARIOS.includes(p.ddi)),
+]
+  .filter((p) => {
+    if (seenDdi.has(p.ddi)) return false
+    seenDdi.add(p.ddi)
+    return true
+  })
+  .map((p) => ({ ddi: p.ddi, name: p.nome, flag: p.flag }))
 const TIPO_LABEL: Record<TipoResponsavelContato, string> = {
   pessoal: 'Pessoal',
   parente: 'Parente',
@@ -42,6 +56,72 @@ const DEFAULT_FORM: Form = {
 function emptyToNull(value: string) {
   const trimmed = value.trim()
   return trimmed ? trimmed : null
+}
+
+function PhoneNumberField({ value, onChange, numero, onChangeNumero }: {
+  value: string
+  onChange: (value: string) => void
+  numero: string
+  onChangeNumero: (value: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const selected = COUNTRIES.find((country) => country.ddi === value)
+
+  return (
+    <View style={s.field}>
+      <View style={s.phoneRow}>
+        <View style={s.field}>
+          <Text style={s.label}>DDI</Text>
+          <TouchableOpacity
+            style={s.countrySelect}
+            onPress={() => setExpanded((current) => !current)}
+            accessibilityRole="button"
+            accessibilityLabel={`País e DDI: ${selected?.name ?? ''} ${value}`}
+            accessibilityState={{ expanded }}
+            activeOpacity={0.8}
+          >
+            {selected && <Text style={s.countryFlag}>{selected.flag}</Text>}
+            <Text style={s.countryCode}>{value}</Text>
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.ink500} />
+          </TouchableOpacity>
+        </View>
+        <View style={s.phoneNumberField}>
+          <Text style={s.label}>Número</Text>
+          <TextInput
+            value={numero}
+            onChangeText={onChangeNumero}
+            placeholder="90 0000-0000"
+            placeholderTextColor={colors.ink300}
+            keyboardType="phone-pad"
+            accessibilityLabel="Número de telefone"
+            style={[s.input, s.phoneNumberInput]}
+          />
+        </View>
+      </View>
+      {expanded && (
+        <View style={s.countryMenu}>
+          {COUNTRIES.map((country) => (
+            <TouchableOpacity
+              key={country.ddi}
+              style={[s.countryOption, country.ddi === value && s.countryOptionSelected]}
+              onPress={() => { onChange(country.ddi); setExpanded(false) }}
+              accessibilityRole="radio"
+              accessibilityLabel={`${country.name}, ${country.ddi}`}
+              accessibilityState={{ checked: country.ddi === value }}
+              activeOpacity={0.8}
+            >
+              <Text style={s.countryFlag}>{country.flag}</Text>
+              <Text style={s.countryName}>{country.name}</Text>
+              <Text style={s.countryCode}>{country.ddi}</Text>
+              <View style={s.countryCheck}>
+                {country.ddi === value && <Ionicons name="checkmark" size={18} color={colors.navy800} />}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  )
 }
 
 function Field({
@@ -172,19 +252,12 @@ export default function ContatosScreen() {
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
           {editing ? (
             <View style={s.card}>
-              <Text style={s.label}>DDI</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.optionsRow}>
-                {DDIS.map((ddi) => {
-                  const active = form.ddi === ddi
-                  return (
-                    <TouchableOpacity key={ddi} style={[s.option, active && s.optionActive]} onPress={() => updateField('ddi', ddi)}>
-                      <Text style={[s.optionText, active && s.optionTextActive]}>{ddi}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </ScrollView>
-
-              <Field label="Numero" value={form.numero} onChangeText={(v) => updateField('numero', v)} placeholder="90 0000-0000" />
+              <PhoneNumberField
+                value={form.ddi}
+                onChange={(ddi) => updateField('ddi', ddi)}
+                numero={form.numero}
+                onChangeNumero={(numero) => updateField('numero', numero)}
+              />
 
               <Text style={s.label}>Responsavel</Text>
               <View style={s.segment}>
@@ -206,7 +279,7 @@ export default function ContatosScreen() {
               ) : null}
 
               <View style={s.switchRow}>
-                <View>
+                <View style={s.switchCopy}>
                   <Text style={s.switchTitle}>Tem WhatsApp</Text>
                   <Text style={s.switchSub}>Usar este numero para mensagens</Text>
                 </View>
@@ -214,9 +287,9 @@ export default function ContatosScreen() {
               </View>
 
               <View style={s.switchRow}>
-                <View>
+                <View style={s.switchCopy}>
                   <Text style={s.switchTitle}>Contato principal</Text>
-                  <Text style={s.switchSub}>Prioridade para atendimento</Text>
+                  <Text style={s.switchSub}>Selecione caso este número seja o principal para contato.</Text>
                 </View>
                 <Switch value={form.is_principal} onValueChange={(v: boolean) => updateField('is_principal', v)} trackColor={{ true: colors.navy100, false: colors.ink200 }} thumbColor={form.is_principal ? colors.navy800 : colors.ink400} />
               </View>
@@ -281,19 +354,26 @@ const s = StyleSheet.create({
   field: { gap: 6 },
   label: { color: colors.ink700, fontWeight: '700', fontSize: 12.5 },
   input: { minHeight: 44, borderWidth: 1, borderColor: colors.ink200, borderRadius: 10, paddingHorizontal: 12, color: colors.ink900, backgroundColor: colors.white, fontSize: 14 },
-  optionsRow: { gap: 8, paddingRight: 8 },
-  option: { borderWidth: 1, borderColor: colors.ink200, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: colors.white },
-  optionActive: { borderColor: colors.navy800, backgroundColor: colors.navy50 },
-  optionText: { color: colors.ink500, fontSize: 12.5, fontWeight: '800' },
-  optionTextActive: { color: colors.navy800 },
+  phoneRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  phoneNumberField: { flex: 1, minWidth: 0, gap: 6 },
+  phoneNumberInput: { minHeight: 48 },
+  countrySelect: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.ink200, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10 },
+  countryFlag: { fontSize: 22 },
+  countryName: { flex: 1, flexShrink: 1, color: colors.ink900, fontSize: 14, lineHeight: 20 },
+  countryCode: { color: colors.ink500, fontSize: 14, fontWeight: '600' },
+  countryMenu: { borderWidth: 1, borderColor: colors.ink200, borderRadius: 10, overflow: 'hidden' },
+  countryOption: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  countryOptionSelected: { backgroundColor: colors.navy50 },
+  countryCheck: { width: 18 },
   segment: { flexDirection: 'row', borderWidth: 1, borderColor: colors.ink200, borderRadius: 10, overflow: 'hidden' },
   segmentItem: { flex: 1, minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white },
   segmentActive: { backgroundColor: colors.navy50 },
   segmentText: { color: colors.ink500, fontSize: 12.5, fontWeight: '800' },
   segmentTextActive: { color: colors.navy800 },
   switchRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.ink100, paddingTop: 12, gap: 12 },
+  switchCopy: { flex: 1, flexShrink: 1, minWidth: 0 },
   switchTitle: { color: colors.ink900, fontSize: 13.5, fontWeight: '800' },
-  switchSub: { color: colors.ink500, fontSize: 12, marginTop: 2 },
+  switchSub: { color: colors.ink500, fontSize: 12, lineHeight: 18, marginTop: 2, flexShrink: 1 },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 2 },
   cancelBtn: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.ink200, alignItems: 'center', justifyContent: 'center' },
   cancelText: { color: colors.ink700, fontWeight: '800' },

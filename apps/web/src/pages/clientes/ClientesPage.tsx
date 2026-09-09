@@ -11,6 +11,7 @@ import { SortableTh } from '@/components/ui/sortable-th'
 import { db } from '@/lib/firebase'
 import { listClientes } from '@ueno/firebase/queries/clientes'
 import { formatDateJST } from '@ueno/utils/date'
+import { nomePais } from '@ueno/utils/paises'
 import type { StatusProcesso } from '@ueno/firebase'
 import { includesText, isWithinDateRange, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
 
@@ -97,6 +98,7 @@ export function ClientesPage() {
           cliente.cpf,
           cliente.cidade_jp,
           cliente.nacionalidade,
+          nomePais(cliente.nacionalidade),
           statusLabel[cliente.status_processo],
         ].join(' '),
         search,

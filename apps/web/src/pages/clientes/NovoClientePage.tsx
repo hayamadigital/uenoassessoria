@@ -153,7 +153,7 @@ export function NovoClientePage() {
                 >
                   <option value="">Selecionar país</option>
                   {PAISES.map((p) => (
-                    <option key={p.code} value={p.nome}>
+                    <option key={p.code} value={p.code}>
                       {p.flag} {p.nome}
                     </option>
                   ))}

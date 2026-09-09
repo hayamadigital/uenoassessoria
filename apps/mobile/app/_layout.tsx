@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert } from 'react-native'
 import { Stack, router, useRootNavigationState } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import i18n from '../src/i18n'
 import { appCheckReady, auth, db } from '@/lib/firebase'
 import { onAuthChange } from '@ueno/firebase'
-import { getProfile } from '@ueno/firebase/queries/perfis'
+import { getProfile, PROFILE_NOT_FOUND_CODE } from '@ueno/firebase/queries/perfis'
 import { useAuthStore } from '@/stores/auth.store'
 import type { AuthSession } from '@ueno/types'
 
@@ -19,6 +19,7 @@ function AuthInit() {
   const { setSession, setLoading, clear } = useAuthStore()
   const session = useAuthStore((state) => state.session)
   const rootNavigationState = useRootNavigationState()
+  const [requiresEmailVerification, setRequiresEmailVerification] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -38,7 +39,9 @@ function AuthInit() {
                 break
               } catch (e: any) {
                 const retryable =
+                  e?.code === PROFILE_NOT_FOUND_CODE ||
                   e?.message === 'Profile not found' ||
+                  e?.message === 'Perfil indisponível' ||
                   (e?.message ?? '').includes('Missing or insufficient permissions')
                 if (retryable && attempt < 5) {
                   await new Promise((r) => setTimeout(r, 1500))
@@ -48,6 +51,12 @@ function AuthInit() {
               }
             }
             if (!profile) throw new Error('Profile not found')
+            if (profile.role === 'cliente' && !user.emailVerified) {
+              setRequiresEmailVerification(true)
+              clear()
+              return
+            }
+            setRequiresEmailVerification(false)
             const session: AuthSession = {
               userId: user.uid,
               email: profile.email ?? user.email ?? '',
@@ -62,13 +71,16 @@ function AuthInit() {
             console.error('[Auth] getProfile error:', e?.message)
             Alert.alert(
               'Erro ao carregar perfil',
-              e?.message === 'Profile not found'
+              e?.code === PROFILE_NOT_FOUND_CODE ||
+              e?.message === 'Profile not found' ||
+              e?.message === 'Perfil indisponível'
                 ? 'Perfil não encontrado. Contate o administrador.'
                 : `Erro: ${e?.message ?? 'desconhecido'}`
             )
             clear()
           }
         } else {
+          setRequiresEmailVerification(false)
           clear()
         }
         setLoading(false)
@@ -82,6 +94,11 @@ function AuthInit() {
       unsub?.()
     }
   }, [setSession, setLoading, clear])
+
+  useEffect(() => {
+    if (!rootNavigationState?.key || !requiresEmailVerification) return
+    router.replace('/(auth)/verify-email')
+  }, [rootNavigationState?.key, requiresEmailVerification])
 
   useEffect(() => {
     if (!rootNavigationState?.key || !session) return
@@ -113,7 +130,7 @@ export default function RootLayout() {
         <AuthInit />
         <LanguageSync />
         <StatusBar style="auto" />
-        <Stack key={i18n.language} screenOptions={{ headerShown: false }}>
+        <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(admin)" />
           <Stack.Screen name="(instrutor)" />

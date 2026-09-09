@@ -1,4 +1,6 @@
 export * from './date'
 export * from './currency'
 export * from './cpf'
+export * from './paises'
+export * from './profissoes'
 export * from './validators'

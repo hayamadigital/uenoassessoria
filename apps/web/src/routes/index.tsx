@@ -5,7 +5,6 @@ import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { ClientesPage } from '@/pages/clientes/ClientesPage'
 import { ClienteDetailPage } from '@/pages/clientes/ClienteDetailPage'
-import { ClientePerfilTab } from '@/pages/clientes/tabs/ClientePerfilTab'
 import { lazy } from 'react'
 
 // ── Pages lazy ──────────────────────────────────────────────
@@ -208,7 +207,6 @@ export const router = createBrowserRouter([
           { path: 'documentos', element: <ClienteDocumentosTab /> },
           { path: 'historico', element: <ClienteHistoricoTab /> },
           // Legacy stubs
-          { path: 'perfil', element: <ClientePerfilTab /> },
           { path: 'agendamentos', element: <ClienteAgendamentosTab /> },
           { path: 'financeiro', element: <ClienteFinanceiroTab /> },
           { path: 'contratos', element: <ClienteContratosTab /> },

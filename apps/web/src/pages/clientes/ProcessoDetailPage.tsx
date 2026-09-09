@@ -78,6 +78,8 @@ import { getClienteDocumentos, getDocumentoSignedUrl } from '@ueno/firebase/quer
 import { createPagamento, listPagamentos, upsertParcelas } from '@ueno/firebase/queries/financeiro'
 import { processoSchema, etapaSchema, type ProcessoInput, type EtapaInput } from '@ueno/utils/validators'
 import { formatDateJST } from '@ueno/utils/date'
+import { nomePais } from '@ueno/utils/paises'
+import { labelProfissao } from '@ueno/utils/profissoes'
 import { useAuthStore } from '@/stores/auth.store'
 import type {
   ProcessoEtapa,
@@ -1304,13 +1306,13 @@ export function ProcessoDetailPage() {
                           <p className="text-sm text-muted-foreground">{clienteProcesso.profile.email}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">{displayValue(clienteProcesso.nacionalidade)}</Badge>
+                          <Badge variant="outline">{displayValue(nomePais(clienteProcesso.nacionalidade))}</Badge>
                           <Badge variant="secondary">{displayValue(clienteProcesso.cidade_jp)}</Badge>
                         </div>
                       </div>
-                      {clienteProcesso.observacoes && (
+                      {(clienteProcesso.observacoes_internas ?? clienteProcesso.observacoes) && (
                         <p className="mt-3 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
-                          {clienteProcesso.observacoes}
+                          {clienteProcesso.observacoes_internas ?? clienteProcesso.observacoes}
                         </p>
                       )}
                     </div>
@@ -1336,13 +1338,9 @@ export function ProcessoDetailPage() {
                         ],
                       },
                       {
-                        title: 'Habilitação e Trabalho',
+                        title: 'Trabalho',
                         items: [
-                          ['CNH', clienteProcesso.cnh_numero],
-                          ['Categoria CNH', clienteProcesso.cnh_categoria],
-                          ['Validade CNH', clienteProcesso.cnh_validade],
-                          ['Estado emissor', clienteProcesso.cnh_estado_emissor],
-                          ['Profissão', clienteProcesso.profissao_tipo],
+                          ['Profissão', labelProfissao(clienteProcesso.profissao_tipo)],
                           ['Empresa', clienteProcesso.profissao_empresa],
                         ],
                       },

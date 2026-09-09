@@ -46,9 +46,16 @@ export default function LoginScreen() {
 
           {/* Back + lang row */}
           <View style={s.topRow}>
-            <View style={s.backBtn}>
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => router.replace('/(auth)/onboarding')}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar para a apresentação"
+              hitSlop={8}
+              activeOpacity={0.8}
+            >
               <Text style={s.backArrow}>‹</Text>
-            </View>
+            </TouchableOpacity>
             <View style={s.langPill}>
               <Text style={s.langText}>🇧🇷  PT-BR</Text>
             </View>

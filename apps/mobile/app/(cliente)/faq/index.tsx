@@ -1,5 +1,5 @@
 import { ComponentProps, useMemo } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Alert, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
@@ -32,7 +32,10 @@ function buildWhatsAppUrl(phone: string | null) {
   const digits = (phone ?? '').replace(/\D/g, '')
   if (!digits) return null
   const message = encodeURIComponent('Olá! Gostaria de falar sobre o FAQ.')
-  return `https://wa.me/${digits}?text=${message}`
+  return {
+    app: `whatsapp://send?phone=${digits}&text=${message}`,
+    web: `https://wa.me/${digits}?text=${message}`,
+  }
 }
 
 export default function FaqIndexScreen() {
@@ -48,6 +51,25 @@ export default function FaqIndexScreen() {
 
   const publishedFaqs = useMemo(() => faqs.filter((faq) => faq.is_active), [faqs])
   const whatsappUrl = buildWhatsAppUrl(publicConfig?.support_whatsapp ?? null)
+
+  async function openWhatsApp() {
+    if (!whatsappUrl) return
+
+    try {
+      if (Platform.OS === 'web') {
+        await Linking.openURL(whatsappUrl.web)
+        return
+      }
+
+      try {
+        await Linking.openURL(whatsappUrl.app)
+      } catch {
+        await Linking.openURL(whatsappUrl.web)
+      }
+    } catch {
+      Alert.alert('Não foi possível abrir o WhatsApp', 'Tente novamente em instantes.')
+    }
+  }
 
   return (
     <SafeAreaView style={s.safe}>
@@ -75,18 +97,14 @@ export default function FaqIndexScreen() {
           <TouchableOpacity
             style={[s.contactBtn, !whatsappUrl && s.contactBtnDisabled]}
             activeOpacity={0.8}
-            onPress={() => whatsappUrl && Linking.openURL(whatsappUrl)}
+            onPress={openWhatsApp}
             disabled={!whatsappUrl}
           >
             <Text style={s.contactBtnTxt}>Abrir</Text>
           </TouchableOpacity>
         </View>
 
-        {publicConfig?.support_whatsapp ? (
-          <Text style={s.contactHint}>
-            Número configurado: {publicConfig.support_whatsapp}
-          </Text>
-        ) : (
+        {!publicConfig?.support_whatsapp && (
           <Text style={s.contactHint}>
             WhatsApp de suporte ainda não configurado no app web.
           </Text>
@@ -170,7 +188,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 24,
   },
   contactIcon: {
     width: 42,
