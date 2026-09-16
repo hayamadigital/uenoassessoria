@@ -1,0 +1,34 @@
+{
+  "updatedAt": "15/09/2026",
+  "organization": "Ueno Assessoria",
+  "sections": [
+    {
+      "title": "Quem trata seus dados",
+      "body": "A Ueno Assessoria é responsável pelo tratamento dos dados informados no app para administrar seu atendimento e os serviços contratados. Para dúvidas sobre privacidade ou solicitações relacionadas aos seus dados, entre em contato pelo e-mail uenoassessoria@gmail.com. Você também pode falar com a equipe em Meu perfil → Falar com a equipe."
+    },
+    {
+      "title": "Dados utilizados",
+      "body": "Conforme os recursos utilizados, tratamos nome, e-mail, telefone, endereço, data de nascimento, dados de identificação e habilitação, documentos, foto de perfil, contratos, assinaturas, pagamentos, agendamentos e resultados de simulados. Também utilizamos identificadores da conta, tokens de notificações e sinais técnicos de segurança para autenticação e proteção contra abuso."
+    },
+    {
+      "title": "Finalidades e serviços utilizados",
+      "body": "Usamos esses dados para criar e proteger sua conta, prestar atendimento, organizar serviços, documentos e contratos, acompanhar pagamentos e disponibilizar materiais de estudo. Utilizamos Google Firebase para autenticação, armazenamento e processamento, e Expo para notificações. Ao abrir mapas ou WhatsApp, você utiliza serviços externos sujeitos às respectivas políticas. Não utilizamos os dados para publicidade comportamental."
+    },
+    {
+      "title": "Permissões",
+      "body": "O acesso a fotos é solicitado quando você escolhe uma foto de perfil, documento ou comprovante. Notificações são opcionais e podem ser desativadas nas configurações do aparelho. Você pode recusar permissões; apenas os recursos que dependem delas ficam limitados."
+    },
+    {
+      "title": "Acesso e armazenamento",
+      "body": "Os dados ficam disponíveis para você e para profissionais autorizados conforme sua função e vínculo com o atendimento. A infraestrutura dos fornecedores pode processar dados fora do seu país. Adotamos autenticação e regras de acesso para limitar o uso dos dados às finalidades do serviço."
+    },
+    {
+      "title": "Correção e exclusão",
+      "body": "Você pode corrigir dados nas telas do seu perfil e solicitar exclusão em Meu perfil → Excluir minha conta. Após confirmar sua senha, a solicitação é registrada no próprio app, sem necessidade de telefonar ou enviar e-mail. A equipe conclui em até 30 dias e a confirmação fica disponível em Acompanhar exclusão de conta, na tela de entrada."
+    },
+    {
+      "title": "Retenção",
+      "body": "Ao concluir a exclusão, removemos o acesso à conta e os dados associados. Contratos e registros financeiros só podem ser preservados quando existir obrigação de retenção. Nesse caso, o motivo e a data de descarte aparecem na confirmação; os registros ficam em arquivo restrito e são descartados ao fim do prazo."
+    }
+  ]
+}

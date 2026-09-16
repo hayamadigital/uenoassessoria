@@ -11,8 +11,11 @@
     "./cpf": "./src/cpf.ts",
     "./paises": "./src/paises.ts",
     "./profissoes": "./src/profissoes.ts",
+    "./cadastro-evento": "./src/cadastro-evento.ts",
+    "./cidades-japao": "./src/cidades-japao.ts",
     "./validators": "./src/validators.ts",
-    "./contrato-render": "./src/contrato-render.ts"
+    "./contrato-render": "./src/contrato-render.ts",
+    "./privacy-policy.json": "./src/privacy-policy.json"
   },
   "dependencies": {
     "date-fns": "^4.1.0",

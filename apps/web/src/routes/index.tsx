@@ -2,10 +2,13 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
+import { CadastroEventoPage } from '@/pages/evento/CadastroEventoPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { ClientesPage } from '@/pages/clientes/ClientesPage'
 import { ClienteDetailPage } from '@/pages/clientes/ClienteDetailPage'
 import { lazy } from 'react'
+
+const ExclusoesTab = lazy(() => import('@/pages/configuracoes/tabs/ExclusoesTab').then(m => ({ default: m.ExclusoesTab })))
 
 // ── Pages lazy ──────────────────────────────────────────────
 const AgendamentosPage = lazy(() =>
@@ -183,6 +186,10 @@ export const router = createBrowserRouter([
     element: <ForgotPasswordPage />,
   },
   {
+    path: '/evento',
+    element: <CadastroEventoPage />,
+  },
+  {
     path: '/',
     element: <AppShell />,
     children: [
@@ -251,6 +258,7 @@ export const router = createBrowserRouter([
           { path: 'perfil', element: <MeuPerfilTab /> },
           { path: 'seguranca', element: <SegurancaTab /> },
           { path: 'usuarios', element: <UsuariosTab /> },
+          { path: 'exclusoes', element: <ExclusoesTab /> },
           { path: 'preferencias', element: <PreferenciasTab /> },
           { path: 'locais', element: <LocaisTab /> },
           { path: 'contratos', element: <ContratoTemplatesTab /> },

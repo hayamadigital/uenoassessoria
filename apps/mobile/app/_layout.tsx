@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert } from 'react-native'
-import { Stack, router, useRootNavigationState } from 'expo-router'
+import { Stack, router, useRootNavigationState, usePathname } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
@@ -16,6 +16,7 @@ const queryClient = new QueryClient({
 })
 
 function AuthInit() {
+  const pathname = usePathname()
   const { setSession, setLoading, clear } = useAuthStore()
   const session = useAuthStore((state) => state.session)
   const rootNavigationState = useRootNavigationState()
@@ -96,17 +97,17 @@ function AuthInit() {
   }, [setSession, setLoading, clear])
 
   useEffect(() => {
-    if (!rootNavigationState?.key || !requiresEmailVerification) return
+    if (!rootNavigationState?.key || !requiresEmailVerification || ['/privacidade', '/excluir-conta'].includes(pathname)) return
     router.replace('/(auth)/verify-email')
-  }, [rootNavigationState?.key, requiresEmailVerification])
+  }, [rootNavigationState?.key, requiresEmailVerification, pathname])
 
   useEffect(() => {
-    if (!rootNavigationState?.key || !session) return
+    if (!rootNavigationState?.key || !session || !['/', '/login', '/onboarding', '/register', '/verify-email'].includes(pathname)) return
 
     if (session.role === 'admin') router.replace('/(admin)/(tabs)/inicio')
     else if (session.role === 'instrutor') router.replace('/(instrutor)/hoje')
     else router.replace('/(cliente)/(tabs)/inicio')
-  }, [rootNavigationState?.key, session])
+  }, [rootNavigationState?.key, session, pathname])
 
   return null
 }

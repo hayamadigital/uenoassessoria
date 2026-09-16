@@ -1,36 +1,129 @@
+import { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView, Linking,
 } from 'react-native'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useQuery } from '@tanstack/react-query'
 import { httpsCallable } from 'firebase/functions'
-import { auth, functions } from '@/lib/firebase'
-import { sendVerificationEmail, signUp } from '@ueno/firebase'
+import { sendPasswordResetEmail } from 'firebase/auth'
+import { auth, functions, db } from '@/lib/firebase'
+import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { registerSchema, type RegisterInput } from '@ueno/utils/validators'
+import {
+  INTERESSE_CATEGORIA_OPTIONS,
+  INTERESSE_CATEGORIA_LABEL,
+  subopcoesDisponiveis,
+  COMO_CONHECEU_OPTIONS,
+  COMO_CONHECEU_LABEL,
+  buildInteresseResumo,
+  labelComoConheceu,
+} from '@ueno/utils/cadastro-evento'
+import { CityAutocomplete } from '@/components/CityAutocomplete'
 import { colors } from '@/theme'
 
+function buildWhatsAppUrls(phone: string | null, message: string) {
+  const digits = (phone ?? '').replace(/\D/g, '')
+  if (!digits) return null
+  const encoded = encodeURIComponent(message)
+  return {
+    app: `whatsapp://send?phone=${digits}&text=${encoded}`,
+    web: `https://wa.me/${digits}?text=${encoded}`,
+  }
+}
+
+function buildLeadMessage(data: RegisterInput) {
+  return [
+    'Olá, visitei a UENO ASSESSORIA no evento e gostaria de receber mais informações.',
+    '',
+    `Nome: ${data.full_name}`,
+    `Data de nascimento: ${data.data_nascimento}`,
+    `Cidade: ${data.cidade_jp}${data.provincia_jp ? `, ${data.provincia_jp}` : ''}`,
+    `Interesse: ${buildInteresseResumo(data.interesse_categorias, data.interesse_subopcoes)}`,
+    `Conheceu a UENO através de: ${labelComoConheceu(data.como_conheceu)}`,
+  ].join('\n')
+}
+
 export default function RegisterScreen() {
-  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterInput>({
+  const [submitted, setSubmitted] = useState(false)
+  const [submittedEmail, setSubmittedEmail] = useState('')
+
+  const { data: publicConfig } = useQuery({
+    queryKey: ['public-app-config'],
+    queryFn: () => getPublicAppConfig(db),
+  })
+
+  const {
+    control, handleSubmit, watch, setValue, reset,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       full_name: '',
       email: '',
-      password: '',
       data_nascimento: '',
       provincia_jp: '',
       cidade_jp: '',
+      interesse_categorias: [],
+      interesse_subopcoes: [],
     },
   })
 
-  const onSubmit = async (data: RegisterInput) => {
-    let user: Awaited<ReturnType<typeof signUp>> | null = null
-    let profileCreated = false
-    let verificationEmailSent = true
+  const cidadeJp = watch('cidade_jp')
+  const interesseCategorias = watch('interesse_categorias')
+  const interesseSubopcoes = watch('interesse_subopcoes')
+  const comoConheceu = watch('como_conheceu')
+
+  function toggleCategoria(value: (typeof INTERESSE_CATEGORIA_OPTIONS)[number]) {
+    const selecionadas = interesseCategorias.includes(value)
+      ? interesseCategorias.filter((c) => c !== value)
+      : [...interesseCategorias, value]
+    setValue('interesse_categorias', selecionadas, { shouldValidate: true })
+
+    // Remove sub-opções que só existiam por causa da categoria removida.
+    const validas = new Set(subopcoesDisponiveis(selecionadas).map((o) => o.value))
+    setValue('interesse_subopcoes', interesseSubopcoes.filter((s) => validas.has(s)), { shouldValidate: true })
+  }
+
+  function toggleSubopcao(value: string) {
+    const selecionadas = interesseSubopcoes.includes(value)
+      ? interesseSubopcoes.filter((s) => s !== value)
+      : [...interesseSubopcoes, value]
+    setValue('interesse_subopcoes', selecionadas, { shouldValidate: true })
+  }
+
+  const openWhatsAppWithLead = async (data: RegisterInput) => {
+    const urls = buildWhatsAppUrls(publicConfig?.support_whatsapp ?? null, buildLeadMessage(data))
+    if (!urls) {
+      Alert.alert(
+        'Conta criada',
+        'Não encontramos o WhatsApp da UENO configurado agora. Fale direto com a equipe no estande.',
+      )
+      return
+    }
     try {
-      user = await signUp(auth, data.email, data.password)
+      if (Platform.OS === 'web') {
+        await Linking.openURL(urls.web)
+        return
+      }
+      try {
+        await Linking.openURL(urls.app)
+      } catch {
+        await Linking.openURL(urls.web)
+      }
+    } catch {
+      Alert.alert(
+        'Conta criada',
+        'Não conseguimos abrir o WhatsApp automaticamente. Procure a equipe da UENO no estande.',
+      )
+    }
+  }
+
+  const onSubmit = async (data: RegisterInput) => {
+    try {
       const selfRegister = httpsCallable(functions, 'selfRegister')
       await selfRegister({
         full_name: data.full_name,
@@ -38,34 +131,37 @@ export default function RegisterScreen() {
         data_nascimento: data.data_nascimento,
         provincia_jp: data.provincia_jp,
         cidade_jp: data.cidade_jp,
+        interesse_categorias: data.interesse_categorias,
+        interesse_subopcoes: data.interesse_subopcoes,
+        como_conheceu: data.como_conheceu,
+        canal_cadastro: 'mobile_app',
       })
-      profileCreated = true
-      try {
-        await sendVerificationEmail(auth, user)
-      } catch (emailError) {
-        // The account and profile already exist. Keep them intact and let the
-        // confirmation screen offer a safe retry instead of deleting the user.
-        console.warn('[Auth] verification email was not sent:', emailError)
-        verificationEmailSent = false
-      }
-      // Force token refresh so role claim is picked up by auth handler
-      await user.getIdToken(true)
-      if (!verificationEmailSent) {
-        Alert.alert(
-          'Conta criada',
-          'Não conseguimos enviar a confirmação automaticamente. Use “Reenviar e-mail” na próxima tela.',
-        )
-      }
-      // The token listener in _layout.tsx reloads the profile and redirects.
+
+      // Sem senha nesta tela: a conta é criada no servidor e o e-mail abaixo é
+      // quem deixa o visitante definir a própria senha (e confirma o e-mail de
+      // quebra). Não bloqueia o fluxo — segue direto pro WhatsApp.
+      auth.languageCode = 'pt-BR'
+      sendPasswordResetEmail(auth, data.email).catch((emailError) => {
+        console.warn('[Auth] password setup email was not sent:', emailError)
+      })
+
+      await openWhatsAppWithLead(data)
+
+      // A tela fica montada por baixo do WhatsApp — quando o visitante voltar
+      // pro app, já encontra o aviso pra confirmar o e-mail em vez do formulário.
+      setSubmittedEmail(data.email)
+      setSubmitted(true)
     } catch (e: any) {
-      if (user && !profileCreated && e?.code !== 'auth/email-already-in-use') {
-        try { await user.delete() } catch (_) {}
-      }
-      const msg = e?.code === 'auth/email-already-in-use'
+      const msg = e?.code === 'functions/already-exists' || e?.message?.includes('já está cadastrado')
         ? 'Este e-mail já está cadastrado.'
         : e?.message ?? 'Erro ao criar conta. Tente novamente.'
       Alert.alert('Erro ao criar conta', msg)
     }
+  }
+
+  function handleNewRegistration() {
+    reset()
+    setSubmitted(false)
   }
 
   return (
@@ -74,7 +170,7 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
           <View style={s.topRow}>
-            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={s.backBtn} onPress={() => router.replace('/(auth)/onboarding')}>
               <Text style={s.backArrow}>‹</Text>
             </TouchableOpacity>
             <View style={s.langPill}>
@@ -82,8 +178,30 @@ export default function RegisterScreen() {
             </View>
           </View>
 
+          {submitted ? (
+            <View>
+              <Text style={s.title}>Cadastro enviado!</Text>
+              <Text style={s.subtitle}>
+                Enviamos um e-mail para <Text style={s.confirmEmail}>{submittedEmail}</Text>. Abra ele
+                para definir sua senha — assim que confirmar, você já pode entrar no app.
+              </Text>
+
+              <TouchableOpacity
+                style={s.btn}
+                onPress={handleNewRegistration}
+                activeOpacity={0.85}
+              >
+                <Text style={s.btnTxt}>Fazer novo cadastro</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={s.loginWrap} onPress={() => router.push('/(auth)/login')}>
+                <Text style={s.loginTxt}>Já tenho cadastro  <Text style={s.loginLink}>Entrar</Text></Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+          <>
           <Text style={s.title}>Novo acesso</Text>
-          <Text style={s.subtitle}>Preencha seus dados para criar sua conta.</Text>
+          <Text style={s.subtitle}>Preencha seus dados. Você define sua senha depois, pelo e-mail que vamos te mandar.</Text>
 
           <View style={s.fieldWrap}>
             <Text style={s.label}>NOME COMPLETO</Text>
@@ -104,49 +222,6 @@ export default function RegisterScreen() {
               )}
             />
             {errors.full_name && <Text style={s.errTxt}>{errors.full_name.message}</Text>}
-          </View>
-
-          <View style={s.fieldWrap}>
-            <Text style={s.label}>E-MAIL</Text>
-            <Controller
-              control={control}
-              name="email"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[s.input, errors.email && s.inputErr]}
-                  placeholder="seu@email.com"
-                  placeholderTextColor={colors.ink400}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
-            />
-            {errors.email && <Text style={s.errTxt}>{errors.email.message}</Text>}
-          </View>
-
-          <View style={s.fieldWrap}>
-            <Text style={s.label}>SENHA</Text>
-            <Controller
-              control={control}
-              name="password"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[s.input, errors.password && s.inputErr]}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.ink400}
-                  secureTextEntry
-                  autoComplete="new-password"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
-            />
-            {errors.password && <Text style={s.errTxt}>{errors.password.message}</Text>}
           </View>
 
           <View style={s.fieldWrap}>
@@ -176,44 +251,104 @@ export default function RegisterScreen() {
             {errors.data_nascimento && <Text style={s.errTxt}>{errors.data_nascimento.message}</Text>}
           </View>
 
-          <View style={s.fieldWrap}>
-            <Text style={s.label}>PROVÍNCIA ATUAL</Text>
-            <Controller
-              control={control}
-              name="provincia_jp"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[s.input, errors.provincia_jp && s.inputErr]}
-                  placeholder="Ex: Aichi, Tokyo, Shizuoka…"
-                  placeholderTextColor={colors.ink400}
-                  autoCapitalize="words"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
-              )}
+          <View style={[s.fieldWrap, s.fieldWrapAutocomplete]}>
+            <Text style={s.label}>CIDADE ONDE MORA (JAPÃO)</Text>
+            <CityAutocomplete
+              value={cidadeJp}
+              error={!!errors.cidade_jp}
+              onChangeText={(text) => setValue('cidade_jp', text, { shouldValidate: true })}
+              onSelectCity={(city) => {
+                setValue('cidade_jp', city.cidade, { shouldValidate: true })
+                setValue('provincia_jp', city.provincia, { shouldValidate: true })
+              }}
             />
-            {errors.provincia_jp && <Text style={s.errTxt}>{errors.provincia_jp.message}</Text>}
+            {errors.cidade_jp && <Text style={s.errTxt}>{errors.cidade_jp.message}</Text>}
           </View>
 
           <View style={s.fieldWrap}>
-            <Text style={s.label}>CIDADE ATUAL</Text>
+            <Text style={s.label}>QUAL SERVIÇO VOCÊ TEM INTERESSE?</Text>
+            <Text style={s.hintTxt}>Pode escolher mais de uma opção.</Text>
+            <View style={s.optionGrid}>
+              {INTERESSE_CATEGORIA_OPTIONS.map((value) => {
+                const active = interesseCategorias.includes(value)
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={[s.optionChip, active && s.optionChipActive]}
+                    activeOpacity={0.8}
+                    onPress={() => toggleCategoria(value)}
+                  >
+                    <Text style={[s.optionChipText, active && s.optionChipTextActive]}>
+                      {INTERESSE_CATEGORIA_LABEL[value]}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+            {errors.interesse_categorias && <Text style={s.errTxt}>{errors.interesse_categorias.message}</Text>}
+
+            {interesseCategorias.length > 0 && (
+              <View style={[s.optionGrid, { marginTop: 10 }]}>
+                {subopcoesDisponiveis(interesseCategorias).map((option) => {
+                  const active = interesseSubopcoes.includes(option.value)
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[s.optionChip, active && s.optionChipActive]}
+                      activeOpacity={0.8}
+                      onPress={() => toggleSubopcao(option.value)}
+                    >
+                      <Text style={[s.optionChipText, active && s.optionChipTextActive]}>{option.label}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            )}
+            {errors.interesse_subopcoes && <Text style={s.errTxt}>{errors.interesse_subopcoes.message}</Text>}
+          </View>
+
+          <View style={s.fieldWrap}>
+            <Text style={s.label}>COMO CONHECEU A UENO ASSESSORIA?</Text>
+            <View style={s.optionGrid}>
+              {COMO_CONHECEU_OPTIONS.map((option) => {
+                const active = comoConheceu === option
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[s.optionChip, active && s.optionChipActive]}
+                    activeOpacity={0.8}
+                    onPress={() => setValue('como_conheceu', option, { shouldValidate: true })}
+                  >
+                    <Text style={[s.optionChipText, active && s.optionChipTextActive]}>
+                      {COMO_CONHECEU_LABEL[option]}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+            {errors.como_conheceu && <Text style={s.errTxt}>{errors.como_conheceu.message}</Text>}
+          </View>
+
+          <View style={s.fieldWrap}>
+            <Text style={s.label}>E-MAIL</Text>
             <Controller
               control={control}
-              name="cidade_jp"
+              name="email"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextInput
-                  style={[s.input, errors.cidade_jp && s.inputErr]}
-                  placeholder="Ex: Nagoya, Toyota…"
+                  style={[s.input, errors.email && s.inputErr]}
+                  placeholder="seu@email.com"
                   placeholderTextColor={colors.ink400}
-                  autoCapitalize="words"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
                   onBlur={onBlur}
                   onChangeText={onChange}
                   value={value}
                 />
               )}
             />
-            {errors.cidade_jp && <Text style={s.errTxt}>{errors.cidade_jp.message}</Text>}
+            {errors.email && <Text style={s.errTxt}>{errors.email.message}</Text>}
           </View>
 
           <TouchableOpacity
@@ -227,10 +362,13 @@ export default function RegisterScreen() {
               : <Text style={s.btnTxt}>Criar conta</Text>}
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.loginWrap} onPress={() => router.back()}>
-            <Text style={s.loginTxt}>Já tenho uma conta  <Text style={s.loginLink}>Entrar</Text></Text>
+          <TouchableOpacity style={s.loginWrap} onPress={() => router.push('/(auth)/login')}>
+            <Text style={s.loginTxt}>Já tenho cadastro  <Text style={s.loginLink}>Entrar</Text></Text>
           </TouchableOpacity>
+          </>
+          )}
 
+        <TouchableOpacity accessibilityRole="link" onPress={() => router.push('/privacidade')} style={{ paddingVertical: 16, alignItems: 'center' }}><Text style={{ color: colors.navy800 }}>Política de privacidade</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -247,8 +385,11 @@ const s = StyleSheet.create({
   langText: { fontSize: 12, color: colors.ink500, fontWeight: '500' },
   title: { fontSize: 28, fontWeight: '700', color: colors.ink900, letterSpacing: -0.6, marginBottom: 8 },
   subtitle: { fontSize: 14, color: colors.ink500, marginBottom: 32, lineHeight: 20 },
+  confirmEmail: { color: colors.navy800, fontWeight: '700' },
   fieldWrap: { marginBottom: 16 },
+  fieldWrapAutocomplete: { zIndex: 20 },
   label: { fontSize: 11, fontWeight: '600', color: colors.ink500, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 6 },
+  hintTxt: { fontSize: 12, color: colors.ink400, marginBottom: 8 },
   input: {
     backgroundColor: colors.ink50,
     borderRadius: 14,
@@ -260,6 +401,18 @@ const s = StyleSheet.create({
   },
   inputErr: { borderColor: colors.err },
   errTxt: { fontSize: 12, color: colors.err, marginTop: 4 },
+  optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  optionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.ink200,
+    backgroundColor: colors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  optionChipActive: { borderColor: colors.navy800, backgroundColor: colors.navy50 },
+  optionChipText: { color: colors.ink500, fontSize: 13, fontWeight: '700' },
+  optionChipTextActive: { color: colors.navy800 },
   btn: {
     backgroundColor: colors.navy800,
     borderRadius: 14,

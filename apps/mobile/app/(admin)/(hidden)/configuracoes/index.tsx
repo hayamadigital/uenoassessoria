@@ -1,3 +1,4 @@
+import { AccountLinks } from '@/components/AccountLinks'
 import {
   ActivityIndicator,
   Alert,
@@ -575,6 +576,7 @@ export default function AdminConfiguracoesScreen() {
       <Section title={t('configuracoes:mobile_admin.system')}>
         <Row icon="business-outline" label="Ueno Assessoria" value="Mobile admin" onPress={() => setActiveSection('company')} />
         <Row icon="help-circle-outline" label={t('configuracoes:mobile_admin.internal_support')} onPress={() => setActiveSection('support')} />
+        <AccountLinks />
         <Row icon="log-out-outline" label={t('common:logout')} color={colors.red} onPress={handleLogout} right={<View />} last />
       </Section>
     </>

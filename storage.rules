@@ -3,7 +3,9 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && (!firestore.exists(/databases/(default)/documents/account_deletions/$(request.auth.uid))
+          || firestore.get(/databases/(default)/documents/account_deletions/$(request.auth.uid)).data.status == 'pending');
     }
 
     function isAdmin() {

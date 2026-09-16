@@ -543,6 +543,7 @@ export default function ServicoDetailScreen() {
             <AppImage
               source={{ uri: imageUri }}
               style={s.heroImage}
+              contentFit="contain"
               onError={() => setImageFailed(true)}
             />
           ) : (

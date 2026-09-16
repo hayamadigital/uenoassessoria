@@ -9,6 +9,7 @@ function counterStore() {
   const values = new Map()
   let queue = Promise.resolve()
   return {
+    doc: () => ({ get: async () => ({ exists: false }) }),
     collection: () => ({ doc: (id) => id }),
     runTransaction(fn) {
       const run = queue.then(() => fn({
@@ -57,6 +58,7 @@ test('counter storage errors fail closed', async () => {
 
 function mockDocuments(t, contract, assignedTo = 'teacher') {
   const db = getFirestore()
+  t.mock.method(db, 'doc', () => ({ get: async () => ({ exists: false }) }))
   t.mock.method(db, 'runTransaction', async () => {})
   t.mock.method(db, 'collection', (name) => ({
     doc: () => ({ get: async () => ({

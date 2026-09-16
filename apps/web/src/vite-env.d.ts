@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string
   readonly VITE_FIREBASE_APP_CHECK_SITE_KEY?: string
   readonly VITE_GOOGLE_MAPS_API_KEY: string
+  /** Aponta o app pro Firebase Local Emulator Suite em vez de produção — só pra testes locais. */
+  readonly VITE_USE_FIREBASE_EMULATOR?: string
 }
 
 interface ImportMeta {

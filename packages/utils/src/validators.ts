@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { validateCPF } from './cpf'
 import { PROFISSAO_TIPOS } from './profissoes'
+import {
+  COMO_CONHECEU_OPTIONS,
+  INTERESSE_CATEGORIA_OPTIONS,
+  interesseSubopcoesValidas,
+} from './cadastro-evento'
 
 const optionalFirestoreIdSchema = z.string().min(1).optional()
 const optionalFirestoreIdOrEmptySchema = optionalFirestoreIdSchema.or(z.literal(''))
@@ -22,16 +27,30 @@ export const forgotPasswordSchema = z.object({
 
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
 
-export const registerSchema = z.object({
-  full_name: z.string().min(2, 'Nome completo obrigatório'),
-  email: z.string().email('Email inválido'),
-  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
-  data_nascimento: z
-    .string()
-    .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'Use o formato DD/MM/AAAA'),
-  provincia_jp: z.string().min(1, 'Província obrigatória'),
-  cidade_jp: z.string().min(1, 'Cidade obrigatória'),
-})
+export const registerSchema = z
+  .object({
+    full_name: z.string().min(2, 'Nome completo obrigatório'),
+    email: z.string().email('Email inválido'),
+    data_nascimento: z
+      .string()
+      .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'Use o formato DD/MM/AAAA'),
+    // Preenchida automaticamente ao escolher uma sugestão do autocomplete de cidade —
+    // não é campo visível, então não pode bloquear o envio (a lista de cidades não é
+    // exaustiva; o visitante pode digitar uma cidade que não está nela).
+    provincia_jp: z.string(),
+    cidade_jp: z.string().min(1, 'Cidade obrigatória'),
+    interesse_categorias: z
+      .array(z.enum(INTERESSE_CATEGORIA_OPTIONS))
+      .min(1, 'Selecione ao menos um serviço de interesse'),
+    interesse_subopcoes: z.array(z.string()).min(1, 'Selecione ao menos uma opção'),
+    como_conheceu: z.enum(COMO_CONHECEU_OPTIONS, {
+      errorMap: () => ({ message: 'Selecione como conheceu a UENO' }),
+    }),
+  })
+  .refine((data) => interesseSubopcoesValidas(data.interesse_categorias, data.interesse_subopcoes), {
+    message: 'Selecione uma opção válida para os serviços escolhidos',
+    path: ['interesse_subopcoes'],
+  })
 
 export type RegisterInput = z.infer<typeof registerSchema>
 

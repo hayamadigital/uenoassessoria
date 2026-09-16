@@ -6,6 +6,7 @@ const tabs = [
   { label: 'Meu Perfil', href: '/configuracoes/perfil' },
   { label: 'Segurança', href: '/configuracoes/seguranca' },
   { label: 'Usuários', href: '/configuracoes/usuarios' },
+  { label: 'Exclusões de conta', href: '/configuracoes/exclusoes' },
   { label: 'Preferências', href: '/configuracoes/preferencias' },
   { label: 'Locais', href: '/configuracoes/locais' },
   { label: 'Modelos de Contrato', href: '/configuracoes/contratos' },

@@ -1,22 +1,22 @@
-import { View, Text, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-
-export default function Stub() {
-  return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.center}>
-        <Text style={s.icon}>🚧</Text>
-        <Text style={s.title}>Em desenvolvimento</Text>
-        <Text style={s.sub}>Esta seção será implementada em breve.</Text>
-      </View>
-    </SafeAreaView>
-  )
+import { Alert, Text, TouchableOpacity, View } from 'react-native'
+import { router } from 'expo-router'
+import { signOut } from 'firebase/auth'
+import { useQueryClient } from '@tanstack/react-query'
+import { auth } from '@/lib/firebase'
+import { useAuthStore } from '@/stores/auth.store'
+import { DataScreen, styles } from '@/components/DataScreen'
+import { AccountLinks } from '@/components/AccountLinks'
+export default function Perfil() {
+  const { session, clear } = useAuthStore()
+  const cache = useQueryClient()
+  async function logout() {
+    try { await signOut(auth); cache.clear(); clear(); router.replace('/(auth)/login') }
+    catch { Alert.alert('Não foi possível sair', 'Tente novamente.') }
+  }
+  return <DataScreen title="Meu perfil"><View style={styles.card}>
+    <Text style={styles.heading}>{session?.fullName}</Text><Text style={styles.text}>{session?.email}</Text>
+    <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => router.push('/(instrutor)/perfil/alterar-senha')}><Text style={styles.link}>Alterar senha</Text></TouchableOpacity>
+    <AccountLinks />
+    <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => { void logout() }}><Text style={styles.link}>Sair</Text></TouchableOpacity>
+  </View></DataScreen>
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8FC' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  icon: { fontSize: 48, marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: '#0B1020', marginBottom: 6 },
-  sub: { fontSize: 13, color: '#5A6478', textAlign: 'center', lineHeight: 20 },
-})

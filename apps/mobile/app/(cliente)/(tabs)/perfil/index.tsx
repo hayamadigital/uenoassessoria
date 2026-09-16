@@ -7,8 +7,6 @@ import { Ionicons } from '@expo/vector-icons'
 import { auth, db } from '@/lib/firebase'
 import { signOut } from '@ueno/firebase'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
-import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
-import { listClienteSimuladoResultados } from '@ueno/firebase/queries/materiais'
 import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
@@ -60,25 +58,10 @@ export default function PerfilScreen() {
     enabled: !!session,
   })
 
-  const { data: processos } = useQuery({
-    queryKey: ['processos', cliente?.id],
-    queryFn: () => listProcessosByCliente(db, cliente!.id),
-    enabled: !!cliente,
-  })
-
-  const { data: simuladoResultados } = useQuery({
-    queryKey: ['cliente-simulado-resultados', session?.userId],
-    queryFn: () => listClienteSimuladoResultados(db, session!.userId),
-    enabled: !!session?.userId,
-  })
-
   const { data: publicConfig } = useQuery({
     queryKey: ['public-app-config'],
     queryFn: () => getPublicAppConfig(db),
   })
-
-  const ativos = processos?.filter((p) => p.status === 'ativo' || p.status === 'analise').length ?? 0
-  const totalSimulados = simuladoResultados?.length ?? 0
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja mesmo sair da sua conta?', [
@@ -142,20 +125,6 @@ export default function PerfilScreen() {
             </View>
           </View>
         </View>
-
-        {/* Stats */}
-        <View style={s.statsCard}>
-          {[
-            [String(ativos), 'Processo ativo'],
-            [String(totalSimulados), 'Simulados'],
-            [cliente?.cidade_jp ?? '—', 'Cidade'],
-          ].map(([n, l], i) => (
-            <View key={l} style={[s.statItem, i < 2 && s.statDivider]}>
-              <Text style={s.statN}>{n}</Text>
-              <Text style={s.statL}>{l}</Text>
-            </View>
-          ))}
-        </View>
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -175,7 +144,10 @@ export default function PerfilScreen() {
         </Section>
 
         <Section title="Sobre">
+          <Row icon="document-text-outline" label="Meus contratos" onPress={() => router.push('/(cliente)/contratos')} />
+          <Row icon="shield-outline" label="Política de privacidade" onPress={() => router.push('/privacidade' as any)} />
           <Row icon="chatbubble-outline" label="Falar com a equipe" onPress={openContactModal} />
+          <Row icon="trash-outline" label="Excluir minha conta" color={colors.red} onPress={() => router.push('/excluir-conta' as any)} />
           <Row icon="log-out-outline" label="Sair" color={colors.red} onPress={handleLogout} right={<View />} last />
         </Section>
       </ScrollView>
@@ -236,15 +208,6 @@ const s = StyleSheet.create({
   email: { fontSize: 12, color: 'rgba(255,255,255,.75)', marginTop: 2 },
   premiumPill: { flexDirection: 'row', alignItems: 'center', marginTop: 6, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,.16)', alignSelf: 'flex-start' },
   premiumTxt: { fontSize: 11, color: 'white', fontWeight: '600' },
-  statsCard: {
-    marginHorizontal: 20, backgroundColor: 'white', borderRadius: 18, padding: 14,
-    flexDirection: 'row',
-    shadowColor: colors.navy900, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
-  },
-  statItem: { flex: 1, alignItems: 'center' },
-  statDivider: { borderRightWidth: 1, borderRightColor: colors.ink100 },
-  statN: { fontSize: 18, fontWeight: '700', color: colors.ink900, letterSpacing: -0.3 },
-  statL: { fontSize: 10.5, color: colors.ink500, marginTop: 1 },
 
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 32 },

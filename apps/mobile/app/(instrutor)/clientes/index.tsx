@@ -1,22 +1,19 @@
-import { View, Text, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-
-export default function Stub() {
-  return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.center}>
-        <Text style={s.icon}>🚧</Text>
-        <Text style={s.title}>Em desenvolvimento</Text>
-        <Text style={s.sub}>Esta seção será implementada em breve.</Text>
-      </View>
-    </SafeAreaView>
-  )
+import { View, Text } from 'react-native'
+import { useQuery } from '@tanstack/react-query'
+import { listClientes } from '@ueno/firebase/queries/clientes'
+import { db } from '@/lib/firebase'
+import { useAuthStore } from '@/stores/auth.store'
+import { DataScreen, styles } from '@/components/DataScreen'
+export default function Clientes() {
+  const uid = useAuthStore(s => s.session?.userId)
+  const result = useQuery({ queryKey: ['instrutor-clientes', uid], enabled: !!uid,
+    queryFn: () => listClientes(db, { instrutor_id: uid! }) })
+  return <DataScreen title="Meus clientes" loading={result.isLoading} error={result.isError}
+    retry={() => { void result.refetch() }} empty={result.data?.length === 0 ? 'Nenhum cliente vinculado a você.' : undefined}>
+    {result.data?.map(item => <View key={item.id} style={styles.card}>
+      <Text style={styles.heading}>{item.profile.full_name}</Text>
+      {item.profile.phone ? <Text style={styles.text}>{item.profile.phone}</Text> : null}
+      {item.cidade_jp ? <Text style={styles.text}>{item.cidade_jp}</Text> : null}
+    </View>)}
+  </DataScreen>
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8FC' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  icon: { fontSize: 48, marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: '#0B1020', marginBottom: 6 },
-  sub: { fontSize: 13, color: '#5A6478', textAlign: 'center', lineHeight: 20 },
-})

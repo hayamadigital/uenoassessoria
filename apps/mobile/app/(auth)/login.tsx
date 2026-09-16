@@ -48,9 +48,9 @@ export default function LoginScreen() {
           <View style={s.topRow}>
             <TouchableOpacity
               style={s.backBtn}
-              onPress={() => router.replace('/(auth)/onboarding')}
+              onPress={() => router.replace('/(auth)/register')}
               accessibilityRole="button"
-              accessibilityLabel="Voltar para a apresentação"
+              accessibilityLabel="Voltar para o cadastro"
               hitSlop={8}
               activeOpacity={0.8}
             >
@@ -136,6 +136,7 @@ export default function LoginScreen() {
             <Text style={s.registerBtnTxt}>Novo acesso</Text>
           </TouchableOpacity>
 
+        <TouchableOpacity accessibilityRole="link" onPress={() => router.push('/privacidade')} style={{ paddingVertical: 16, alignItems: 'center' }}><Text style={{ color: colors.navy800 }}>Política de privacidade</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

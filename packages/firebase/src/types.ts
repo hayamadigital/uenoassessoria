@@ -75,6 +75,15 @@ export type TipoEntradaSaida = 'entrada' | 'saida'
 
 export type ProfissaoTipo = 'autonomo' | 'nao_trabalha' | 'empreiteira' | 'fabrica' | 'outros'
 
+/** Como o lead soube da UENO — coletado no cadastro rápido (app/site do evento). */
+export type ComoConheceu = 'amigos_indicacao' | 'redes_sociais' | 'evento' | 'outros'
+
+/** Categoria de interesse coletada no cadastro rápido — não é o `Servico.id` real (ver docs/cadastro-evento-especificacao.md). */
+export type InteresseCategoria = 'transferencia_habilitacao' | 'habilitacao_zero'
+
+/** Canal usado no autocadastro — só para métricas de origem do lead. */
+export type CanalCadastro = 'mobile_app' | 'web'
+
 // ─────────────────────────────────────────────
 // Collection: /users/{uid}
 // ─────────────────────────────────────────────
@@ -151,6 +160,14 @@ export interface Cliente {
   apartamento_jp: string | null
   complemento_jp: string | null
   mapa_link_jp: string | null
+  /** Serviços de interesse informados no cadastro rápido (evento/app/site) — não vinculado a `Servico.id`. Multi-seleção. */
+  interesse_categorias: InteresseCategoria[]
+  /** Sub-opções do interesse (ex.: "carro", "curso_intensivo") — cada uma pertence a alguma de `interesse_categorias`. */
+  interesse_subopcoes: string[]
+  /** Como o lead soube da UENO, informado no cadastro rápido. */
+  como_conheceu: ComoConheceu | null
+  /** Canal do autocadastro (app mobile ou site) — nulo para clientes criados pelo admin. */
+  canal_cadastro: CanalCadastro | null
   created_at: string
   updated_at: string
 }

@@ -1,3 +1,5 @@
+import { requestDeletion, processDeletion, retentionInput, validReceipt } from './account-deletion'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
 import * as admin from 'firebase-admin'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
@@ -6,7 +8,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { getStorage } from 'firebase-admin/storage'
 import axios from 'axios'
 import sanitizeHtml from 'sanitize-html'
-import { enforceRateLimit } from './rate-limit'
+import { enforceRateLimit, enforceRateLimitByIp } from './rate-limit'
 
 admin.initializeApp()
 
@@ -65,80 +67,149 @@ export const onUserCreated = onDocumentCreated(
 )
 
 // ── selfRegister ───────────────────────────────────────────────────
-// Called by the mobile app immediately after createUserWithEmailAndPassword.
-// Uses admin SDK to bypass Firestore rules, sets role claim, creates profile + cliente.
+// Chamado pelo app mobile / página do evento com nome, e-mail e demais dados —
+// SEM senha. É público (sem request.auth): cria a conta inteira no servidor via
+// Admin SDK (sem senha) e devolve sucesso; o cliente então chama
+// sendPasswordResetEmail(auth, email) pra disparar o e-mail que deixa o
+// visitante definir a própria senha e, de quebra, confirmar que o e-mail é dele.
+// Ver docs/cadastro-evento-especificacao.md — cadastro rápido de leads.
+
+const COMO_CONHECEU_VALUES = ['amigos_indicacao', 'redes_sociais', 'evento', 'outros']
+const INTERESSE_SUBOPCAO_VALUES: Record<string, string[]> = {
+  transferencia_habilitacao: ['carro', 'moto', 'caminhao'],
+  habilitacao_zero: ['curso_intensivo', 'processo_menkyou'],
+}
+const CANAL_CADASTRO_VALUES = ['mobile_app', 'web']
 
 export const selfRegister = onCall({ ...CORS }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
-  await enforceRateLimit(db, request, 'selfRegister', 5)
+  await enforceRateLimitByIp(db, request, 'selfRegister', 8)
 
-  const uid = request.auth.uid
-  const { full_name, email, data_nascimento, provincia_jp, cidade_jp } = request.data as {
+  const {
+    full_name,
+    email,
+    data_nascimento,
+    provincia_jp,
+    cidade_jp,
+    interesse_categorias,
+    interesse_subopcoes,
+    como_conheceu,
+    canal_cadastro,
+  } = request.data as {
     full_name: string
     email: string
     data_nascimento: string
     provincia_jp: string
     cidade_jp: string
+    interesse_categorias: string[]
+    interesse_subopcoes: string[]
+    como_conheceu: string
+    canal_cadastro: string
   }
 
   const normalizedName = requiredString(full_name, 'full_name', 120)
   const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
-  if (normalizedEmail !== String(request.auth.token.email ?? '').toLowerCase()) {
-    throw new HttpsError('permission-denied', 'O email deve corresponder ao usuário autenticado')
+
+  if (!Array.isArray(interesse_categorias) || interesse_categorias.length === 0) {
+    throw new HttpsError('invalid-argument', 'interesse_categorias é obrigatório')
+  }
+  const normalizedCategorias = interesse_categorias.map((c) => requiredString(c, 'interesse_categorias', 60))
+  const subopcoesValidas = new Set<string>()
+  for (const categoria of normalizedCategorias) {
+    const opcoes = INTERESSE_SUBOPCAO_VALUES[categoria]
+    if (!opcoes) throw new HttpsError('invalid-argument', 'interesse_categorias contém um valor inválido')
+    opcoes.forEach((o) => subopcoesValidas.add(o))
   }
 
-  // Prevent overwriting an existing profile (e.g. invited user trying to re-register)
-  const existingSnap = await db.collection('users').doc(uid).get()
-  if (existingSnap.exists) throw new HttpsError('already-exists', 'Perfil já existe para este usuário')
+  if (!Array.isArray(interesse_subopcoes) || interesse_subopcoes.length === 0) {
+    throw new HttpsError('invalid-argument', 'interesse_subopcoes é obrigatório')
+  }
+  const normalizedSubopcoes = interesse_subopcoes.map((s) => requiredString(s, 'interesse_subopcoes', 60))
+  if (!normalizedSubopcoes.every((s) => subopcoesValidas.has(s))) {
+    throw new HttpsError('invalid-argument', 'interesse_subopcoes contém uma opção inválida para as categorias escolhidas')
+  }
 
-  await auth.setCustomUserClaims(uid, { role: 'cliente' })
+  const normalizedComoConheceu = requiredString(como_conheceu, 'como_conheceu', 60)
+  if (!COMO_CONHECEU_VALUES.includes(normalizedComoConheceu)) {
+    throw new HttpsError('invalid-argument', 'como_conheceu é inválido')
+  }
 
-  const now = new Date().toISOString()
-  await db.collection('users').doc(uid).set({
-    id: uid,
-    role: 'cliente',
-    full_name: normalizedName,
-    email: normalizedEmail,
-    phone: null,
-    whatsapp: null,
-    avatar_url: null,
-    preferred_lang: 'pt-BR',
-    is_active: true,
-    endereco_jp: null,
-    created_at: now,
-    updated_at: now,
-  })
+  const normalizedCanal = requiredString(canal_cadastro, 'canal_cadastro', 20)
+  if (!CANAL_CADASTRO_VALUES.includes(normalizedCanal)) {
+    throw new HttpsError('invalid-argument', 'canal_cadastro é inválido')
+  }
 
-  const clienteRef = db.collection('clientes').doc()
-  await clienteRef.set({
-    id: clienteRef.id,
-    profile_id: uid,
-    data_nascimento: data_nascimento ?? null,
-    provincia_jp: provincia_jp ?? null,
-    cidade_jp: cidade_jp ?? null,
-    status_processo: 'prospect',
-    cpf: null,
-    endereco_jp: null,
-    cep_jp: null,
-    data_entrada_japao: null,
-    visto_tipo: null,
-    observacoes_internas: null,
-    observacoes_cliente: null,
-    assigned_instrutor_id: null,
-    nome_japones: null,
-    nacionalidade: 'BR',
-    zairyu_card: null,
-    visto_validade: null,
-    profissao_tipo: null,
-    profissao_empresa: null,
-    bairro_jp: null,
-    numero_bloco_jp: null,
-    apartamento_jp: null,
-    complemento_jp: null,
-    mapa_link_jp: null,
-    created_at: now,
-    updated_at: now,
-  })
+  let userRecord
+  try {
+    userRecord = await auth.createUser({
+      email: normalizedEmail,
+      displayName: normalizedName,
+      emailVerified: false,
+    })
+  } catch (e: any) {
+    if (e?.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'Este e-mail já está cadastrado.')
+    }
+    throw e
+  }
+
+  try {
+    await auth.setCustomUserClaims(userRecord.uid, { role: 'cliente' })
+
+    const now = new Date().toISOString()
+    await db.collection('users').doc(userRecord.uid).set({
+      id: userRecord.uid,
+      role: 'cliente',
+      full_name: normalizedName,
+      email: normalizedEmail,
+      phone: null,
+      whatsapp: null,
+      avatar_url: null,
+      preferred_lang: 'pt-BR',
+      is_active: true,
+      endereco_jp: null,
+      created_at: now,
+      updated_at: now,
+    })
+
+    const clienteRef = db.collection('clientes').doc()
+    await clienteRef.set({
+      id: clienteRef.id,
+      profile_id: userRecord.uid,
+      data_nascimento: data_nascimento ?? null,
+      provincia_jp: provincia_jp ?? null,
+      cidade_jp: cidade_jp ?? null,
+      status_processo: 'prospect',
+      cpf: null,
+      endereco_jp: null,
+      cep_jp: null,
+      data_entrada_japao: null,
+      visto_tipo: null,
+      observacoes_internas: null,
+      observacoes_cliente: null,
+      assigned_instrutor_id: null,
+      nome_japones: null,
+      nacionalidade: 'BR',
+      zairyu_card: null,
+      visto_validade: null,
+      profissao_tipo: null,
+      profissao_empresa: null,
+      bairro_jp: null,
+      numero_bloco_jp: null,
+      apartamento_jp: null,
+      complemento_jp: null,
+      mapa_link_jp: null,
+      interesse_categorias: normalizedCategorias,
+      interesse_subopcoes: normalizedSubopcoes,
+      como_conheceu: normalizedComoConheceu,
+      canal_cadastro: normalizedCanal,
+      created_at: now,
+      updated_at: now,
+    })
+  } catch (e) {
+    // Evita usuário órfão no Auth sem perfil no Firestore.
+    await auth.deleteUser(userRecord.uid).catch(() => {})
+    throw e
+  }
 
   return { success: true }
 })
@@ -178,7 +249,17 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
   const normalizedName = requiredString(full_name, 'full_name', 120)
   const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
 
+  const optionalFields = ['phone', 'visto_tipo', 'cidade_jp', 'endereco_jp', 'cpf', 'data_nascimento', 'observacoes_internas'] as const
+  const details: Record<string, string | null> = {}
+  for (const field of optionalFields) {
+    const value = request.data?.[field]
+    if (value != null && (typeof value !== 'string' || value.length > 2000)) {
+      throw new HttpsError('invalid-argument', `${field} inválido`)
+    }
+    details[field] = typeof value === 'string' && value.trim() ? value.trim() : null
+  }
   let userId: string | undefined
+  let clienteId: string | undefined
 
   try {
     const userRecord = await auth.createUser({
@@ -198,31 +279,32 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
       role: 'cliente',
       full_name: normalizedName,
       email: normalizedEmail,
-      phone: null,
+      phone: details.phone,
       whatsapp: whatsapp ?? null,
       avatar_url: null,
       preferred_lang: 'pt-BR',
       is_active: true,
-      endereco_jp: null,
+      endereco_jp: details.endereco_jp,
       created_at: now,
       updated_at: now,
     })
 
     // Create /clientes/{id} document
     const clienteRef = db.collection('clientes').doc()
+    clienteId = clienteRef.id
     await clienteRef.set({
       id: clienteRef.id,
       profile_id: userId,
       nacionalidade: nacionalidade ?? null,
       status_processo: 'prospect',
-      cpf: null,
-      data_nascimento: null,
-      endereco_jp: null,
-      cidade_jp: null,
+      cpf: details.cpf,
+      data_nascimento: details.data_nascimento,
+      endereco_jp: details.endereco_jp,
+      cidade_jp: details.cidade_jp,
       cep_jp: null,
       data_entrada_japao: null,
-      visto_tipo: null,
-      observacoes_internas: null,
+      visto_tipo: details.visto_tipo,
+      observacoes_internas: details.observacoes_internas,
       observacoes_cliente: null,
       assigned_instrutor_id: null,
       nome_japones: null,
@@ -245,8 +327,11 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
     return { cliente_id: clienteRef.id, user_id: userId, reset_link: resetLink }
   } catch (err) {
     if (userId) {
-      await auth.deleteUser(userId).catch(() => undefined)
+      await db.collection('users').doc(userId).delete()
+      if (clienteId) await db.collection('clientes').doc(clienteId).delete()
+      await auth.deleteUser(userId)
     }
+    if ((err as { code?: string }).code === 'auth/email-already-exists') throw new HttpsError('already-exists', 'E-mail já cadastrado')
     throw err
   }
 })
@@ -607,4 +692,51 @@ export const getAssignedClientProfile = onCall({ ...CORS }, async (request) => {
     throw new HttpsError('permission-denied', 'Perfil indisponível')
   }
   return { ...profile.data(), id: profile.id }
+})
+
+// Account deletion: users initiate in-app; staff complete after checking retention.
+export const requestAccountDeletion = onCall({ ...CORS }, async request => {
+  await enforceRateLimit(db, request, 'requestAccountDeletion', 5)
+  return requestDeletion(db, request)
+})
+
+export const getAccountDeletionReceipt = onCall({ ...CORS, maxInstances: 5 }, async request => {
+  const id = requiredString(request.data?.id, 'id', 128)
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new HttpsError('invalid-argument', 'Protocolo inválido')
+  const snap = await db.collection('account_deletions').doc(id).get()
+  if (!snap.exists || !validReceipt(request.data?.receipt, snap.data()?.receipt_hash)) {
+    throw new HttpsError('not-found', 'Protocolo não encontrado')
+  }
+  return { status: snap.data()!.status, requested_at: snap.data()!.requested_at ?? null,
+    completed_at: snap.data()!.completed_at ?? null, retention: snap.data()!.retention ?? null }
+})
+
+export const completeAccountDeletion = onCall({ ...CORS, timeoutSeconds: 540, memory: '512MiB' }, async request => {
+  await assertAdmin(request)
+  await enforceRateLimit(db, request, 'completeAccountDeletion', 5)
+  const uid = requiredString(request.data?.uid, 'uid', 128)
+  if (!/^[a-zA-Z0-9_-]+$/.test(uid)) throw new HttpsError('invalid-argument', 'UID inválido')
+  if (request.data?.confirmation !== 'EXCLUIR') throw new HttpsError('invalid-argument', 'Confirme a exclusão')
+  if (uid === request.auth!.uid) throw new HttpsError('failed-precondition', 'Outro administrador deve concluir sua solicitação.')
+  const retention = retentionInput(request.data)
+  const ref = db.collection('account_deletions').doc(uid)
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref)
+    if (!snap.exists) throw new HttpsError('not-found', 'Solicitação não encontrada')
+    if (snap.data()?.status === 'completed') return
+    if (Number(snap.data()?.lease_until ?? 0) > Date.now()) throw new HttpsError('aborted', 'Exclusão em andamento. Aguarde.')
+    tx.update(ref, { status: 'processing', lease_until: Date.now() + 600_000,
+      retention: snap.data()?.status === 'processing' ? snap.data()?.retention ?? null : retention })
+  })
+  try { await processDeletion(db, auth, storage, uid, retention) }
+  catch (error) { await ref.update({ lease_until: 0 }); throw error }
+  return { success: true }
+})
+
+export const purgeExpiredRetainedAccounts = onSchedule('every 24 hours', async () => {
+  const expired = await db.collection('_retained_accounts').where('expires_at', '<=', new Date().toISOString()).get()
+  for (const account of expired.docs) {
+    await storage.bucket().deleteFiles({ prefix: `retained-accounts/${account.id}/` })
+    await db.recursiveDelete(account.ref)
+  }
 })

@@ -11,43 +11,22 @@ import { listEtapasByProcesso } from '@ueno/firebase/queries/etapas'
 import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import { countUnreadNotificacoes } from '@ueno/firebase/queries/notificacoes'
 import { listAvisosAtivos } from '@ueno/firebase/queries/avisos'
-import { listCategoriasMaterial, listMateriais } from '@ueno/firebase/queries/materiais'
-import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { listFaqs } from '@ueno/firebase/queries/faq'
-import { listServicos } from '@ueno/firebase/queries/servicos'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
 import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import type { Aviso, CategoriaMaterial, Material, FAQ, Servico, PublicAppConfig } from '@ueno/firebase'
+import type { Aviso, FAQ } from '@ueno/firebase'
 
 const { FlatList, useWindowDimensions } = require('react-native') as any
-
-const QUICK_ACTIVE = [
-  { label: 'Enviar\ndocumento', icon: 'cloud-upload-outline' as const, color: colors.navy800, route: '/(cliente)/documentos' },
-  { label: 'Agendar\nconsulta', icon: 'calendar-outline' as const, color: '#0891B2', route: '/(cliente)/agenda' },
-  { label: 'Falar com\nequipe', icon: 'chatbubble-outline' as const, color: '#0F766E', route: '/(cliente)/faq' },
-  { label: 'Faturas', icon: 'card-outline' as const, color: '#7E22CE', route: '/(cliente)/financeiro' },
-]
-
-const SERVICE_CARD_COLORS = [colors.navy800, '#0891B2', '#0F766E', '#7E22CE', colors.warn]
 
 const AVISO_TIPO_LABEL: Record<string, string> = {
   logistica: 'Logística',
   promocao: 'Promoção',
   data_comemorativa: 'Data especial',
   geral: 'Aviso',
-}
-
-const MATERIAL_TYPE_META: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; hint: string }> = {
-  pdf: { label: 'PDF', icon: 'document-text-outline', color: '#1E3A8A', hint: 'Leitura rápida' },
-  video: { label: 'VÍDEO', icon: 'play-circle-outline', color: '#0891B2', hint: 'Assista no app' },
-  link: { label: 'LINK', icon: 'link-outline', color: '#0F766E', hint: 'Abrir conteúdo' },
-  texto: { label: 'TEXTO', icon: 'book-outline', color: '#7E22CE', hint: 'Conteúdo direto' },
-  simulado: { label: 'SIMULADO', icon: 'newspaper-outline', color: colors.navy800, hint: 'Treinar questões' },
-  card: { label: 'CARDS', icon: 'albums-outline', color: '#FB923C', hint: 'Memorizar com imagens' },
 }
 
 export default function InicioScreen() {
@@ -97,36 +76,11 @@ export default function InicioScreen() {
   const hour = now.getHours()
   const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
   const hasActiveProcess = !!activeProcesso
-  const canViewPrivateMaterials = (processos ?? []).some((processo) => processo.status === 'ativo' || processo.status === 'analise')
   const etapaAtualLabel = (etapaAtual as any)?.titulo ?? 'Análise de documentos'
-
-  const { data: categoriasMateriais = [] } = useQuery({
-    queryKey: ['categorias-material', session?.userId],
-    queryFn: () => listCategoriasMaterial(db),
-    enabled: !!session,
-  })
-
-  const { data: materiaisPublicos = [] } = useQuery({
-    queryKey: ['materiais-publicos', session?.userId, canViewPrivateMaterials],
-    queryFn: () => listMateriais(db, undefined, !canViewPrivateMaterials),
-    enabled: !!session,
-  })
-
-  const { data: publicConfig = null } = useQuery({
-    queryKey: ['public-config'],
-    queryFn: () => getPublicAppConfig(db),
-    enabled: !!session,
-  })
 
   const { data: faqs = [] } = useQuery({
     queryKey: ['faq-public'],
     queryFn: () => listFaqs(db),
-    enabled: !!session,
-  })
-
-  const { data: servicos = [] } = useQuery({
-    queryKey: ['servicos-public'],
-    queryFn: () => listServicos(db, true),
     enabled: !!session,
   })
 
@@ -140,39 +94,6 @@ export default function InicioScreen() {
     const published = faqs.filter((item) => item?.is_active)
     return published.slice(0, 3)
   }, [faqs])
-  const featuredServices = useMemo(() => {
-    const priority = ['Transferência', 'Habilitação']
-    const picked = servicos
-      .filter((servico) => servico?.is_active)
-      .sort((a, b) => {
-        const aName = String(a?.nome ?? '')
-        const bName = String(b?.nome ?? '')
-        const aScore = priority.findIndex((item) => aName.includes(item))
-        const bScore = priority.findIndex((item) => bName.includes(item))
-        return (aScore === -1 ? 99 : aScore) - (bScore === -1 ? 99 : bScore)
-      })
-      .slice(0, 2)
-
-    return picked.length > 0
-      ? picked
-      : [
-          { id: 'catalogo', nome: 'Ver catálogo completo', descricao: 'Conheça todos os serviços disponíveis.', price: 'Catálogo', badge: null, icon: 'layers-outline', accent: '#1E3A8A', banner: 'cnh' },
-        ]
-  }, [servicos])
-  const featuredMaterialCategory = useMemo(() => {
-    const categoryId = publicConfig?.home_material_category_id
-    if (!categoryId) return null
-    const categoria = categoriasMateriais.find((item) => item.id === categoryId)
-    if (!categoria) return null
-    const materials = materiaisPublicos.filter(
-      (material) =>
-        material.is_active !== false &&
-        (material.is_public || canViewPrivateMaterials) &&
-        material.categoria_id === categoryId,
-    )
-    return materials.length > 0 ? { ...categoria, materials } : null
-  }, [canViewPrivateMaterials, categoriasMateriais, materiaisPublicos, publicConfig?.home_material_category_id])
-  const featuredMaterials = featuredMaterialCategory?.materials.slice(0, 3) ?? []
 
   return (
     <SafeAreaView style={s.safe}>
@@ -189,8 +110,6 @@ export default function InicioScreen() {
             activeProcesso={activeProcesso}
             avisos={avisos}
             featuredFaqs={featuredFaqs}
-            featuredMaterialCategory={featuredMaterialCategory}
-            featuredMaterials={featuredMaterials}
             totalEtapas={totalEtapas}
             currentStepIndex={currentStepIndex}
             etapaAtualLabel={etapaAtualLabel}
@@ -200,9 +119,6 @@ export default function InicioScreen() {
           <FreeHome
             avisos={avisos}
             featuredFaqs={featuredFaqs}
-            featuredServices={featuredServices}
-            featuredMaterialCategory={featuredMaterialCategory}
-            featuredMaterials={featuredMaterials}
           />
         )}
       </ScrollView>
@@ -242,8 +158,6 @@ function ActiveHome({
   activeProcesso,
   avisos,
   featuredFaqs,
-  featuredMaterialCategory,
-  featuredMaterials,
   totalEtapas,
   currentStepIndex,
   etapaAtualLabel,
@@ -252,8 +166,6 @@ function ActiveHome({
   activeProcesso: any
   avisos: Aviso[]
   featuredFaqs: any[]
-  featuredMaterialCategory: (CategoriaMaterial & { materials: Material[] }) | null
-  featuredMaterials: Material[]
   totalEtapas: number
   currentStepIndex: number
   etapaAtualLabel: string
@@ -313,18 +225,6 @@ function ActiveHome({
         </View>
       </TouchableOpacity>
 
-      <Text style={s.sectionLabel}>ACESSO RÁPIDO</Text>
-      <View style={s.quickGrid}>
-        {QUICK_ACTIVE.map((q) => (
-          <TouchableOpacity key={q.label} style={s.quickItem} onPress={() => router.push(q.route as any)} activeOpacity={0.75}>
-            <View style={s.quickIconWrap}>
-              <Ionicons name={q.icon} size={22} color={q.color} />
-            </View>
-            <Text style={s.quickLabel}>{q.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       {proxAgendamento && (
         <TouchableOpacity style={s.nextAppt} activeOpacity={0.8} onPress={() => router.push('/(cliente)/agenda' as any)}>
           <View style={s.nextApptDate}>
@@ -350,11 +250,6 @@ function ActiveHome({
           <Ionicons name="chevron-forward" size={18} color={colors.navy800} />
         </TouchableOpacity>
       )}
-
-      <FeaturedMaterialsSection
-        featuredMaterialCategory={featuredMaterialCategory}
-        featuredMaterials={featuredMaterials}
-      />
 
       <View style={s.faqHeader}>
         <Text style={s.sectionLabel}>FAQ</Text>
@@ -385,15 +280,9 @@ function ActiveHome({
 function FreeHome({
   avisos,
   featuredFaqs,
-  featuredServices,
-  featuredMaterialCategory,
-  featuredMaterials,
 }: {
   avisos: Aviso[]
   featuredFaqs: any[]
-  featuredServices: any[]
-  featuredMaterialCategory: (CategoriaMaterial & { materials: Material[] }) | null
-  featuredMaterials: Material[]
 }) {
   return (
     <>
@@ -411,16 +300,13 @@ function FreeHome({
 
         <Text style={s.freeHeroTitle}>Pronta para dirigir no Japão?</Text>
         <Text style={s.freeHeroText}>
-          Estude com nossos simulados gratuitos e descubra o melhor serviço para o seu caso.
+          Fale com a nossa equipe e descubra o melhor caminho para o seu caso.
         </Text>
 
         <View style={s.freeHeroButtons}>
-          <TouchableOpacity style={s.freeHeroPrimaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/(tabs)/simulados' as any)}>
-            <Ionicons name="book-outline" size={14} color={colors.navy800} />
-            <Text style={s.freeHeroPrimaryTxt}>Estudar agora</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.freeHeroSecondaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/(tabs)/catalogos' as any)}>
-            <Text style={s.freeHeroSecondaryTxt}>Ver serviços</Text>
+          <TouchableOpacity style={s.freeHeroPrimaryBtn} activeOpacity={0.82} onPress={() => router.push('/(cliente)/faq' as any)}>
+            <Ionicons name="chatbubble-outline" size={14} color={colors.navy800} />
+            <Text style={s.freeHeroPrimaryTxt}>Falar com a equipe</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -431,7 +317,7 @@ function FreeHome({
             <Text style={s.onboardEyebrow}>COMECE POR AQUI</Text>
             <Text style={s.onboardTitle}>Configure sua conta</Text>
           </View>
-          <Text style={s.onboardProgressTxt}>2 de 4</Text>
+          <Text style={s.onboardProgressTxt}>2 de 3</Text>
         </View>
 
         <View style={s.onboardProgressBar}>
@@ -446,11 +332,6 @@ function FreeHome({
               t: 'Complete dados pessoais',
               current: true,
               onPress: () => router.push('/(cliente)/(tabs)/perfil/dados-pessoais', { withAnchor: true }),
-            },
-            {
-              t: 'Faça seu primeiro simulado',
-              done: false,
-              onPress: () => router.push('/(cliente)/(tabs)/simulados' as any),
             },
           ].map((item) => (
             <TouchableOpacity
@@ -480,26 +361,6 @@ function FreeHome({
             </TouchableOpacity>
           ))}
         </View>
-      </View>
-
-      <FeaturedMaterialsSection
-        featuredMaterialCategory={featuredMaterialCategory}
-        featuredMaterials={featuredMaterials}
-      />
-
-      <View style={s.sectionHeaderRow}>
-        <Text style={s.sectionLabel}>SERVIÇOS PARA VOCÊ</Text>
-        <Text style={s.sectionLink}>Catálogo</Text>
-      </View>
-      <View style={{ gap: 10, marginBottom: 22 }}>
-        {featuredServices.map((service, index) => (
-          <HomeServiceCard
-            key={service.id ?? service.nome ?? index}
-            servico={service}
-            color={SERVICE_CARD_COLORS[index % SERVICE_CARD_COLORS.length]}
-            onPress={() => router.push(service.id && service.id !== 'catalogo' ? (`/(cliente)/servicos/${service.id}` as any) : ('/(cliente)/(tabs)/catalogos' as any))}
-          />
-        ))}
       </View>
 
       <TouchableOpacity style={s.assessmentCard} activeOpacity={0.78} onPress={() => router.push('/(cliente)/faq' as any)}>
@@ -537,117 +398,6 @@ function FreeHome({
       </View>
     </>
   )
-}
-
-function FeaturedMaterialsSection({
-  featuredMaterialCategory,
-  featuredMaterials,
-}: {
-  featuredMaterialCategory: (CategoriaMaterial & { materials: Material[] }) | null
-  featuredMaterials: Material[]
-}) {
-  if (!featuredMaterialCategory || featuredMaterials.length === 0) return null
-
-  return (
-    <>
-      <View style={s.sectionHeaderRow}>
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text style={s.sectionLabel}>{featuredMaterialCategory.nome.toUpperCase()}</Text>
-          <Text style={s.materialSectionSub}>Recomendado para você</Text>
-        </View>
-        <TouchableOpacity onPress={() => router.push('/(cliente)/(tabs)/simulados' as any)}>
-          <Text style={s.verTudo}>Ver tudo</Text>
-        </TouchableOpacity>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recommendedRow}>
-        {featuredMaterials.map((material) => {
-          const meta = MATERIAL_TYPE_META[material.tipo] ?? MATERIAL_TYPE_META.texto
-          const target = material.tipo === 'simulado'
-            ? `/(cliente)/simulados?simuladoId=${material.id}`
-            : `/(cliente)/materiais?id=${material.id}`
-          return (
-            <TouchableOpacity
-              key={material.id}
-              style={[s.recommendedCard, { backgroundColor: meta.color }]}
-              activeOpacity={0.84}
-              onPress={() => router.push(target as any)}
-            >
-              <View style={s.recommendedGlow} />
-              <View style={[s.chip, s.recommendedTag]}>
-                <Text style={s.recommendedTagTxt}>{meta.label}</Text>
-              </View>
-              <View style={{ height: 34 }} />
-              <Ionicons name={meta.icon} size={26} color={colors.white} />
-              <Text style={s.recommendedTitle}>{material.titulo}</Text>
-              <Text style={s.recommendedText} numberOfLines={2}>
-                {material.descricao ?? meta.hint}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
-      </ScrollView>
-    </>
-  )
-}
-
-function HomeServiceCard({
-  servico,
-  color,
-  onPress,
-}: {
-  servico: any
-  color: string
-  onPress: () => void
-}) {
-  const [imageFailed, setImageFailed] = useState(false)
-  const imageUri = servico.imagem_url?.trim()
-
-  return (
-    <TouchableOpacity style={s.serviceCard} onPress={onPress} activeOpacity={0.88}>
-      <View style={[s.serviceCardBanner, { backgroundColor: color + '18' }]}>
-        {imageUri && !imageFailed ? (
-          <>
-            <AppImage
-              source={{ uri: imageUri }}
-              style={s.serviceCardBannerImage}
-              onError={() => setImageFailed(true)}
-            />
-            <View style={s.serviceCardBannerOverlay} />
-          </>
-        ) : (
-          <>
-            <Ionicons name="car-outline" size={36} color={color} />
-            <Text style={[s.serviceCardBannerTxt, { color: color + '80' }]}>Imagem do serviço</Text>
-          </>
-        )}
-      </View>
-
-      <View style={{ padding: 16 }}>
-        <Text style={s.serviceTitle}>{servico.nome ?? servico.t}</Text>
-        <Text style={s.serviceDesc} numberOfLines={3}>
-          {servico.descricao ?? servico.d}
-        </Text>
-          <View style={s.serviceFooter}>
-            <View>
-              <Text style={s.servicePriceLabel}>A PARTIR DE</Text>
-              <Text style={s.servicePrice}>{formatPrecoServico(servico)}</Text>
-            </View>
-          <View style={s.serviceBtn}>
-            <Text style={s.serviceBtnTxt}>Ver serviço</Text>
-            <Ionicons name="chevron-forward" size={14} color="white" />
-          </View>
-        </View>
-      </View>
-    </TouchableOpacity>
-  )
-}
-
-function formatPrecoServico(servico: any) {
-  if (servico?.usa_variacoes) return 'Variações'
-  if (servico?.preco_variavel && servico?.preco_min_jpy != null && servico?.preco_max_jpy != null) {
-    return `¥ ${servico.preco_min_jpy.toLocaleString('ja-JP')} - ¥ ${servico.preco_max_jpy.toLocaleString('ja-JP')}`
-  }
-  return servico?.preco_jpy != null ? `¥ ${servico.preco_jpy.toLocaleString('ja-JP')}` : 'Sob consulta'
 }
 
 function AvisosSection({ avisos }: { avisos: Aviso[] }) {
@@ -785,10 +535,6 @@ const s = StyleSheet.create({
 
   sectionLabel: { fontSize: 13, fontWeight: '600', color: colors.ink500, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  quickGrid: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  quickItem: { flex: 1, alignItems: 'center' },
-  quickIconWrap: { width: '100%', aspectRatio: 1, borderRadius: 16, backgroundColor: colors.ink50, borderWidth: 1, borderColor: colors.ink100, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  quickLabel: { fontSize: 10.5, fontWeight: '500', color: colors.ink700, textAlign: 'center', lineHeight: 14 },
 
   nextAppt: {
     backgroundColor: colors.navy50,
@@ -864,18 +610,6 @@ const s = StyleSheet.create({
     backgroundColor: colors.white,
   },
   freeHeroPrimaryTxt: { fontSize: 12.5, fontWeight: '700', color: colors.navy800 },
-  freeHeroSecondaryBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 11,
-    backgroundColor: 'rgba(255,255,255,.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  freeHeroSecondaryTxt: { fontSize: 12.5, fontWeight: '600', color: colors.white },
 
   onboardCard: {
     backgroundColor: colors.white,
@@ -895,7 +629,7 @@ const s = StyleSheet.create({
   onboardTitle: { fontSize: 13.5, fontWeight: '700', color: colors.ink900, marginTop: 2 },
   onboardProgressTxt: { fontSize: 11, fontWeight: '700', color: colors.navy800 },
   onboardProgressBar: { height: 5, borderRadius: 3, backgroundColor: colors.ink100, overflow: 'hidden', marginBottom: 14 },
-  onboardProgressFill: { width: '50%', height: '100%', borderRadius: 3, backgroundColor: colors.navy800 },
+  onboardProgressFill: { width: '67%', height: '100%', borderRadius: 3, backgroundColor: colors.navy800 },
   onboardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   onboardDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.ink100, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   onboardDotDone: { backgroundColor: '#16A34A' },
@@ -904,63 +638,6 @@ const s = StyleSheet.create({
   onboardRowText: { flex: 1, fontSize: 12.5, fontWeight: '500', color: colors.ink900 },
   onboardRowDone: { color: colors.ink400, textDecorationLine: 'line-through' },
   onboardRowCurrent: { fontWeight: '700' },
-
-  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 },
-  sectionLink: { fontSize: 11.5, color: colors.navy800, fontWeight: '600' },
-  recommendedRow: { gap: 11, paddingRight: 2, marginBottom: 22 },
-  recommendedCard: {
-    minWidth: 200,
-    borderRadius: 16,
-    padding: 14,
-    color: colors.white,
-    overflow: 'hidden',
-  },
-  recommendedGlow: { position: 'absolute', right: -20, top: -20, width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,.1)' },
-  recommendedTag: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,.2)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
-  recommendedTagTxt: { fontSize: 9, fontWeight: '700', color: colors.white },
-  recommendedTitle: { fontSize: 13, fontWeight: '700', color: colors.white, lineHeight: 18, marginTop: 8 },
-  recommendedText: { fontSize: 10.5, color: 'rgba(255,255,255,.88)', marginTop: 3, lineHeight: 14 },
-  materialSectionSub: { fontSize: 11.5, color: colors.ink500, fontWeight: '500', marginTop: -3 },
-
-  serviceCard: {
-    backgroundColor: colors.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.ink100,
-    shadowColor: colors.navy900,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    elevation: 1,
-    overflow: 'hidden',
-  },
-  serviceCardBanner: {
-    height: 112,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  serviceCardBannerImage: { width: '100%', height: '100%' },
-  serviceCardBannerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(9, 24, 41, 0.06)' },
-  serviceCardBannerTxt: { fontSize: 12, fontWeight: '600', letterSpacing: -0.1 },
-  serviceTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink900, letterSpacing: -0.3, lineHeight: 19 },
-  serviceDesc: { fontSize: 12.5, color: colors.ink500, lineHeight: 18 },
-  serviceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.ink100, borderStyle: 'dashed', marginTop: 12 },
-  servicePriceLabel: { fontSize: 10, color: colors.ink400, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  servicePrice: { fontSize: 15, fontWeight: '700', color: colors.ink900, marginTop: 1 },
-  serviceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: colors.navy800,
-  },
-  serviceBtnTxt: { fontSize: 13, fontWeight: '600', color: 'white' },
 
   assessmentCard: {
     backgroundColor: '#FEF3C7',

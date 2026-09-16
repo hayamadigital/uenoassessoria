@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Switch } from 'react-native'
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Switch, Alert, Share } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
+import { httpsCallable } from 'firebase/functions'
+import { functions } from '@/lib/firebase'
+import { useQueryClient } from '@tanstack/react-query'
 import { colors } from '@/theme'
 
 type Step = 1 | 2 | 3
@@ -10,7 +13,7 @@ type Step = 1 | 2 | 3
 const STEPS: { n: Step; label: string }[] = [
   { n: 1, label: 'Identidade' },
   { n: 2, label: 'Contato' },
-  { n: 3, label: 'Serviço' },
+  { n: 3, label: 'Observações' },
 ]
 
 const VISTOS = ['Permanente · 永住者', 'Temporário · 定住者', 'Técnico · 技術', 'Estudante · 留学', 'Outro']
@@ -48,6 +51,8 @@ function FieldInput({
 }
 
 export default function NovoClienteScreen() {
+  const cache = useQueryClient()
+  const [saving, setSaving] = useState(false)
   const [step, setStep] = useState<Step>(1)
   const [enviaBV, setEnviaBV] = useState(true)
 
@@ -68,9 +73,28 @@ export default function NovoClienteScreen() {
   // Step 3 — Serviço
   const [observacoes, setObservacoes] = useState('')
 
-  const handleNext = () => {
-    if (step < 3) setStep((s) => (s + 1) as Step)
-    // TODO: submit on step 3
+  const handleNext = async () => {
+    if (saving) return
+    if (!nome.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert('Confira os dados', 'Informe o nome e um e-mail válido.'); return
+    }
+    if (step < 3) { setStep((s) => (s + 1) as Step); return }
+    setSaving(true)
+    try {
+      const create = httpsCallable<Record<string, string>, { cliente_id: string; reset_link: string }>(functions, 'createCliente')
+      const { data } = await create({ full_name: nome.trim(), email: email.trim(), whatsapp,
+        phone: telefone, visto_tipo: visto, cidade_jp: cidade, endereco_jp: endereco,
+        cpf, data_nascimento: nascimento, observacoes_internas: observacoes })
+      await cache.invalidateQueries({ queryKey: ['clientes'] })
+      if (enviaBV) {
+        try { await Share.share({ message: `Olá, ${nome.trim()}! Crie sua senha para acessar a Ueno Assessoria: ${data.reset_link}` }) }
+        catch { Alert.alert('Cliente criado', 'O compartilhamento não foi concluído. Você pode gerar um novo convite pelo painel web.') }
+      }
+      router.replace(`/(admin)/(tabs)/clientes/${data.cliente_id}`)
+    } catch (error: unknown) {
+      const code = (error as { code?: string }).code
+      Alert.alert('Não foi possível criar', code === 'functions/already-exists' ? 'Este e-mail já está cadastrado.' : 'Verifique os dados e tente novamente.')
+    } finally { setSaving(false) }
   }
 
   const handleBack = () => {
@@ -110,7 +134,7 @@ export default function NovoClienteScreen() {
           <View style={s.avatarCircle}>
             <Ionicons name="person-outline" size={28} color={colors.ink400} />
           </View>
-          <Text style={s.avatarTxt}>Adicionar foto</Text>
+          <Text style={s.avatarTxt}>Novo cliente</Text>
         </View>
 
         {step === 1 && (
@@ -199,7 +223,7 @@ export default function NovoClienteScreen() {
         {/* Toggle boas-vindas */}
         <View style={s.toggleRow}>
           <Ionicons name="notifications-outline" size={15} color={colors.navy800} />
-          <Text style={s.toggleTxt}>Enviar e-mail de boas-vindas</Text>
+          <Text style={s.toggleTxt}>Compartilhar convite após criar</Text>
           <Switch
             value={enviaBV}
             onValueChange={setEnviaBV}
@@ -213,8 +237,8 @@ export default function NovoClienteScreen() {
           <TouchableOpacity style={s.btnBack} onPress={handleBack} activeOpacity={0.8}>
             <Text style={s.btnBackTxt}>Voltar</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.btnNext} onPress={handleNext} activeOpacity={0.8}>
-            <Text style={s.btnNextTxt}>{step === 3 ? 'Criar cliente' : 'Próximo'}</Text>
+          <TouchableOpacity style={s.btnNext} disabled={saving} onPress={() => { void handleNext() }} activeOpacity={0.8}>
+            <Text style={s.btnNextTxt}>{saving ? 'Criando…' : step === 3 ? 'Criar cliente' : 'Próximo'}</Text>
             {step < 3 && <Ionicons name="chevron-forward" size={14} color="white" />}
           </TouchableOpacity>
         </View>

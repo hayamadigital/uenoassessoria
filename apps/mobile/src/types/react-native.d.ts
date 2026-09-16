@@ -22,6 +22,8 @@ declare module 'react-native' {
   export const KeyboardAvoidingView: ComponentType<any>
   export const Modal: ComponentType<any>
 
+  export const Share: { share: (content: { message: string }) => Promise<unknown> }
+
   export const Keyboard: {
     dismiss: () => void
   }

@@ -1,22 +1,24 @@
-import { View, Text, StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-
-export default function Stub() {
-  return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.center}>
-        <Text style={s.icon}>🚧</Text>
-        <Text style={s.title}>Em desenvolvimento</Text>
-        <Text style={s.sub}>Esta seção será implementada em breve.</Text>
-      </View>
-    </SafeAreaView>
-  )
+import { Alert, Linking, Text, TouchableOpacity, View } from 'react-native'
+import { useQuery } from '@tanstack/react-query'
+import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
+import { listContratos } from '@ueno/firebase/queries/contratos'
+import { db } from '@/lib/firebase'
+import { useAuthStore } from '@/stores/auth.store'
+import { DataScreen, styles } from '@/components/DataScreen'
+const labels: Record<string, string> = { rascunho: 'Rascunho', enviado: 'Aguardando assinatura', assinado: 'Assinado', cancelado: 'Cancelado' }
+export default function Contratos() {
+  const uid = useAuthStore(s => s.session?.userId)
+  const result = useQuery({ queryKey: ['meus-contratos', uid], enabled: !!uid,
+    queryFn: async () => { const cliente = await getClienteByProfileId(db, uid!); return listContratos(db, cliente.id) } })
+  async function open(url: string) {
+    try { if (!url.startsWith('https://')) throw new Error(); await Linking.openURL(url) }
+    catch { Alert.alert('Não foi possível abrir', 'Tente novamente ou entre em contato com a equipe.') }
+  }
+  return <DataScreen back title="Meus contratos" loading={result.isLoading} error={result.isError}
+    retry={() => { void result.refetch() }} empty={result.data?.length === 0 ? 'Você ainda não tem contratos.' : undefined}>
+    {result.data?.map(item => <View key={item.id} style={styles.card}>
+      <Text style={styles.heading}>{item.titulo}</Text><Text style={styles.text}>{labels[item.status] ?? item.status}</Text>
+      {item.pdf_url ? <TouchableOpacity accessibilityRole="link" style={styles.button} onPress={() => { void open(item.pdf_url!) }}><Text style={styles.link}>Abrir contrato</Text></TouchableOpacity> : <Text style={styles.text}>O documento estará disponível quando a equipe finalizar o envio.</Text>}
+    </View>)}
+  </DataScreen>
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F8FC' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  icon: { fontSize: 48, marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: '#0B1020', marginBottom: 6 },
-  sub: { fontSize: 13, color: '#5A6478', textAlign: 'center', lineHeight: 20 },
-})

@@ -125,8 +125,19 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'book' : 'book-outline'} size={24} color={color} />
           ),
+          href: null,
         }}
       />
+      <Tabs.Screen
+        name="faq/index"
+        options={{
+          title: 'FAQ',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'help-circle' : 'help-circle-outline'} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen name="faq/[id]" options={{ href: null }} />
       <Tabs.Screen
         name="processos/index"
         options={{
@@ -150,6 +161,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'layers' : 'layers-outline'} size={24} color={color} />
           ),
+          href: null,
         }}
       />
       <Tabs.Screen

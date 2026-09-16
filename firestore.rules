@@ -2,9 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    match /account_deletions/{uid} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // ── Helper functions ───────────────────────────────────────────
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && (!exists(/databases/$(database)/documents/account_deletions/$(request.auth.uid))
+          || get(/databases/$(database)/documents/account_deletions/$(request.auth.uid)).data.status == 'pending');
     }
 
     function isAdmin() {

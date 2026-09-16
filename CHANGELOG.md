@@ -5,6 +5,92 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-09-16] — Cadastro rápido de evento (mobile + web)
+
+Preparação para um evento em ~4 dias: fluxo de captação de leads que cria conta e abre o WhatsApp da UENO com a mensagem pronta. Especificação em `docs/cadastro-evento-especificacao.md`.
+
+### Cadastro sem senha
+- `functions/src/index.ts` — `selfRegister` reescrita: passa a ser **pública** (sem exigir login prévio), cria a conta inteira no servidor (Admin SDK, sem senha), valida `interesse_categorias`/`interesse_subopcoes` como arrays; se a gravação no Firestore falhar depois de criar o usuário no Auth, desfaz (`auth.deleteUser`) pra não deixar conta órfã.
+- `functions/src/rate-limit.ts` — `enforceRateLimitByIp` (novo), pra limitar chamadas públicas que não têm `request.auth`.
+- `apps/mobile/app/(auth)/register.tsx` e `apps/web/src/pages/evento/CadastroEventoPage.tsx` — campo de senha removido do formulário; depois do cadastro, disparam `sendPasswordResetEmail(auth, email)` (com `auth.languageCode = 'pt-BR'`) em vez de `sendVerificationEmail` — é esse e-mail que deixa o visitante definir a senha e confirma o e-mail de quebra.
+- Mobile: ao voltar do WhatsApp, a tela mostra "cadastro enviado, confirme seu e-mail" em vez de deixar o formulário preenchido por baixo (mesmo padrão que a versão web já tinha).
+
+### Formulário
+- `packages/utils/src/cadastro-evento.ts` (novo) — enums/labels de interesse (categoria + sub-opção) e "como conheceu a UENO", com suporte a **múltipla escolha** (`subopcoesDisponiveis`, `interesseSubopcoesValidas`, `buildInteresseResumo`).
+- `packages/utils/src/cidades-japao.ts` (novo) — ~260 cidades japonesas pra autocomplete local, sem API externa (mais denso em regiões com comunidade brasileira: Aichi, Shizuoka, Gunma, Mie, Gifu, Ibaraki, Nagano).
+- `packages/utils/src/validators.ts` — `registerSchema` sem `password`; `interesse_categoria`/`interesse_subopcao` (valor único) viraram `interesse_categorias`/`interesse_subopcoes` (arrays).
+- `packages/firebase/src/types.ts` — `Cliente.interesse_categorias`/`interesse_subopcoes` (arrays); tipos `ComoConheceu`, `InteresseCategoria`, `CanalCadastro`.
+- `apps/mobile/src/components/CityAutocomplete.tsx` e `apps/web/src/components/CityAutocomplete.tsx` (novos).
+- Pergunta "Já conhecia a UENO ASSESSORIA?" virou "Como conheceu a UENO ASSESSORIA?" nas duas telas.
+
+### Onboarding (mobile)
+- `apps/mobile/app/(auth)/onboarding.tsx` — ao terminar, leva pro **cadastro** em vez do login.
+- `apps/mobile/app/(auth)/register.tsx` / `(auth)/login.tsx` — botões de voltar e "Já tenho cadastro"/"Novo acesso" ajustados pra hierarquia onboarding → cadastro → login.
+- `apps/mobile/app/(auth)/login.tsx` — removido o link "Acompanhar exclusão de conta" (a tela `/excluir-conta` continua existindo, só sem entrada nessa tela).
+
+### Menu e Home do cliente reduzidos
+- `apps/mobile/app/(cliente)/(tabs)/_layout.tsx` — abas "Simulados" e "Serviços" escondidas (`href: null`, código não removido); aba **FAQ** nova (`(cliente)/(tabs)/faq/`, re-exporta a tela que já existia em `(cliente)/faq/` sem duplicar código).
+- `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx` — removidos: seção "Serviços para você", seção "Recomendações" (nas duas variantes de Home, com e sem processo ativo), seção "Acesso rápido", passo "Faça seu primeiro simulado" do checklist de onboarding, botões "Estudar agora"/"Ver serviços" do banner (trocados por "Falar com a equipe" → FAQ). Código morto removido junto: queries de serviços/materiais, `HomeServiceCard`, `FeaturedMaterialsSection` e ~15 estilos que só serviam essas seções (arquivo caiu de 1014 para ~600 linhas).
+- `apps/mobile/app/(cliente)/(tabs)/perfil/index.tsx` — removida a KPI (Processo ativo / Simulados / Cidade) abaixo da foto; "Política de privacidade" e "Excluir minha conta" viraram itens de lista com ícone, no mesmo padrão visual do resto da tela (antes eram links de texto soltos).
+
+### Config de produção
+- `app_config/public.support_whatsapp` atualizado em produção para `+81 80 3688-1507` (mesmo número, só reformatado) — feito direto via `service-account.json` local, não pela tela de Configurações.
+
+### Validação
+- `tsc --noEmit` limpo em `apps/mobile`, `apps/web`, `packages/utils`, `packages/firebase`, `functions` a cada mudança.
+- Testado de ponta a ponta no **Firebase Local Emulator Suite** (Auth+Firestore+Functions+Storage): cadastro sem senha, múltipla escolha de interesse, e-mail duplicado, autocomplete de cidade, mensagem do WhatsApp. Nenhum teste contra produção.
+- **`functions/src/index.ts` deployado em produção** (`firebase deploy --only functions --project ueno-assessoria-475b9`) — as 15 functions do projeto foram atualizadas juntas, todas confirmadas `Successful update operation`, incluindo `selfRegister`. Nenhuma chamada real de teste feita contra produção ainda. A rota `/evento` em `apps/web` e todas as mudanças de `apps/mobile` continuam sem publicar (ver `HANDOFF.md`). Nada foi commitado nesta sessão.
+
+### Pendências
+- Primeiro login de quem se cadastrou sem senha exige duas confirmações por e-mail separadas (definir senha + depois confirmar e-mail) — dava pra marcar `emailVerified: true` automaticamente no primeiro login bem-sucedido dessas contas, já que só conseguem logar depois de provar dono do e-mail pelo link de senha.
+- QR code da URL `/evento` só faz sentido depois do deploy web.
+
+---
+
+## [2026-09-16] — Backend publicado e build iOS 8 solicitado
+
+- Publicadas Functions e regras/índices Firestore/Storage no projeto `ueno-assessoria-475b9`, incluindo exclusão de conta e a versão atual de `selfRegister`. Índices remotos adicionais preservados.
+- Verificado em produção: pedido de exclusão sem autenticação é rejeitado, sem alterar dados.
+- Solicitado build EAS iOS 1.0.0 (8), ID `30211c67-9852-4a7f-a0fd-fa02e55e8681`. Projeto enviado; conclusão e envio ao App Store Connect ainda não confirmados.
+- Revalidados build web, TypeScript mobile e 17 testes unitários do backend.
+- Preparada a ficha em `docs/app-store-ficha.md` e a página pública de suporte em `apps/web/public/suporte.html` (a publicar). Arte escolhida conferida em 9030 × 2796 pixels; exportação dos painéis ainda pendente.
+- Deploy web bloqueado pela revisão automática por incluir cadastro de eventos e cidades além das correções da loja; aguardando confirmação do escopo. Site e política pública ainda não atualizados nesta etapa.
+
+---
+
+## [2026-09-15] — Preparação para publicação na App Store
+
+### Privacidade e exclusão de conta
+
+- Política compartilhada entre mobile e página pública, com nome legal **Ueno Assessoria**, contato **uenoassessoria@gmail.com** e prazo operacional de exclusão de **até 30 dias**, confirmados pelo usuário.
+- Página gerada em `apps/web/public/privacidade.html`; disponível sem login após deploy em `https://ueno-assessoria.vercel.app/privacidade.html`, no mesmo domínio do admin. O prebuild web regenera o HTML a partir de `packages/utils/src/privacy-policy.json`.
+- Solicitação de exclusão no app com autenticação recente, confirmação EXCLUIR e protocolo secreto no SecureStore. Acompanhamento acessível também pela tela de entrada.
+- Fila administrativa em Configurações → Exclusões de conta, processamento retomável e bloqueio de acesso durante a exclusão, inclusive com tokens antigos.
+- Remoção dos dados associados; retenção de contratos assinados e registros financeiros exige justificativa e data de descarte. Arquivos arquivados perdem tokens públicos de download; rotina diária remove retenções vencidas.
+- Novas funções de solicitação, consulta de protocolo, conclusão e descarte; regras e índices Firestore/Storage atualizados.
+
+### Fluxos do app
+
+- Telas de agenda, hoje, clientes, notificações e perfil do instrutor conectadas aos dados reais, com estados de carregamento, erro e vazio.
+- Contratos do cliente e rotas administrativas implementados; links de privacidade e exclusão disponíveis nos perfis.
+- Cadastro administrativo de cliente conectado à Cloud Function, com validação dos campos e compartilhamento opcional do convite. Gerar o convite não envia e-mail automaticamente.
+
+### Build iOS
+
+- Dependências de imagem/vídeo alinhadas ao Expo SDK 54; permissões em português e manifesto de privacidade atualizado.
+- Corrigida falha de inicialização causada pela ausência de `EXConstants.bundle/app.config` em caminhos com espaços. Patch atualizado para `expo-constants@18.0.14`; postinstall exige `patch-package --error-on-fail`, substituindo a tolerância histórica a falhas.
+- Diretórios nativos gerados pelo Expo ignorados no Git; imagem EAS production fixada em `macos-tahoe-26.5-xcode-26.6`.
+- Adicionado `scripts/verify-ios-artifact.mjs` para conferir configuração e manifesto de privacidade no artefato.
+
+### Validação e publicação
+
+- Aprovados: 17 testes unitários do backend, 4 testes de regras nos emuladores, TypeScript mobile, build web, exportação iOS e build Release no iOS Simulator com Xcode 26.6.
+- Abertura do app confirmada no simulador; ícone 1024×1024 sem alpha. Política pública regenerada e conferida com nome, contato, prazo e data.
+- **Alterações locais, sem deploy, novo build EAS ou submissão nesta etapa.** Último build EAS consultado: 1.0.0 (7), concluído em 07/09/2026, anterior às correções.
+- Pendentes: publicar backend/regras/índices e web, gerar novo build, testar os fluxos completos no TestFlight em iPhone físico e conferir a ficha/revisão na App Store Connect. Sequência detalhada em `docs/app-store-release.md`.
+
+---
+
 ## [2026-09-09] — Padronização dos "Dados Pessoais" do cliente (web + mobile)
 
 Web e mobile capturavam os dados pessoais do cliente de formas divergentes (web quebrado em abas/subcoleções, mobile num formulário só com campos achatados). Unificado em 5 fases.

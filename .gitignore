@@ -46,3 +46,10 @@ web-build/
 # Local agent tool state
 .codex/
 .superpowers/
+
+# Native projects are generated from apps/mobile/app.json (Expo CNG).
+/apps/mobile/ios/
+/apps/mobile/android/
+
+# Local Firebase emulator logs
+*-debug.log

@@ -14,10 +14,11 @@ if (Object.values(firebaseConfig).some((v) => !v)) {
   throw new Error('Missing Firebase environment variables. Check VITE_FIREBASE_* in .env.local')
 }
 
-const firebaseClient = createFirebaseClient(firebaseConfig)
+const useEmulators = import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true'
+const firebaseClient = createFirebaseClient(firebaseConfig, { useEmulators })
 const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APP_CHECK_SITE_KEY?.trim()
 
-if (appCheckSiteKey) {
+if (appCheckSiteKey && !useEmulators) {
   initializeAppCheck(firebaseClient.app, {
     provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
     isTokenAutoRefreshEnabled: true,

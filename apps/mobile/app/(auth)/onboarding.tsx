@@ -15,7 +15,7 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState(0)
 
   const finish = () => {
-    router.replace('/(auth)/login')
+    router.replace('/(auth)/register')
   }
 
   const next = () => { if (step < SLIDES.length - 1) setStep(step + 1); else finish() }
