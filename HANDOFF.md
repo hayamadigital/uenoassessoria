@@ -12,11 +12,13 @@ Outras mudanças de dado: `Cliente.interesse_categoria`/`interesse_subopcao` (si
 
 **Menu do cliente reduzido**: abas "Simulados" e "Serviços" escondidas (`href: null` em `(cliente)/(tabs)/_layout.tsx` — código continua existindo, só não aparece na barra). Aba **FAQ** nova, reaproveitando a tela existente via re-export. Home e Perfil do cliente limpos de tudo que empurrava pra Simulados/Serviços (banner, checklist, "Serviços para você", "Recomendações", "Acesso rápido", KPI de simulados no perfil).
 
-**Ainda pendente de publicar** (o resto do fluxo, além das Functions que já foram):
-- `firestore.rules`/`firestore.indexes.json` — sem mudança de schema nesta etapa, mas não foram deployados junto (só `--only functions`); revisar se precisam ir também.
-- `apps/web` (nova rota `/evento`) — precisa do `git push` → Vercel normal. Domínio já está nos Authorized domains do Firebase Auth (é o mesmo do admin).
+**Commit e deploy web feitos em 2026-09-16** (commit `ab91f02`, agrupando este workstream + a preparação de App Store abaixo — confirmado com o usuário antes de agrupar). Push com a conta `hayamadigital` (necessária pra permissão no repo). O primeiro deploy automático da Vercel **falhou** com o mesmo erro histórico de `patch-package` (cache de build restaurou um `node_modules/expo-constants` incompatível com `patches/expo-constants+18.0.14.patch`) — corrigido com `vercel deploy --prod --force` (descarta cache por padrão). Segundo deploy: **Ready**. Confirmado visualmente no navegador: `https://ueno-assessoria.vercel.app/evento` está no ar e renderiza o formulário completo. **Nenhum cadastro de teste real foi enviado** (criaria conta e disparar e-mail reais em produção — precisa de autorização explícita separada).
+
+**Ainda pendente de publicar**:
+- `firestore.rules`/`firestore.indexes.json` — sem mudança de schema nesta etapa, mas não foram deployados junto ao `firebase deploy --only functions`; revisar se precisam ir também.
 - `apps/mobile` — mudanças só locais/Metro; nenhum build EAS novo gerado pra isso. **Atenção**: se algum build mobile antigo já estiver em uso (TestFlight/produção) chamando o `selfRegister` antigo (com senha, autenticado), ele vai quebrar contra essa function nova — o `selfRegister` novo ignora o payload de senha e não aceita mais `request.auth`.
-- Testado só contra o **Firebase Local Emulator Suite** antes do deploy; nenhuma chamada real de teste feita contra produção ainda.
+- Testado ponta a ponta só contra o **Firebase Local Emulator Suite** antes do deploy; nenhuma chamada real de cadastro feita contra produção ainda (só verificação visual da página).
+- Se um próximo deploy web falhar de novo com erro de `patch-package`, o fix é o mesmo: `vercel deploy --prod --force` (a partir da raiz do repo, projeto já linkado em `.vercel/project.json`).
 
 **Pendência de produto identificada mas não implementada**: hoje quem se cadastra sem senha ainda passa por **duas confirmações por e-mail separadas** no primeiro uso — o e-mail de definir senha, e depois a tela "confirme seu e-mail" no primeiro login (`emailVerified` continua `false`, `sendPasswordResetEmail` não marca isso). Dava pra marcar `emailVerified: true` automaticamente no primeiro login bem-sucedido dessas contas, já que só é possível logar depois de provar dono do e-mail pelo link de senha — ninguém pediu essa simplificação ainda, só ficou registrado como oportunidade.
 

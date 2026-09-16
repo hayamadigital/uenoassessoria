@@ -39,7 +39,9 @@ Preparação para um evento em ~4 dias: fluxo de captação de leads que cria co
 ### Validação
 - `tsc --noEmit` limpo em `apps/mobile`, `apps/web`, `packages/utils`, `packages/firebase`, `functions` a cada mudança.
 - Testado de ponta a ponta no **Firebase Local Emulator Suite** (Auth+Firestore+Functions+Storage): cadastro sem senha, múltipla escolha de interesse, e-mail duplicado, autocomplete de cidade, mensagem do WhatsApp. Nenhum teste contra produção.
-- **`functions/src/index.ts` deployado em produção** (`firebase deploy --only functions --project ueno-assessoria-475b9`) — as 15 functions do projeto foram atualizadas juntas, todas confirmadas `Successful update operation`, incluindo `selfRegister`. Nenhuma chamada real de teste feita contra produção ainda. A rota `/evento` em `apps/web` e todas as mudanças de `apps/mobile` continuam sem publicar (ver `HANDOFF.md`). Nada foi commitado nesta sessão.
+- **`functions/src/index.ts` deployado em produção** (`firebase deploy --only functions --project ueno-assessoria-475b9`) — as 15 functions do projeto foram atualizadas juntas, todas confirmadas `Successful update operation`, incluindo `selfRegister`.
+- **Commit `ab91f02`** agrupando este workstream com a preparação de App Store (confirmado com o usuário antes de juntar); push feito com a conta `hayamadigital`. Deploy web na Vercel: primeira tentativa falhou (erro de cache de `patch-package`, mesmo problema histórico já documentado), corrigido com `vercel deploy --prod --force`. Segunda tentativa: **Ready**, confirmado visualmente que `https://ueno-assessoria.vercel.app/evento` está no ar e renderiza o formulário completo.
+- Nenhuma chamada real de teste (cadastro de verdade) feita contra produção ainda — só verificação visual da página. `apps/mobile` continua sem novo build EAS (ver `HANDOFF.md`).
 
 ### Pendências
 - Primeiro login de quem se cadastrou sem senha exige duas confirmações por e-mail separadas (definir senha + depois confirmar e-mail) — dava pra marcar `emailVerified: true` automaticamente no primeiro login bem-sucedido dessas contas, já que só conseguem logar depois de provar dono do e-mail pelo link de senha.
