@@ -15,6 +15,7 @@ import {
   COMO_CONHECEU_LABEL,
   buildInteresseResumo,
   labelComoConheceu,
+  friendlyRegisterErrorMessage,
 } from '@ueno/utils/cadastro-evento'
 import { CityAutocomplete } from '@/components/CityAutocomplete'
 import { Button } from '@/components/ui/button'
@@ -152,10 +153,8 @@ export function CadastroEventoPage() {
       setSubmitted(true)
     } catch (e: any) {
       whatsappWindow?.close()
-      const msg = e instanceof FunctionsError && e.code === 'functions/already-exists'
-        ? 'Este e-mail já está cadastrado.'
-        : e?.message ?? 'Erro ao criar conta. Tente novamente.'
-      setError('root', { message: msg })
+      const code = e instanceof FunctionsError ? e.code : undefined
+      setError('root', { message: friendlyRegisterErrorMessage(code) })
     }
   }
 

@@ -153,7 +153,10 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
   }
 
   try {
-    await auth.setCustomUserClaims(userRecord.uid, { role: 'cliente' })
+    // `passwordless: true` marca que essa conta nasceu sem senha (ver selfRegister
+    // acima) — é o que permite confirmPasswordlessEmail liberar o e-mail sozinho
+    // no primeiro login, sem exigir uma segunda confirmação por e-mail.
+    await auth.setCustomUserClaims(userRecord.uid, { role: 'cliente', passwordless: true })
 
     const now = new Date().toISOString()
     await db.collection('users').doc(userRecord.uid).set({
@@ -212,6 +215,29 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
   }
 
   return { success: true }
+})
+
+// ── confirmPasswordlessEmail ─────────────────────────────────────────
+// Chamada pelo app logo após o primeiro login de uma conta criada pelo
+// selfRegister (sem senha). Só existe uma forma de uma conta "passwordless"
+// conseguir logar: completando o link de "definir senha" enviado por e-mail —
+// isso já prova que a pessoa é dona do e-mail. Então, em vez de obrigar uma
+// SEGUNDA confirmação por e-mail (a de verify-email padrão do Firebase),
+// marcamos emailVerified aqui direto. Não afeta contas de admin/instrutor
+// convidadas por inviteUser/createCliente — aquelas não têm o claim `passwordless`.
+export const confirmPasswordlessEmail = onCall({ ...CORS }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Não autenticado')
+  await enforceRateLimit(db, request, 'confirmPasswordlessEmail', 5)
+
+  if (request.auth.token.emailVerified) {
+    return { success: true, verified: true }
+  }
+  if (!request.auth.token.passwordless) {
+    return { success: true, verified: false }
+  }
+
+  await auth.updateUser(request.auth.uid, { emailVerified: true })
+  return { success: true, verified: true }
 })
 
 export const setRoleClaim = onCall({ ...CORS }, async (request) => {

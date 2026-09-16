@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import i18n from '../src/i18n'
-import { appCheckReady, auth, db } from '@/lib/firebase'
-import { onAuthChange } from '@ueno/firebase'
+import { httpsCallable } from 'firebase/functions'
+import { appCheckReady, auth, db, functions } from '@/lib/firebase'
+import { onAuthChange, reloadAuthUser } from '@ueno/firebase'
 import { getProfile, PROFILE_NOT_FOUND_CODE } from '@ueno/firebase/queries/perfis'
 import { useAuthStore } from '@/stores/auth.store'
 import type { AuthSession } from '@ueno/types'
@@ -52,6 +53,22 @@ function AuthInit() {
               }
             }
             if (!profile) throw new Error('Profile not found')
+            if (profile.role === 'cliente' && !user.emailVerified) {
+              // Contas criadas sem senha (cadastro do evento) só conseguem logar
+              // depois de completar o e-mail de "definir senha" — isso já prova
+              // que a pessoa é dona do e-mail, então libera sem pedir uma segunda
+              // confirmação. Se a conta não for desse tipo, a function não faz nada
+              // e cai no fluxo normal de verify-email.
+              try {
+                const confirmPasswordlessEmail = httpsCallable(functions, 'confirmPasswordlessEmail')
+                const result = await confirmPasswordlessEmail()
+                if ((result.data as { verified?: boolean })?.verified) {
+                  await reloadAuthUser(user)
+                }
+              } catch (confirmError) {
+                console.warn('[Auth] confirmPasswordlessEmail failed:', confirmError)
+              }
+            }
             if (profile.role === 'cliente' && !user.emailVerified) {
               setRequiresEmailVerification(true)
               clear()

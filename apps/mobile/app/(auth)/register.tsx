@@ -21,6 +21,7 @@ import {
   COMO_CONHECEU_LABEL,
   buildInteresseResumo,
   labelComoConheceu,
+  friendlyRegisterErrorMessage,
 } from '@ueno/utils/cadastro-evento'
 import { CityAutocomplete } from '@/components/CityAutocomplete'
 import { colors } from '@/theme'
@@ -152,10 +153,7 @@ export default function RegisterScreen() {
       setSubmittedEmail(data.email)
       setSubmitted(true)
     } catch (e: any) {
-      const msg = e?.code === 'functions/already-exists' || e?.message?.includes('já está cadastrado')
-        ? 'Este e-mail já está cadastrado.'
-        : e?.message ?? 'Erro ao criar conta. Tente novamente.'
-      Alert.alert('Erro ao criar conta', msg)
+      Alert.alert('Erro ao criar conta', friendlyRegisterErrorMessage(e?.code))
     }
   }
 

@@ -97,3 +97,24 @@ export function buildInteresseResumo(categorias: string[], subopcoes: string[]):
 export const CANAL_CADASTRO_OPTIONS = ['mobile_app', 'web'] as const
 
 export type CanalCadastro = (typeof CANAL_CADASTRO_OPTIONS)[number]
+
+/**
+ * Traduz o `code` de erro do `selfRegister` (Cloud Function) pra uma mensagem que o
+ * visitante entende — nunca repassar `error.message` bruto pra tela (vaza nome de
+ * campo/validação interna, tipo "interesse_categorias é obrigatório").
+ */
+export function friendlyRegisterErrorMessage(code: string | null | undefined): string {
+  switch (code) {
+    case 'functions/already-exists':
+      return 'Este e-mail já está cadastrado.'
+    case 'functions/invalid-argument':
+      return 'Verifique se todos os campos foram preenchidos corretamente e tente novamente.'
+    case 'functions/resource-exhausted':
+      return 'Muitas tentativas seguidas. Aguarde um instante e tente novamente.'
+    case 'functions/unavailable':
+    case 'functions/deadline-exceeded':
+      return 'Sem conexão com a internet. Verifique sua rede e tente novamente.'
+    default:
+      return 'Não foi possível criar sua conta agora. Tente novamente em instantes.'
+  }
+}
