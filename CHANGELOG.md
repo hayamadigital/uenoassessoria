@@ -20,6 +20,19 @@ Implementa em código a spec de `docs/acesso-por-cliente-especificacao.md`. Comm
 
 ---
 
+## [2026-09-17] — Correções da auditoria de prontidão (acesso por cliente)
+
+Relatório `docs/app-store-auditoria-2026-09-17.md` (ferramenta externa) encontrou 6 problemas reais no modelo do commit `8d7a73f`. Todos corrigidos e verificados nesta sessão (25 testes de integração de regras + 29 unitários, todos verdes).
+
+- **5 processos em produção sem `servico_snapshot`** quebrariam a tela de detalhe. `packages/firebase/src/queries/processos.ts` usa um placeholder seguro em vez de `null` quando ausente; `scripts/backfill-cliente-processos-snapshot.mjs` (dry-run por padrão) preenche o snapshot real — ainda não executado contra produção.
+- `simulados/index.tsx` ainda condicionava materiais privados ao status do processo, ignorando a concessão de Estudos — removido; a concessão é a única autoridade agora.
+- `firestore.rules`: criação de `cliente_processos` agora exige `canAccessCatalogo()` e valida que `servico_snapshot`/`variacao_snapshot` batem com o serviço/variação reais (evita o cliente declarar um preço fabricado).
+- `useClienteAccess.ts`: erro de verificação agora força não-liberado (antes mantinha o último estado em cache); checagem periódica de expiração + retomada de app em primeiro plano; os 4 guards mobile distinguem "erro ao verificar" (com tentar novamente) de "não liberado".
+- `firestore.rules`/`storage.rules`: `canAccessEstudos()`/`canAccessCatalogo()` agora conferem `users/{uid}.is_active`; leitura direta por id de `materiais`/`servicos`/`servico_variacoes` agora confere `is_active`/`ativo` (antes só a listagem filtrava). Achado durante a correção (não pela auditoria): acessar `.data.campo` num campo ausente é erro de avaliação em rules, não `null` — os helpers novos checam `in` antes de ler.
+- Mídia protegida (URL assinada) continua pendente, por decisão já registrada — sem mudança nesta correção.
+
+---
+
 ## [2026-09-16] — Cadastro rápido de evento (mobile + web)
 
 Preparação para um evento em ~4 dias: fluxo de captação de leads que cria conta e abre o WhatsApp da UENO com a mensagem pronta. Especificação em `docs/cadastro-evento-especificacao.md`.

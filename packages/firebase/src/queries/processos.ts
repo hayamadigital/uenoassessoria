@@ -21,12 +21,32 @@ import { getCliente } from './clientes'
 import { getServico } from './servicos'
 import { getServicoVariacao } from './servico_variacoes'
 
+// Processos criados antes do snapshot (ver scripts/backfill-cliente-processos-snapshot.mjs)
+// não têm servico_snapshot ainda: nunca devolver null aqui, ou toda tela que faz
+// processo.servico.nome quebra. O fallback é só um placeholder de exibição.
+const FALLBACK_SERVICO_SNAPSHOT: ServicoSnapshot = {
+  nome: 'Serviço',
+  descricao: null,
+  duracao_min: 0,
+  duracao_texto: null,
+  preco_jpy: 0,
+  preco_variavel: false,
+  preco_min_jpy: null,
+  preco_max_jpy: null,
+  usa_variacoes: false,
+  imagem_url: null,
+  is_active: true,
+  ordem: 0,
+  created_at: '',
+  updated_at: '',
+}
+
 function withResolvedSnapshot<T extends { servico_snapshot?: ServicoSnapshot; variacao_snapshot?: VariacaoSnapshot | null }>(
   data: T,
 ) {
   return {
     ...data,
-    servico: data.servico_snapshot ?? null,
+    servico: data.servico_snapshot ?? FALLBACK_SERVICO_SNAPSHOT,
     variacao: data.variacao_snapshot ?? null,
   }
 }

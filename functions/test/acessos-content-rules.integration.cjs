@@ -30,8 +30,10 @@ async function seed(overrides = {}) {
       'categorias_material/cat-1': { nome: 'Categoria', ordem: 1 },
       'simulado_config/mat-1': { total_questoes: 1 },
       'questoes/q-1': { enunciado: 'Pergunta?' },
-      'servicos/serv-1': { nome: 'Serviço', is_active: true },
+      'servicos/serv-1': { nome: 'Habilitação', is_active: true, preco_jpy: 50000 },
+      'servicos/serv-2': { nome: 'Habilitação', is_active: false, preco_jpy: 50000 },
       'servico_variacoes/var-1': { servico_id: 'serv-1', ativo: true },
+      'materiais/mat-2': { titulo: 'Rascunho', is_public: true, is_active: false },
       ...overrides,
     })) await setDoc(doc(db, path), data)
     await uploadBytes(ref(ctx.storage(), 'materiais/public/thumb.png'), new Uint8Array([1]), { contentType: 'image/png' })
@@ -147,11 +149,24 @@ const clienteProcessoPayload = (overrides = {}) => ({
   ...overrides,
 })
 
-test('a client can create their own cliente_processos with the full servico_snapshot, but not with extra fields', async () => {
+test('creating a cliente_processos now requires an effective Catálogo grant, not just ownership', async () => {
+  await assertFails(setDoc(doc(owner().firestore(), 'cliente_processos/proc-1'), clienteProcessoPayload()))
+  await grantCatalogo(true)
+  await setGlobal(false, true)
   await assertSucceeds(setDoc(doc(owner().firestore(), 'cliente_processos/proc-1'), clienteProcessoPayload()))
+})
+test('a client with Catálogo cannot create a cliente_processos with extra fields or a fabricated snapshot', async () => {
+  await grantCatalogo(true)
+  await setGlobal(false, true)
   await assertFails(setDoc(
     doc(owner().firestore(), 'cliente_processos/proc-2'),
     clienteProcessoPayload({ campo_nao_permitido: true }),
+  ))
+  await assertFails(setDoc(
+    doc(owner().firestore(), 'cliente_processos/proc-3'),
+    clienteProcessoPayload({
+      servico_snapshot: { ...clienteProcessoPayload().servico_snapshot, preco_jpy: 1 },
+    }),
   ))
 })
 test('a client keeps reading their own cliente_processos (with its embedded snapshot) without any Catálogo grant', async () => {
@@ -159,4 +174,22 @@ test('a client keeps reading their own cliente_processos (with its embedded snap
     setDoc(doc(ctx.firestore(), 'cliente_processos/proc-1'), clienteProcessoPayload()))
   const snap = await assertSucceeds(getDoc(doc(owner().firestore(), 'cliente_processos/proc-1')))
   assert.equal(snap.data().servico_snapshot.nome, 'Habilitação')
+})
+
+test('a granted client cannot read an inactive materiais/servico/variacao by id, even though staff still can', async () => {
+  await grantEstudos(true)
+  await grantCatalogo(true)
+  await setGlobal(true, true)
+  await assertFails(getDoc(doc(owner().firestore(), 'materiais/mat-2')))
+  await assertFails(getDoc(doc(owner().firestore(), 'servicos/serv-2')))
+  await assertSucceeds(getDoc(doc(admin().firestore(), 'materiais/mat-2')))
+  await assertSucceeds(getDoc(doc(teacher().firestore(), 'servicos/serv-2')))
+})
+
+test('a suspended profile (users.is_active == false) loses Estudos/Catálogo even with a valid grant', async () => {
+  await grantEstudos(true)
+  await setGlobal(true, false)
+  await assertSucceeds(getDoc(doc(owner().firestore(), 'materiais/mat-1')))
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users/owner'), { full_name: 'Owner', role: 'cliente', is_active: false }))
+  await assertFails(getDoc(doc(owner().firestore(), 'materiais/mat-1')))
 })

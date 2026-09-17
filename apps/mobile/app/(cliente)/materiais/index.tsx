@@ -38,19 +38,31 @@ function CardItem({ card, index }: { card: MaterialCard; index: number }) {
 
 export default function ClienteMaterialScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
-  const { loading: loadingAcesso, estudosLiberado } = useClienteAccess()
+  const { loading: loadingAcesso, error: erroAcesso, estudosLiberado, retry: retryAcesso } = useClienteAccess()
 
   const { data: material, isLoading: loadingMaterial } = useQuery({
     queryKey: ['cliente-material-detail', id],
     queryFn: () => getMaterial(db, id!),
-    enabled: !!id,
+    enabled: !!id && estudosLiberado,
   })
 
   const { data: cards = [], isLoading: loadingCards } = useQuery({
     queryKey: ['cliente-material-cards', id],
     queryFn: () => listMaterialCards(db, id!),
-    enabled: !!id && material?.tipo === 'card',
+    enabled: !!id && estudosLiberado && material?.tipo === 'card',
   })
+
+  if (!loadingAcesso && erroAcesso) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <AccessBlockedNotice
+          titulo="Não foi possível verificar seu acesso"
+          mensagem="Confira sua conexão e tente novamente."
+          onTentarNovamente={retryAcesso}
+        />
+      </SafeAreaView>
+    )
+  }
 
   if (!loadingAcesso && !estudosLiberado) {
     return (

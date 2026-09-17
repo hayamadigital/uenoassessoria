@@ -1,12 +1,25 @@
 # HANDOFF — UENO ASSESSORIA
 
-Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-16.
+Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-17.
 
 ## Especificação de acesso por cliente — 2026-09-16, implementada em código 2026-09-17
 
 Criada `docs/acesso-por-cliente-especificacao.md`, a pedido do usuário. Propõe liberação manual por cliente de Estudos (simulados + materiais) e Catálogo, combinada com disponibilidade global, autorização no servidor, auditoria, expiração, revogação e acesso idêntico para clientes reais e contas da revisão Apple. Substitui a proposta de toggle global para todos em `docs/bloqueio-simulados-materiais-especificacao.md`; não altera aprovação de processos nem suspensão da conta. Seleção individual de materiais/serviços e cobrança por conteúdo estão fora desta primeira etapa.
 
 **Implementado em código em 2026-09-17** (commit `8d7a73f`): modelo de concessão completo (`acessos_clientes`, `app_config/acessos`, callables com auditoria/idempotência/concorrência), regras do Firestore/Storage exigindo a concessão para ler o conteúdo — antes só a aba era escondida no app, o dado continuava lendo direto via SDK —, aba admin "Acessos", toggle global em Preferências, hook e guards no mobile, filtro de `is_active` nativo nas queries (`scripts/backfill-is-active.mjs` para documentos antigos, ainda não executado contra o projeto real), e snapshot do serviço/variação em `cliente_processos` para o Catálogo não quebrar processos existentes ao revogar. 29 testes unitários + 22 de integração de regras, todos verdes. **Não deployado**: módulos continuam desligados globalmente, nenhum cliente real é afetado. Pendente por decisão do usuário: mídia protegida com URL assinada (seção 10 da spec) — fica para antes do rollout com clientes reais.
+
+## Correções da auditoria de prontidão — 2026-09-17
+
+Relatório: `docs/app-store-auditoria-2026-09-17.md` (ferramenta externa, revisão do código sem deploy). Encontrou 6 problemas reais no modelo de acesso por cliente implementado em `8d7a73f` — todos corrigidos e verificados nesta sessão (25 testes de integração de regras + 29 unitários, todos verdes):
+
+1. **5 processos em produção sem `servico_snapshot`** (criados antes do modelo) quebrariam a tela de detalhe. `packages/firebase/src/queries/processos.ts` agora usa um placeholder seguro em vez de `null` quando o snapshot está ausente; `scripts/backfill-cliente-processos-snapshot.mjs` (dry-run por padrão) preenche o snapshot real a partir do serviço/variação vinculados — ainda não executado contra produção.
+2. `apps/mobile/app/(cliente)/(tabs)/simulados/index.tsx` ainda condicionava materiais privados ao status do processo (`ativo`/`analise`), ignorando a concessão de Estudos. Removido: a concessão agora é a única autoridade sobre a biblioteca.
+3. `firestore.rules` permitia criar `cliente_processos` só com vínculo de propriedade, sem exigir Catálogo — um SDK direto podia abrir solicitação mesmo com o módulo negado. Adicionado `canAccessCatalogo()` na regra de criação, mais validação de que o `servico_snapshot`/`variacao_snapshot` enviado bate com o serviço/variação reais (o cliente não pode declarar um preço diferente do real).
+4. Mídia protegida (URL assinada) continua pendente — decisão já registrada, sem mudança nesta correção.
+5. `useClienteAccess.ts` mantinha o último estado liberado mesmo com o listener em erro (deveria negar), não reavaliava vencimento enquanto a tela ficava aberta, e os guards não distinguiam "erro ao verificar" de "não liberado". Corrigido: erro força não-liberado, checagem periódica de expiração + retomada de app em primeiro plano, e os 4 guards agora mostram "tentar novamente" quando a verificação falha.
+6. As regras de `canAccessEstudos()`/`canAccessCatalogo()` não conferiam se o perfil (`users/{uid}.is_active`) estava ativo, e a leitura direta por id de `materiais`/`servicos`/`servico_variacoes` não conferia `is_active`/`ativo` (só a listagem filtrava). Ambos adicionados — com cuidado extra: acessar um campo ausente com `.data.campo` é erro de avaliação em rules, não `null`, então os helpers novos checam `in` antes de ler o campo (achado durante a correção, não pela auditoria).
+
+Não deployado; módulos continuam desligados. Itens de publicação/migração/build da auditoria (seções 2-7 do relatório) continuam fora desta correção.
 
 ## Cadastro rápido de evento (mobile + web) — 2026-09-16
 

@@ -158,7 +158,7 @@ export default function ServicoDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
   const insets = useSafeAreaInsets()
   const { session } = useAuthStore()
-  const { loading: loadingAcesso, catalogoLiberado } = useClienteAccess()
+  const { loading: loadingAcesso, error: erroAcesso, catalogoLiberado, retry: retryAcesso } = useClienteAccess()
   const queryClient = useQueryClient()
   const serviceId = typeof id === 'string' ? id : undefined
   const [imageFailed, setImageFailed] = useState(false)
@@ -172,19 +172,19 @@ export default function ServicoDetailScreen() {
   const { data: servico, isLoading: isLoadingServico } = useQuery({
     queryKey: ['servicos', serviceId],
     queryFn: () => getServico(db, serviceId!),
-    enabled: !!serviceId,
+    enabled: !!serviceId && catalogoLiberado,
   })
 
   const { data: variacoes, isLoading: isLoadingVariacoes } = useQuery({
     queryKey: ['servico-variacoes', serviceId, 'active'],
     queryFn: () => listVariacoesByServico(db, serviceId!, true),
-    enabled: !!serviceId,
+    enabled: !!serviceId && catalogoLiberado,
   })
 
   const { data: etapas, isLoading: isLoadingEtapas } = useQuery({
     queryKey: ['etapa-templates', serviceId],
     queryFn: () => listEtapaTemplatesByServico(db, serviceId!),
-    enabled: !!serviceId,
+    enabled: !!serviceId && catalogoLiberado,
   })
 
   const { data: cliente } = useQuery({
@@ -517,6 +517,18 @@ export default function ServicoDetailScreen() {
       return
     }
     submitContractMutation.mutate()
+  }
+
+  if (!loadingAcesso && erroAcesso) {
+    return (
+      <SafeAreaView style={[s.safe, s.center]}>
+        <AccessBlockedNotice
+          titulo="Não foi possível verificar seu acesso"
+          mensagem="Confira sua conexão e tente novamente."
+          onTentarNovamente={retryAcesso}
+        />
+      </SafeAreaView>
+    )
   }
 
   if (!loadingAcesso && !catalogoLiberado) {

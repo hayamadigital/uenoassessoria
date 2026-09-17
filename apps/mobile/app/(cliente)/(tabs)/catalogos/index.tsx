@@ -24,10 +24,11 @@ function formatPrecoServico(servico: Servico) {
 }
 
 export default function CatalogoScreen() {
-  const { loading: loadingAcesso, catalogoLiberado } = useClienteAccess()
+  const { loading: loadingAcesso, error: erroAcesso, catalogoLiberado, retry: retryAcesso } = useClienteAccess()
   const { data: servicos, isLoading } = useQuery({
     queryKey: ['servicos'],
     queryFn: () => listServicos(db, true),
+    enabled: catalogoLiberado,
   })
 
   if (loadingAcesso) {
@@ -36,6 +37,18 @@ export default function CatalogoScreen() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.navy800} />
         </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (erroAcesso) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <AccessBlockedNotice
+          titulo="Não foi possível verificar seu acesso"
+          mensagem="Confira sua conexão e tente novamente."
+          onTentarNovamente={retryAcesso}
+        />
       </SafeAreaView>
     )
   }

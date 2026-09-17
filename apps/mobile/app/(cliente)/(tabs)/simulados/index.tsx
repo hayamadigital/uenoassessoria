@@ -14,7 +14,6 @@ import { useClienteAccess } from '@/hooks/useClienteAccess'
 import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
 import { useSimuladoDraftsStore } from '@/stores/simulado-drafts.store'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
-import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import {
   createSimuladoResultado,
   listCategoriasMaterial,
@@ -209,7 +208,7 @@ const SIMULADO_VIEWS: SimuladosView[] = ['entrada', 'retomar', 'pre', 'questao',
 export default function SimuladosScreen() {
   const { simuladoId: routeSimuladoId } = useLocalSearchParams<{ simuladoId?: string }>()
   const { session } = useAuthStore()
-  const { loading: loadingAcesso, estudosLiberado } = useClienteAccess()
+  const { loading: loadingAcesso, error: erroAcesso, estudosLiberado, retry: retryAcesso } = useClienteAccess()
   const { drafts, hydrated: draftsHydrated, saveDraft, removeDraft } = useSimuladoDraftsStore()
   const queryClient = useQueryClient()
   const navigation = useNavigation()
@@ -273,31 +272,25 @@ export default function SimuladosScreen() {
     enabled: !!session,
   })
 
-  const { data: processos } = useQuery({
-    queryKey: ['processos', cliente?.id],
-    queryFn: () => listProcessosByCliente(db, cliente!.id),
-    enabled: !!cliente,
-  })
-
   const { data: publicConfig } = useQuery({
     queryKey: ['public-app-config'],
     queryFn: () => getPublicAppConfig(db),
   })
 
-  const canViewPrivateMaterials = (processos ?? []).some((processo) => processo.status === 'ativo' || processo.status === 'analise')
-
   const { data: categorias = [], isLoading: loadingCategorias } = useQuery({
     queryKey: ['categorias-material', session?.userId],
     queryFn: () => listCategoriasMaterial(db),
-    enabled: !!session,
+    enabled: !!session && estudosLiberado,
     staleTime: 0,
     refetchOnMount: 'always',
   })
 
+  // A concessão de Estudos já é a única autoridade sobre a biblioteca (seção 9 da spec) —
+  // nunca mais condicionar materiais privados ao status do processo do cliente.
   const { data: materiais = [], isLoading: loadingMateriais } = useQuery({
-    queryKey: ['materiais-cliente-simulados', session?.userId, canViewPrivateMaterials],
-    queryFn: () => listMateriais(db, undefined, !canViewPrivateMaterials, true),
-    enabled: !!session,
+    queryKey: ['materiais-cliente-simulados', session?.userId],
+    queryFn: () => listMateriais(db, undefined, false, true),
+    enabled: !!session && estudosLiberado,
     staleTime: 0,
     refetchOnMount: 'always',
   })
@@ -345,9 +338,7 @@ export default function SimuladosScreen() {
   })
 
   const allMaterials = materiais ?? []
-  const visibleMaterials = allMaterials.filter(
-    (material) => material.is_active !== false && (material.is_public || canViewPrivateMaterials),
-  )
+  const visibleMaterials = allMaterials.filter((material) => material.is_active !== false)
   const isLoading = loadingMateriais || loadingCategorias
 
   const allSimulados = visibleMaterials
@@ -694,6 +685,18 @@ export default function SimuladosScreen() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.navy800} />
         </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (erroAcesso) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <AccessBlockedNotice
+          titulo="Não foi possível verificar seu acesso"
+          mensagem="Confira sua conexão e tente novamente."
+          onTentarNovamente={retryAcesso}
+        />
       </SafeAreaView>
     )
   }

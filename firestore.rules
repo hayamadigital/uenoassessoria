@@ -50,8 +50,32 @@ service cloud.firestore {
         && (modulo.expira_em == null || modulo.expira_em > request.time);
     }
 
+    // Conta suspensa (users/{uid}.is_active == false) não deve manter acesso a Estudos/
+    // Catálogo só porque o token atual ainda não expirou (spec seção 5, item 1).
+    // Acessar um campo ausente com .data.campo é erro de avaliação em rules (não null) —
+    // por isso o 'in' antes de ler is_active; sem ele, doc sem o campo negaria tudo.
+    function perfilAtivoData(profile) {
+      return !('is_active' in profile) || profile.is_active != false;
+    }
+
+    function perfilAtivo() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && perfilAtivoData(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
+    }
+
+    // Mesmo cuidado para o conteúdo: doc sem is_active/ativo ainda não passou pelo backfill
+    // (scripts/backfill-is-active.mjs) — tratar como ativo em vez de negar por erro de avaliação.
+    function isActiveOuAusente(doc) {
+      return !('is_active' in doc) || doc.is_active != false;
+    }
+
+    function isAtivoOuAusente(doc) {
+      return !('ativo' in doc) || doc.ativo != false;
+    }
+
     function canAccessEstudos() {
       return isCliente()
+        && perfilAtivo()
         && estudosDisponivelGlobalmente()
         && exists(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid))
         && moduloConcedidoValido(get(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid)).data.estudos);
@@ -59,6 +83,7 @@ service cloud.firestore {
 
     function canAccessCatalogo() {
       return isCliente()
+        && perfilAtivo()
         && catalogoDisponivelGlobalmente()
         && exists(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid))
         && moduloConcedidoValido(get(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid)).data.catalogo);
@@ -86,6 +111,20 @@ service cloud.firestore {
       return isInstrutor()
         && exists(/databases/$(database)/documents/cliente_processos/$(processoId))
         && isAssignedToCliente(get(/databases/$(database)/documents/cliente_processos/$(processoId)).data.cliente_id);
+    }
+
+    // O cliente não escolhe o texto do snapshot: nome/preço enviados precisam bater com o
+    // servico/variacao reais, ou ele poderia registrar um preço mais baixo do que o real.
+    function servicoSnapshotConfere(servicoId, variacaoId) {
+      return request.resource.data.servico_snapshot.nome == get(/databases/$(database)/documents/servicos/$(servicoId)).data.nome
+        && request.resource.data.servico_snapshot.preco_jpy == get(/databases/$(database)/documents/servicos/$(servicoId)).data.preco_jpy
+        && (
+          variacaoId == null
+          || (
+            request.resource.data.variacao_snapshot.nome == get(/databases/$(database)/documents/servico_variacoes/$(variacaoId)).data.nome
+            && request.resource.data.variacao_snapshot.preco_jpy == get(/databases/$(database)/documents/servico_variacoes/$(variacaoId)).data.preco_jpy
+          )
+        );
     }
 
     function userSelfEditableFields() {
@@ -238,7 +277,9 @@ service cloud.firestore {
     // ── /servicos/{id} ─────────────────────────────────────────────
     // Catálogo: leitura exige concessão individual + disponibilidade global.
     match /servicos/{id} {
-      allow read: if isAdmin() || isInstrutor() || canAccessCatalogo();
+      // is_active também na leitura por ID, não só na listagem: senão um cliente com
+      // Catálogo liberado ainda lê um serviço desativado direto pelo id.
+      allow read: if isAdmin() || isInstrutor() || (canAccessCatalogo() && isActiveOuAusente(resource.data));
       allow write: if isAdmin();
 
       match /etapa_templates/{tplId} {
@@ -249,7 +290,8 @@ service cloud.firestore {
 
     // ── /servico_variacoes/{id} ───────────────────────────────────
     match /servico_variacoes/{id} {
-      allow read: if isAdmin() || isInstrutor() || canAccessCatalogo();
+      // Campo real de ativação aqui é `ativo`, não `is_active` (ver seção 9 da spec).
+      allow read: if isAdmin() || isInstrutor() || (canAccessCatalogo() && isAtivoOuAusente(resource.data));
       allow write: if isAdmin();
     }
 
@@ -295,11 +337,14 @@ service cloud.firestore {
     // Estudos: leitura exige concessão individual + disponibilidade global.
     // is_public NÃO é mais uma exceção — toda a área Estudos exige a concessão.
     match /materiais/{id} {
-      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
+      // is_active também na leitura por ID, não só na listagem: senão um cliente com
+      // Estudos liberado ainda lê um material desativado direto pelo id.
+      allow read: if isAdmin() || isInstrutor() || (canAccessEstudos() && isActiveOuAusente(resource.data));
       allow write: if isAdmin();
 
       match /cards/{cardId} {
-        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
+        allow read: if isAdmin() || isInstrutor()
+          || (canAccessEstudos() && get(/databases/$(database)/documents/materiais/$(id)).data.is_active == true);
         allow write: if isAdmin();
       }
     }
@@ -499,11 +544,12 @@ service cloud.firestore {
         || (isCliente() && get(/databases/$(database)/documents/clientes/$(resource.data.cliente_id)).data.profile_id == request.auth.uid);
       allow create: if isAdmin()
         || (
-          isCliente()
+          canAccessCatalogo()
           && request.resource.data.status == 'analise'
           && request.resource.data.valor_acordado_jpy == null
           && request.resource.data.cliente_id != null
           && get(/databases/$(database)/documents/clientes/$(request.resource.data.cliente_id)).data.profile_id == request.auth.uid
+          && servicoSnapshotConfere(request.resource.data.servico_id, request.resource.data.variacao_id)
           && request.resource.data.keys().hasOnly([
             'cliente_id',
             'servico_id',
