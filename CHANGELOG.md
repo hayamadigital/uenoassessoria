@@ -5,6 +5,21 @@ Formato: `[DATA] Área — O que mudou`
 
 ---
 
+## [2026-09-17] — Acesso por cliente implementado (Estudos/Catálogo)
+
+Implementa em código a spec de `docs/acesso-por-cliente-especificacao.md`. Commit `8d7a73f`.
+
+- Modelo de concessão por cliente: `acessos_clientes/{uid}` e `app_config/acessos`, gravados só via callables `setClienteModuleAccess`/`setClientModuleAvailability` (idempotentes por `operation_id`, controle de concorrência por `expected_revision`, auditoria em subcoleção `historico`).
+- **Regras do Firestore/Storage agora exigem a concessão para ler o conteúdo em si** (`materiais`, `simulado_config`, `questoes`, `servicos`, `servico_variacoes`) — antes só a aba era escondida no app, o dado continuava lendo direto via SDK. Removida a exceção de `is_public` em materiais.
+- `apps/web/src/pages/clientes/tabs/ClienteAcessosTab.tsx` (nova aba admin), toggle global em Preferências, hook `useClienteAccess` + guards de rota no mobile (Simulados, Catálogo, detalhe de serviço/material).
+- Exclusão de conta agora remove `acessos_clientes/{uid}` e seu histórico.
+- `listMateriais`/`listServicos`/`listVariacoesByServico` passam a filtrar `is_active`/`ativo` nativo no Firestore (antes era só em memória). `scripts/backfill-is-active.mjs` (dry-run por padrão) para documentos antigos sem o campo — ainda não executado contra o projeto real.
+- `cliente_processos` grava uma cópia (`servico_snapshot`/`variacao_snapshot`) do serviço/variação no momento da criação, pra tela de processo do cliente continuar funcionando mesmo sem a concessão de Catálogo.
+- Testes: 29 unitários + 22 de integração de regras (emulador), todos verdes.
+- **Não deployado**: módulos continuam desligados globalmente, nenhum cliente real afetado. Pendente por decisão do usuário: mídia protegida com URL assinada (seção 10 da spec) — antes do rollout com clientes reais.
+
+---
+
 ## [2026-09-16] — Cadastro rápido de evento (mobile + web)
 
 Preparação para um evento em ~4 dias: fluxo de captação de leads que cria conta e abre o WhatsApp da UENO com a mensagem pronta. Especificação em `docs/cadastro-evento-especificacao.md`.

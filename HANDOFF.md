@@ -2,6 +2,12 @@
 
 Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-16.
 
+## Especificação de acesso por cliente — 2026-09-16, implementada em código 2026-09-17
+
+Criada `docs/acesso-por-cliente-especificacao.md`, a pedido do usuário. Propõe liberação manual por cliente de Estudos (simulados + materiais) e Catálogo, combinada com disponibilidade global, autorização no servidor, auditoria, expiração, revogação e acesso idêntico para clientes reais e contas da revisão Apple. Substitui a proposta de toggle global para todos em `docs/bloqueio-simulados-materiais-especificacao.md`; não altera aprovação de processos nem suspensão da conta. Seleção individual de materiais/serviços e cobrança por conteúdo estão fora desta primeira etapa.
+
+**Implementado em código em 2026-09-17** (commit `8d7a73f`): modelo de concessão completo (`acessos_clientes`, `app_config/acessos`, callables com auditoria/idempotência/concorrência), regras do Firestore/Storage exigindo a concessão para ler o conteúdo — antes só a aba era escondida no app, o dado continuava lendo direto via SDK —, aba admin "Acessos", toggle global em Preferências, hook e guards no mobile, filtro de `is_active` nativo nas queries (`scripts/backfill-is-active.mjs` para documentos antigos, ainda não executado contra o projeto real), e snapshot do serviço/variação em `cliente_processos` para o Catálogo não quebrar processos existentes ao revogar. 29 testes unitários + 22 de integração de regras, todos verdes. **Não deployado**: módulos continuam desligados globalmente, nenhum cliente real é afetado. Pendente por decisão do usuário: mídia protegida com URL assinada (seção 10 da spec) — fica para antes do rollout com clientes reais.
+
 ## Cadastro rápido de evento (mobile + web) — 2026-09-16
 
 Novo fluxo de captação de leads pro evento em ~4 dias: formulário rápido (nome, nascimento, cidade com autocomplete local, interesse em serviços — agora **múltipla escolha** —, como conheceu a UENO, e-mail) que cria a conta e abre o WhatsApp da UENO com a mensagem pronta. Especificação completa em `docs/cadastro-evento-especificacao.md`; lista de arquivos em `CHANGELOG.md` na entrada de mesma data. **Trabalho paralelo à publicação na App Store abaixo — workstreams diferentes, mesmo dia.**
