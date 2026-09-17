@@ -35,12 +35,11 @@ export async function listVariacoesByServico(
   servicoId: string,
   onlyActive = false,
 ): Promise<ServicoVariacao[]> {
-  const snap = await getDocs(
-    query(collection(db, 'servico_variacoes'), where('servico_id', '==', servicoId)),
-  )
+  const constraints = [where('servico_id', '==', servicoId)]
+  if (onlyActive) constraints.push(where('ativo', '==', true))
+  const snap = await getDocs(query(collection(db, 'servico_variacoes'), ...constraints))
   return snap.docs
     .map((d) => toServicoVariacao(d.id, d.data()))
-    .filter((variacao) => !onlyActive || variacao.ativo)
     .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 

@@ -32,6 +32,38 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── Acesso por cliente: Estudos/Catálogo ────────────────────────
+    function estudosDisponivelGlobalmente() {
+      return exists(/databases/$(database)/documents/app_config/acessos)
+        && get(/databases/$(database)/documents/app_config/acessos).data.estudos_disponivel == true;
+    }
+
+    function catalogoDisponivelGlobalmente() {
+      return exists(/databases/$(database)/documents/app_config/acessos)
+        && get(/databases/$(database)/documents/app_config/acessos).data.catalogo_disponivel == true;
+    }
+
+    // get()/exists() calls count against a per-request quota; resolve the doc once
+    // and check the resolved map here instead of calling get() again per field.
+    function moduloConcedidoValido(modulo) {
+      return modulo.habilitado == true
+        && (modulo.expira_em == null || modulo.expira_em > request.time);
+    }
+
+    function canAccessEstudos() {
+      return isCliente()
+        && estudosDisponivelGlobalmente()
+        && exists(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid))
+        && moduloConcedidoValido(get(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid)).data.estudos);
+    }
+
+    function canAccessCatalogo() {
+      return isCliente()
+        && catalogoDisponivelGlobalmente()
+        && exists(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid))
+        && moduloConcedidoValido(get(/databases/$(database)/documents/acessos_clientes/$(request.auth.uid)).data.catalogo);
+    }
+
     function ownsCliente(clienteId) {
       return isCliente()
         && exists(/databases/$(database)/documents/clientes/$(clienteId))
@@ -166,14 +198,14 @@ service cloud.firestore {
 
       match /materiais_progresso/{materialId} {
         allow read, write: if isAdmin()
-          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+          || (canAccessEstudos() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
       }
 
       match /simulado_resultado/{id} {
         allow read: if isAdmin()
-          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+          || (canAccessEstudos() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
         allow create: if isAdmin()
-          || (isCliente() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
+          || (canAccessEstudos() && get(/databases/$(database)/documents/clientes/$(clienteId)).data.profile_id == request.auth.uid);
         allow update, delete: if isAdmin();
       }
     }
@@ -204,19 +236,20 @@ service cloud.firestore {
     }
 
     // ── /servicos/{id} ─────────────────────────────────────────────
+    // Catálogo: leitura exige concessão individual + disponibilidade global.
     match /servicos/{id} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isInstrutor() || canAccessCatalogo();
       allow write: if isAdmin();
 
       match /etapa_templates/{tplId} {
-        allow read: if isSignedIn();
+        allow read: if isAdmin() || isInstrutor() || canAccessCatalogo();
         allow write: if isAdmin();
       }
     }
 
     // ── /servico_variacoes/{id} ───────────────────────────────────
     match /servico_variacoes/{id} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isInstrutor() || canAccessCatalogo();
       allow write: if isAdmin();
     }
 
@@ -259,13 +292,14 @@ service cloud.firestore {
     }
 
     // ── /materiais/{id} ───────────────────────────────────────────
+    // Estudos: leitura exige concessão individual + disponibilidade global.
+    // is_public NÃO é mais uma exceção — toda a área Estudos exige a concessão.
     match /materiais/{id} {
-      allow read: if isSignedIn() || resource.data.is_public == true;
+      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
       allow write: if isAdmin();
 
       match /cards/{cardId} {
-        allow read: if isSignedIn()
-          || get(/databases/$(database)/documents/materiais/$(id)).data.is_public == true;
+        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
         allow write: if isAdmin();
       }
     }
@@ -273,45 +307,66 @@ service cloud.firestore {
     // ── /app_config/{id} ──────────────────────────────────────────
     // Public app preferences used by client/mobile screens
     match /app_config/{id} {
-      allow get: if id == 'public' || isAdmin();
+      allow get: if id == 'public' || isAdmin()
+        || (id == 'acessos' && (isCliente() || isInstrutor()));
       allow list: if isAdmin();
-      allow write: if isAdmin();
+      // 'acessos' is written only by the setClientModuleAvailability callable (Admin SDK
+      // bypasses rules); admins get no direct client-SDK write, so the audit trail can't be skipped.
+      allow write: if id != 'acessos' && isAdmin();
+
+      match /historico/{eventoId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // ── /acessos_clientes/{uid} ────────────────────────────────────
+    // Per-client module grants (Estudos/Catálogo). Written only via callable (Admin SDK).
+    match /acessos_clientes/{uid} {
+      allow get: if isAdmin() || isOwner(uid);
+      allow list: if isAdmin();
+      allow write: if false;
+
+      match /historico/{eventoId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
     }
 
     // ── /categorias_material/{id} ─────────────────────────────────
     match /categorias_material/{id} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
       allow write: if isAdmin();
     }
 
     // ── /simulado_config/{materialId} ─────────────────────────────
     match /simulado_config/{materialId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
       allow write: if isAdmin();
 
       match /questoes/{qId} {
-        allow read: if isSignedIn();
+        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
         allow write: if isAdmin();
       }
     }
 
     // ── /questoes/{id} ────────────────────────────────────────────
     match /questoes/{id} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
       allow write: if isAdmin();
 
       match /opcoes/{opId} {
-        allow read: if isSignedIn();
+        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
         allow write: if isAdmin();
       }
 
       match /imagens/{imgId} {
-        allow read: if isSignedIn();
+        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
         allow write: if isAdmin();
       }
 
       match /explicacao_imagens/{imgId} {
-        allow read: if isSignedIn();
+        allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
         allow write: if isAdmin();
       }
 
@@ -326,7 +381,7 @@ service cloud.firestore {
     match /questao_erro_reports/{id} {
       allow read: if isAdmin();
       allow create: if (isAdmin()
-          || (isSignedIn() && request.resource.data.reportado_por == request.auth.uid))
+          || ((isInstrutor() || canAccessEstudos()) && request.resource.data.reportado_por == request.auth.uid))
         && request.resource.data.status == 'pendente'
         && request.resource.data.descricao is string
         && request.resource.data.descricao.size() >= 5
@@ -343,7 +398,7 @@ service cloud.firestore {
     match /simulado_resultados/{id} {
       allow read: if isAdmin()
         || (
-          isCliente()
+          canAccessEstudos()
           && (
             resource.data.cliente_id == request.auth.uid
             || (
@@ -355,7 +410,7 @@ service cloud.firestore {
         );
       allow create: if isAdmin()
         || (
-          isCliente()
+          canAccessEstudos()
           && (
             request.resource.data.cliente_id == request.auth.uid
             || (
@@ -457,6 +512,8 @@ service cloud.firestore {
             'valor_acordado_jpy',
             'status',
             'notas',
+            'servico_snapshot',
+            'variacao_snapshot',
             'created_at',
             'updated_at'
           ])

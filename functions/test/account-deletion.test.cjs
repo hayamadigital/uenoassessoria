@@ -104,6 +104,19 @@ test('full deletion removes children, legacy results and files without touching 
   await processDeletion(db, svc.auth, svc.storage, 'owner', null)
   assert.deepEqual(svc.deletedUsers, ['owner'])
 })
+test('full deletion also removes the client\'s module-access grant and its audit trail', async () => {
+  const { db, values } = store({
+    ...seed(),
+    'acessos_clientes/owner': { cliente_id: 'client', estudos: { habilitado: true, expira_em: null }, revision: 1 },
+    'acessos_clientes/owner/historico/op-1': { modulo: 'estudos', motivo: 'Teste' },
+    'acessos_clientes/other': { cliente_id: 'other-client', estudos: { habilitado: true, expira_em: null }, revision: 1 },
+  })
+  const svc = services()
+  await processDeletion(db, svc.auth, svc.storage, 'owner', null)
+  assert.equal(values.has('acessos_clientes/owner'), false)
+  assert.equal(values.has('acessos_clientes/owner/historico/op-1'), false)
+  assert.equal(values.has('acessos_clientes/other'), true)
+})
 test('retention archives only signed contracts and finance and resumes after storage failure', async () => {
   const { db, values } = store(seed()), svc = services(true)
   const policy = { reason: 'Obrigação fiscal documentada', until: '2030-01-01T00:00:00.000Z' }

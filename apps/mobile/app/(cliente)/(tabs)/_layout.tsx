@@ -8,10 +8,12 @@ import { db } from '@/lib/firebase'
 import { useAuthStore } from '@/stores/auth.store'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
 import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
+import { useClienteAccess } from '@/hooks/useClienteAccess'
 import { colors } from '@/theme'
 
 export default function TabsLayout() {
   const { session } = useAuthStore()
+  const { loading: loadingAcesso, estudosLiberado, catalogoLiberado } = useClienteAccess()
   const [approvalAcknowledged, setApprovalAcknowledged] = useState(false)
   const promptedProcessIdRef = useRef<string | null>(null)
   const mountedRef = useRef(true)
@@ -125,7 +127,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'book' : 'book-outline'} size={24} color={color} />
           ),
-          href: null,
+          href: !loadingAcesso && estudosLiberado ? undefined : null,
         }}
       />
       <Tabs.Screen
@@ -161,7 +163,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'layers' : 'layers-outline'} size={24} color={color} />
           ),
-          href: null,
+          href: !loadingAcesso && catalogoLiberado ? undefined : null,
         }}
       />
       <Tabs.Screen

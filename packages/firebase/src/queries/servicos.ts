@@ -7,6 +7,8 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  query,
+  where,
   type Unsubscribe,
   type Firestore,
 } from 'firebase/firestore'
@@ -53,10 +55,10 @@ function toServico(id: string, data: Record<string, unknown>): Servico {
 }
 
 export async function listServicos(db: Firestore, onlyActive = true): Promise<Servico[]> {
-  const snap = await getDocs(collection(db, 'servicos'))
+  const constraints = onlyActive ? [where('is_active', '==', true)] : []
+  const snap = await getDocs(query(collection(db, 'servicos'), ...constraints))
   return snap.docs
     .map((d) => toServico(d.id, d.data()))
-    .filter((servico) => !onlyActive || servico.is_active)
     .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
@@ -65,10 +67,10 @@ export function subscribeServicos(
   onChange: (servicos: Servico[]) => void,
   onlyActive = true,
 ): Unsubscribe {
-  return onSnapshot(collection(db, 'servicos'), (snap) => {
+  const constraints = onlyActive ? [where('is_active', '==', true)] : []
+  return onSnapshot(query(collection(db, 'servicos'), ...constraints), (snap) => {
     const rows = snap.docs
       .map((d) => toServico(d.id, d.data()))
-      .filter((servico) => !onlyActive || servico.is_active)
       .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'))
     onChange(rows)
   })

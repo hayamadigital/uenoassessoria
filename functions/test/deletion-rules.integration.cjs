@@ -6,7 +6,12 @@ const { doc, setDoc, getDoc, updateDoc, collection, getDocs, query, where } = re
 const { ref, uploadBytes, getBytes } = require('firebase/storage')
 let env
 before(async () => {
-  env = await initializeTestEnvironment({ projectId: 'demo-ueno-release',
+  // Must match the emulator's real project id (firebase.json has singleProjectMode: true):
+  // storage.rules' firestore.get()/exists() cross-service bridge only resolves data written
+  // under this exact project — a made-up projectId silently breaks that bridge only (the
+  // "processing deletion blocks..." case below), even though plain Firestore rule checks
+  // work fine with any projectId under this mode.
+  env = await initializeTestEnvironment({ projectId: 'ueno-assessoria-475b9',
     firestore: { host: '127.0.0.1', port: 8080, rules: readFileSync(resolve(__dirname, '../../firestore.rules'), 'utf8') },
     storage: { host: '127.0.0.1', port: 9199, rules: readFileSync(resolve(__dirname, '../../storage.rules'), 'utf8') },
   })

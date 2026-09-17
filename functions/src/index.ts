@@ -9,6 +9,12 @@ import { getStorage } from 'firebase-admin/storage'
 import axios from 'axios'
 import sanitizeHtml from 'sanitize-html'
 import { enforceRateLimit, enforceRateLimitByIp } from './rate-limit'
+import {
+  applySetClienteModuleAccess,
+  applySetClientModuleAvailability,
+  validateSetAcessoInput,
+  validateSetAvailabilityInput,
+} from './acessos'
 
 admin.initializeApp()
 
@@ -459,6 +465,24 @@ export const setUserActive = onCall({ ...CORS }, async (request) => {
   await profileRef.update({ is_active: isActive, updated_at: new Date().toISOString() })
 
   return { success: true }
+})
+
+// ── Acesso por cliente (Estudos/Catálogo) ──────────────────────────
+
+export const setClienteModuleAccess = onCall({ ...CORS }, async (request) => {
+  await assertAdmin(request)
+  await enforceRateLimit(db, request, 'setClienteModuleAccess', 20)
+  const input = validateSetAcessoInput(request.data)
+  const result = await applySetClienteModuleAccess(db, input, request.auth!.uid)
+  return { success: true, revision: result.revision }
+})
+
+export const setClientModuleAvailability = onCall({ ...CORS }, async (request) => {
+  await assertAdmin(request)
+  await enforceRateLimit(db, request, 'setClientModuleAvailability', 10)
+  const input = validateSetAvailabilityInput(request.data)
+  const result = await applySetClientModuleAvailability(db, input, request.auth!.uid)
+  return { success: true, revision: result.revision }
 })
 
 // ── generateContractPdf ────────────────────────────────────────────

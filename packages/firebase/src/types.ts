@@ -352,6 +352,41 @@ export interface PublicAppConfig {
   updated_at?: string
 }
 
+export type ModuloAcesso = 'estudos' | 'catalogo'
+
+export interface AppConfigAcessos {
+  estudos_disponivel: boolean
+  catalogo_disponivel: boolean
+  revision: number
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export interface AcessoModulo {
+  habilitado: boolean
+  expira_em: string | null
+}
+
+export interface AcessoCliente {
+  cliente_id: string
+  estudos: AcessoModulo
+  catalogo: AcessoModulo
+  revision: number
+  updated_at: string | null
+  updated_by: string | null
+}
+
+export interface AcessoHistoricoEvento {
+  id: string
+  modulo: ModuloAcesso
+  valores_anteriores: Record<string, unknown> | null
+  valores_novos: Record<string, unknown>
+  motivo: string
+  admin_id: string
+  operation_id: string
+  created_at: string | null
+}
+
 export interface CategoriaMaterial {
   id: string
   nome: string
@@ -496,6 +531,12 @@ export interface PushToken {
   created_at: string
 }
 
+// Cópia integral do serviço/variação no momento da criação do processo (menos os ids, já
+// presentes em servico_id/variacao_id) — mesma forma que a leitura ao vivo devolvia antes,
+// só que congelada, para telas e contratos continuarem funcionando sem reabrir o catálogo.
+export type ServicoSnapshot = Omit<Servico, 'id'>
+export type VariacaoSnapshot = Omit<ServicoVariacao, 'id' | 'servico_id'>
+
 export interface ClienteProcesso {
   id: string
   cliente_id: string
@@ -507,6 +548,10 @@ export interface ClienteProcesso {
   notas: string | null
   created_at: string
   updated_at: string
+  // Copiado do serviço/variação no momento da criação: um cliente sem a concessão de
+  // Catálogo continua vendo o que já contratou, sem reabrir o catálogo inteiro.
+  servico_snapshot: ServicoSnapshot
+  variacao_snapshot: VariacaoSnapshot | null
 }
 
 export interface ProcessoEtapa {
@@ -608,7 +653,12 @@ export type RotaDiaInsert = Omit<RotaDia, 'id' | 'created_at' | 'updated_at'>
 export type RotaParadaInsert = Omit<RotaParada, 'id' | 'created_at'>
 export type NotificacaoInsert = Omit<Notificacao, 'id' | 'created_at'>
 export type PushTokenInsert = Omit<PushToken, 'id' | 'created_at'>
-export type ClienteProcessoInsert = Omit<ClienteProcesso, 'id' | 'created_at' | 'updated_at'>
+// servico_snapshot/variacao_snapshot são computados por createProcesso a partir do
+// serviço/variação atuais — o chamador não os informa.
+export type ClienteProcessoInsert = Omit<
+  ClienteProcesso,
+  'id' | 'created_at' | 'updated_at' | 'servico_snapshot' | 'variacao_snapshot'
+>
 export type ProcessoEtapaInsert = Omit<ProcessoEtapa, 'id' | 'created_at' | 'updated_at'>
 export type EtapaTemplateInsert = Omit<EtapaTemplate, 'id' | 'created_at'>
 export type ClienteContatoInsert = Omit<ClienteContato, 'id' | 'created_at' | 'updated_at'>
@@ -705,8 +755,8 @@ export interface OtimizacaoRotaResultado {
 }
 
 export interface ClienteProcessoWithServico extends ClienteProcesso {
-  servico: Servico
-  variacao: ServicoVariacao | null
+  servico: ServicoSnapshot
+  variacao: VariacaoSnapshot | null
 }
 
 export interface ClienteProcessoWithCliente extends ClienteProcessoWithServico {

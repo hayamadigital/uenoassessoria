@@ -10,6 +10,8 @@ import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '@/stores/auth.store'
+import { useClienteAccess } from '@/hooks/useClienteAccess'
+import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
 import { useSimuladoDraftsStore } from '@/stores/simulado-drafts.store'
 import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
 import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
@@ -207,6 +209,7 @@ const SIMULADO_VIEWS: SimuladosView[] = ['entrada', 'retomar', 'pre', 'questao',
 export default function SimuladosScreen() {
   const { simuladoId: routeSimuladoId } = useLocalSearchParams<{ simuladoId?: string }>()
   const { session } = useAuthStore()
+  const { loading: loadingAcesso, estudosLiberado } = useClienteAccess()
   const { drafts, hydrated: draftsHydrated, saveDraft, removeDraft } = useSimuladoDraftsStore()
   const queryClient = useQueryClient()
   const navigation = useNavigation()
@@ -293,7 +296,7 @@ export default function SimuladosScreen() {
 
   const { data: materiais = [], isLoading: loadingMateriais } = useQuery({
     queryKey: ['materiais-cliente-simulados', session?.userId, canViewPrivateMaterials],
-    queryFn: () => listMateriais(db, undefined, !canViewPrivateMaterials),
+    queryFn: () => listMateriais(db, undefined, !canViewPrivateMaterials, true),
     enabled: !!session,
     staleTime: 0,
     refetchOnMount: 'always',
@@ -683,6 +686,28 @@ export default function SimuladosScreen() {
       return
     }
     reportMutation.mutate({ questaoId: reportQuestionId, descricao })
+  }
+
+  if (loadingAcesso) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.navy800} />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (!estudosLiberado) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <AccessBlockedNotice
+          titulo="Estudos"
+          mensagem="Este recurso ainda não está liberado para sua conta. Fale com a equipe da Ueno."
+          onVoltar={() => router.replace('/(cliente)/(tabs)/inicio')}
+        />
+      </SafeAreaView>
+    )
   }
 
   if (view === 'categoria') {

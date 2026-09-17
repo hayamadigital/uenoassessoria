@@ -54,10 +54,12 @@ export async function listMateriais(
   db: Firestore,
   categoriaId?: string,
   onlyPublic = false,
+  onlyActive = false,
 ): Promise<Material[]> {
   const constraints: Parameters<typeof query>[1][] = [orderBy('ordem')]
   if (categoriaId) constraints.push(where('categoria_id', '==', categoriaId))
   if (onlyPublic) constraints.push(where('is_public', '==', true))
+  if (onlyActive) constraints.push(where('is_active', '==', true))
   const snap = await getDocs(query(collection(db, 'materiais'), ...constraints))
   return snap.docs.map((d) => toMaterial(d.id, d.data()))
 }
@@ -67,10 +69,12 @@ export function subscribeMateriais(
   onChange: (materiais: Material[]) => void,
   categoriaId?: string,
   onlyPublic = false,
+  onlyActive = false,
 ): Unsubscribe {
   const constraints: Parameters<typeof query>[1][] = [orderBy('ordem')]
   if (categoriaId) constraints.push(where('categoria_id', '==', categoriaId))
   if (onlyPublic) constraints.push(where('is_public', '==', true))
+  if (onlyActive) constraints.push(where('is_active', '==', true))
   return onSnapshot(query(collection(db, 'materiais'), ...constraints), (snap) => {
     onChange(snap.docs.map((d) => toMaterial(d.id, d.data())))
   })

@@ -139,6 +139,23 @@
       ]
     },
     {
+      "collectionGroup": "materiais",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_public", "order": "ASCENDING" },
+        { "fieldPath": "is_active", "order": "ASCENDING" },
+        { "fieldPath": "ordem", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "servico_variacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "servico_id", "order": "ASCENDING" },
+        { "fieldPath": "ativo", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "etapa_templates",
       "queryScope": "COLLECTION",
       "fields": [

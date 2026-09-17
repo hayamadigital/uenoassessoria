@@ -22,6 +22,8 @@ import { db, storage } from '@/lib/firebase'
 import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { useAuthStore } from '@/stores/auth.store'
+import { useClienteAccess } from '@/hooks/useClienteAccess'
+import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
 import { getClienteByProfileId, updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { createProcesso } from '@ueno/firebase/queries/processos'
@@ -156,6 +158,7 @@ export default function ServicoDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
   const insets = useSafeAreaInsets()
   const { session } = useAuthStore()
+  const { loading: loadingAcesso, catalogoLiberado } = useClienteAccess()
   const queryClient = useQueryClient()
   const serviceId = typeof id === 'string' ? id : undefined
   const [imageFailed, setImageFailed] = useState(false)
@@ -516,7 +519,19 @@ export default function ServicoDetailScreen() {
     submitContractMutation.mutate()
   }
 
-  if (isLoadingServico) {
+  if (!loadingAcesso && !catalogoLiberado) {
+    return (
+      <SafeAreaView style={[s.safe, s.center]}>
+        <AccessBlockedNotice
+          titulo="Catálogo de serviços"
+          mensagem="Este recurso ainda não está liberado para sua conta. Fale com a equipe da Ueno."
+          onVoltar={() => router.replace('/(cliente)/(tabs)/catalogos')}
+        />
+      </SafeAreaView>
+    )
+  }
+
+  if (loadingAcesso || isLoadingServico) {
     return (
       <SafeAreaView style={[s.safe, s.center]}>
         <ActivityIndicator color={colors.navy800} />

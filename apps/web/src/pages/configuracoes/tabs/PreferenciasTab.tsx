@@ -1,17 +1,136 @@
 import { safeErrorMessage } from '@/lib/error-message'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { httpsCallable } from 'firebase/functions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { db } from '@/lib/firebase'
+import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { db, functions } from '@/lib/firebase'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { listCategoriasMaterial } from '@ueno/firebase/queries/materiais'
 import { getPublicAppConfig, updatePublicAppConfig } from '@ueno/firebase/queries/public-config'
+import { getAppConfigAcessos } from '@ueno/firebase/queries/acessos'
 import { useAuthStore } from '@/stores/auth.store'
 import { cn } from '@/lib/cn'
 import i18n from '@/i18n'
+import type { ModuloAcesso } from '@ueno/firebase'
+
+type SetAvailabilityRequest = {
+  modulo: ModuloAcesso
+  disponivel: boolean
+  motivo: string
+  expected_revision: number
+  operation_id: string
+}
+type SetAvailabilityResponse = { success: boolean; revision: number }
+
+function DisponibilidadeModuloRow({
+  modulo,
+  titulo,
+  disponivel,
+  revision,
+  onSaved,
+}: {
+  modulo: ModuloAcesso
+  titulo: string
+  disponivel: boolean
+  revision: number
+  onSaved: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [proximoValor, setProximoValor] = useState(disponivel)
+  const [motivo, setMotivo] = useState('')
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const setClientModuleAvailability = httpsCallable<SetAvailabilityRequest, SetAvailabilityResponse>(
+        functions,
+        'setClientModuleAvailability',
+      )
+      await setClientModuleAvailability({
+        modulo,
+        disponivel: proximoValor,
+        motivo,
+        expected_revision: revision,
+        operation_id: crypto.randomUUID(),
+      })
+    },
+    onSuccess: () => {
+      setOpen(false)
+      setMotivo('')
+      onSaved()
+    },
+  })
+
+  function abrir(novoValor: boolean) {
+    setProximoValor(novoValor)
+    setMotivo('')
+    mutation.reset()
+    setOpen(true)
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-md border p-4">
+      <div className="flex items-center gap-3">
+        <p className="font-medium">{titulo}</p>
+        <Badge variant={disponivel ? 'success' : 'secondary'}>
+          {disponivel ? 'Habilitado' : 'Desligado'}
+        </Badge>
+      </div>
+      <Button size="sm" variant="outline" onClick={() => abrir(!disponivel)}>
+        {disponivel ? 'Desligar globalmente' : 'Ligar globalmente'}
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {proximoValor ? `Ligar ${titulo} globalmente` : `Desligar ${titulo} globalmente`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Isso afeta todos os clientes com o módulo concedido individualmente
+              {proximoValor ? ': eles passam a ter acesso imediatamente.' : ': eles perdem acesso imediatamente, mesmo com concessão individual ativa.'}
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor={`motivo-disponibilidade-${modulo}`}>
+                Motivo <span className="text-destructive">*</span>
+              </Label>
+              <textarea
+                id={`motivo-disponibilidade-${modulo}`}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Ex: fluxo validado ponta a ponta nos emuladores e em TestFlight"
+              />
+            </div>
+            {mutation.isError && (
+              <p className="text-sm text-destructive">
+                {safeErrorMessage(mutation.error, 'Erro ao salvar disponibilidade')}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              isLoading={mutation.isPending}
+              disabled={motivo.trim().length < 5}
+              onClick={() => mutation.mutate()}
+            >
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
 
 export function PreferenciasTab() {
   const { session, setSession } = useAuthStore()
@@ -26,6 +145,10 @@ export function PreferenciasTab() {
   const { data: categoriasMaterial = [] } = useQuery({
     queryKey: ['categorias-material'],
     queryFn: () => listCategoriasMaterial(db),
+  })
+  const { data: appConfigAcessos } = useQuery({
+    queryKey: ['app-config-acessos'],
+    queryFn: () => getAppConfigAcessos(db),
   })
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
   const [homeMaterialCategoryId, setHomeMaterialCategoryId] = useState('')
@@ -185,6 +308,32 @@ export function PreferenciasTab() {
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Disponibilidade de módulos</CardTitle>
+          <CardDescription>
+            Liga/desliga Estudos e Catálogo para todos os clientes. Continua exigindo a concessão individual
+            em cada cliente — ver aba Acessos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <DisponibilidadeModuloRow
+            modulo="estudos"
+            titulo="Estudos — simulados e materiais"
+            disponivel={appConfigAcessos?.estudos_disponivel ?? false}
+            revision={appConfigAcessos?.revision ?? 0}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ['app-config-acessos'] })}
+          />
+          <DisponibilidadeModuloRow
+            modulo="catalogo"
+            titulo="Catálogo de serviços"
+            disponivel={appConfigAcessos?.catalogo_disponivel ?? false}
+            revision={appConfigAcessos?.revision ?? 0}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ['app-config-acessos'] })}
+          />
         </CardContent>
       </Card>
     </div>
