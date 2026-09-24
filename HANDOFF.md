@@ -2,6 +2,12 @@
 
 Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-24.
 
+## Build iOS 11 no TestFlight — 24/09/2026
+
+A pedido do usuário, depois da reversão do acesso por cliente (seção abaixo): `eas build --platform ios --profile production` (build 11, auto-incrementado de 10) + `eas submit --platform ios --latest`. Ambos concluídos com sucesso; binário em processamento pela Apple no momento deste registro.
+
+**Atenção — o build inclui mais do que o commit `a7c58d7`.** EAS empacota o diretório de trabalho inteiro, não só o que está commitado. No momento do build, o working tree também tinha (não commitado): o toggle de mostrar/ocultar senha em `login.tsx`, `alterar-senha.tsx` e `excluir-conta.tsx` (mobile). Ou seja, esse recurso **já está no TestFlight** sem estar no histórico do git. Recomendo commitar essas mudanças separadamente antes do próximo build, pra não perder rastreabilidade. (`SegurancaTab.tsx` é só web, não afeta este build; os docs soltos de App Store/preço/raio-x também não afetam builds.)
+
 ## Reversão do acesso por cliente — 24/09/2026
 
 **Toda a feature de "Especificação de acesso por cliente" (seções abaixo, 16-18/09) foi revertida a pedido do usuário.** Estudos e Catálogo voltam a ficar liberados para qualquer cliente autenticado, sem concessão individual, sem toggle global e sem o "bloqueio total" antigo (`docs/bloqueio-simulados-materiais-especificacao.md`, que já bloqueava essas abas desde antes dessa feature existir — só descobri isso ao investigar, e o usuário confirmou que queria abrir de vez, não só voltar pro bloqueio total).

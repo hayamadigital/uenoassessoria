@@ -1,5 +1,11 @@
 # CHANGELOG — UENO ASSESSORIA
 
+## [2026-09-24] — Build iOS 11 enviado ao App Store Connect/TestFlight
+
+Após a reversão do acesso por cliente (entrada abaixo), usuário perguntou se as mudanças já estavam no TestFlight — não estavam (só backend/web tinham sido publicados). A pedido do usuário: `eas build --platform ios --profile production` (buildNumber auto-incrementado de 10 para **11**, `autoIncrement: true` em `eas.json`) seguido de `eas submit --platform ios --latest`. Build e submissão concluídos com sucesso; binário em processamento pela Apple (~5-10min), depois disponível em https://appstoreconnect.apple.com/apps/6804929737/testflight/ios. Build ID `d1eea7a6-bf25-4a39-a07d-c4bc1c3786dc`, submissão `ad60af0d-3807-44c1-80ec-e456753c9e48`.
+
+Este build inclui todo o estado atual do working tree no momento do build (não só o commit `a7c58d7`): além da reversão do acesso por cliente, FAQ por categoria e normalização de datas, também foram embarcadas as mudanças **ainda não commitadas** de mostrar/ocultar senha (login, alterar senha, excluir conta, Segurança no web) — essas não fazem parte de nenhum commit no momento deste registro; considerar commitá-las separadamente se ficarem validadas.
+
 ## [2026-09-24] — Reversão do acesso por cliente: Estudos e Catálogo liberados para todos
 
 A pedido do usuário: "quero que volte a liberação de todas as funcionalidades para todos os clientes". Reverte por completo o modelo de concessão individual implementado em `8d7a73f`/`cd241d7`/`805bd04` (18/09) — inclusive o que já estava deployado em produção.
