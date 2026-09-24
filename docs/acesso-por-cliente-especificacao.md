@@ -1,5 +1,7 @@
 # Especificação — Acesso a recursos por cliente
 
+> **Revertido em 24/09/2026.** Decisão do usuário: liberar Estudos e Catálogo para todos os clientes autenticados, sem concessão individual nem toggle global. Nada disto foi deployado, então a reversão foi só no código (commits `8d7a73f`, `cd241d7`, `805bd04` seguem no histórico caso precise reativar). Este documento fica só como registro histórico da spec.
+
 Data: 16/09/2026. **Status: implementado em código (17/09/2026), não deployado.**
 
 Implementado: modelo de concessão (`acessos_clientes`, `app_config/acessos`, callables, auditoria, idempotência), regras do Firestore/Storage exigindo a concessão para ler `materiais`/`simulado_config`/`questoes`/`servicos`/`servico_variacoes` (não só esconder a aba), aba admin de Acessos, toggle global, hook e guards no mobile, filtro de `is_active` nas queries, e snapshot do serviço no `cliente_processos` (para o Catálogo não quebrar processos existentes ao revogar).

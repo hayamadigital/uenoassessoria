@@ -7,8 +7,6 @@ import { router } from 'expo-router'
 import { db } from '@/lib/firebase'
 import { listServicos } from '@ueno/firebase/queries/servicos'
 import { AppImage } from '@/components/AppImage'
-import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
-import { useClienteAccess } from '@/hooks/useClienteAccess'
 import { colors } from '@/theme'
 import type { Servico } from '@ueno/firebase'
 
@@ -24,45 +22,10 @@ function formatPrecoServico(servico: Servico) {
 }
 
 export default function CatalogoScreen() {
-  const { loading: loadingAcesso, error: erroAcesso, catalogoLiberado, retry: retryAcesso } = useClienteAccess()
   const { data: servicos, isLoading } = useQuery({
     queryKey: ['servicos'],
     queryFn: () => listServicos(db, true),
-    enabled: catalogoLiberado,
   })
-
-  if (loadingAcesso) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.navy800} />
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  if (erroAcesso) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <AccessBlockedNotice
-          titulo="Não foi possível verificar seu acesso"
-          mensagem="Confira sua conexão e tente novamente."
-          onTentarNovamente={retryAcesso}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (!catalogoLiberado) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <AccessBlockedNotice
-          titulo="Catálogo de serviços"
-          mensagem="Este recurso ainda não está liberado para sua conta. Fale com a equipe da Ueno."
-        />
-      </SafeAreaView>
-    )
-  }
 
   return (
     <SafeAreaView style={s.safe}>

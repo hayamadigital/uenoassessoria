@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { db } from '@/lib/firebase'
-import { listFaqs } from '@ueno/firebase/queries/faq'
+import { listFaqs, listCategoriasFaq } from '@ueno/firebase/queries/faq'
+import type { CategoriaFaq, FAQ } from '@ueno/firebase'
 import { colors } from '@/theme'
 
 type IoniconName = ComponentProps<typeof Ionicons>['name']
@@ -28,6 +29,20 @@ function getFaqIcon(icon: string): IoniconName {
   return ICON_BY_FAQ_ICON[icon] ?? 'help-circle-outline'
 }
 
+type FaqGroup = { categoria: CategoriaFaq | null; faqs: FAQ[] }
+
+function groupFaqsByCategoria(faqs: FAQ[], categorias: CategoriaFaq[]): FaqGroup[] {
+  const groups: FaqGroup[] = categorias.map((categoria) => ({
+    categoria,
+    faqs: faqs.filter((faq) => faq.categoria_id === categoria.id),
+  }))
+
+  const semCategoria = faqs.filter((faq) => !categorias.some((c) => c.id === faq.categoria_id))
+  if (semCategoria.length > 0) groups.push({ categoria: null, faqs: semCategoria })
+
+  return groups.filter((group) => group.faqs.length > 0)
+}
+
 export default function FaqAdminScreen() {
   const { t } = useTranslation('common')
   const [openFaqId, setOpenFaqId] = useState<string | null>(null)
@@ -37,6 +52,12 @@ export default function FaqAdminScreen() {
     queryFn: () => listFaqs(db),
   })
 
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias-faq'],
+    queryFn: () => listCategoriasFaq(db),
+  })
+
+  const faqGroups = groupFaqsByCategoria(faqs, categorias)
   const publicadas = faqs.filter((f) => f.is_active).length
   const rascunhos = faqs.filter((f) => !f.is_active).length
 
@@ -79,35 +100,42 @@ export default function FaqAdminScreen() {
             <Text style={s.emptyTxt}>{t('admin.modules.no_faqs')}</Text>
           </View>
         ) : (
-          <View style={{ gap: 9 }}>
-            {faqs.map((item) => {
-              const iconColor = item.cor_icone || '#7E22CE'
-              const isOpen = openFaqId === item.id
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[s.faqCard, !item.is_active && s.faqCardInactive]}
-                  activeOpacity={0.8}
-                  onPress={() => setOpenFaqId(isOpen ? null : item.id)}
-                >
-                  <View style={[s.faqIcon, { backgroundColor: `${iconColor}18` }]}>
-                    <Ionicons name={getFaqIcon(item.icone)} size={18} color={iconColor} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={s.faqTitleRow}>
-                      <Text style={s.faqQ} numberOfLines={isOpen ? undefined : 2}>{item.pergunta}</Text>
-                      <View style={[s.statusChip, { backgroundColor: item.is_active ? '#16A34A18' : colors.ink100 }]}>
-                        <Text style={[s.statusChipTxt, { color: item.is_active ? colors.ok : colors.ink400 }]}>
-                          {item.is_active ? t('active') : t('admin.modules.draft')}
-                        </Text>
+          <View style={{ gap: 20 }}>
+            {faqGroups.map((group) => (
+              <View key={group.categoria?.id ?? 'sem-categoria'} style={{ gap: 9 }}>
+                {faqGroups.length > 1 && (
+                  <Text style={s.categoriaLabel}>{group.categoria?.nome ?? 'Sem categoria'}</Text>
+                )}
+                {group.faqs.map((item) => {
+                  const iconColor = item.cor_icone || '#7E22CE'
+                  const isOpen = openFaqId === item.id
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[s.faqCard, !item.is_active && s.faqCardInactive]}
+                      activeOpacity={0.8}
+                      onPress={() => setOpenFaqId(isOpen ? null : item.id)}
+                    >
+                      <View style={[s.faqIcon, { backgroundColor: `${iconColor}18` }]}>
+                        <Ionicons name={getFaqIcon(item.icone)} size={18} color={iconColor} />
                       </View>
-                    </View>
-                    <Text style={s.faqA} numberOfLines={isOpen ? undefined : 2}>{item.resposta}</Text>
-                  </View>
-                  <Ionicons name={isOpen ? 'chevron-up' : 'chevron-forward'} size={14} color={colors.ink300} />
-                </TouchableOpacity>
-              )
-            })}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={s.faqTitleRow}>
+                          <Text style={s.faqQ} numberOfLines={isOpen ? undefined : 2}>{item.pergunta}</Text>
+                          <View style={[s.statusChip, { backgroundColor: item.is_active ? '#16A34A18' : colors.ink100 }]}>
+                            <Text style={[s.statusChipTxt, { color: item.is_active ? colors.ok : colors.ink400 }]}>
+                              {item.is_active ? t('active') : t('admin.modules.draft')}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={s.faqA} numberOfLines={isOpen ? undefined : 2}>{item.resposta}</Text>
+                      </View>
+                      <Ionicons name={isOpen ? 'chevron-up' : 'chevron-forward'} size={14} color={colors.ink300} />
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            ))}
           </View>
         )}
 
@@ -148,6 +176,10 @@ const s = StyleSheet.create({
   sectionLabel: {
     fontSize: 11, fontWeight: '600', color: colors.ink500,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10,
+  },
+  categoriaLabel: {
+    fontSize: 10.5, fontWeight: '700', color: colors.ink500,
+    textTransform: 'uppercase', letterSpacing: 0.6,
   },
 
   faqCard: {

@@ -154,11 +154,6 @@ const ClienteHistoricoTab = lazy(() =>
     default: m.ClienteHistoricoTab,
   })),
 )
-const ClienteAcessosTab = lazy(() =>
-  import('@/pages/clientes/tabs/ClienteAcessosTab').then((m) => ({
-    default: m.ClienteAcessosTab,
-  })),
-)
 // Legacy stubs
 const ClienteAgendamentosTab = lazy(() =>
   import('@/pages/clientes/tabs/ClienteAgendamentosTab').then((m) => ({
@@ -218,7 +213,6 @@ export const router = createBrowserRouter([
           { path: 'endereco', element: <ClienteEnderecoTab /> },
           { path: 'documentos', element: <ClienteDocumentosTab /> },
           { path: 'historico', element: <ClienteHistoricoTab /> },
-          { path: 'acessos', element: <ClienteAcessosTab /> },
           // Legacy stubs
           { path: 'agendamentos', element: <ClienteAgendamentosTab /> },
           { path: 'financeiro', element: <ClienteFinanceiroTab /> },

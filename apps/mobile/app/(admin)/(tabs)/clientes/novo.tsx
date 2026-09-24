@@ -6,6 +6,7 @@ import { router } from 'expo-router'
 import { httpsCallable } from 'firebase/functions'
 import { functions } from '@/lib/firebase'
 import { useQueryClient } from '@tanstack/react-query'
+import { DateField } from '@/components/DateField'
 import { colors } from '@/theme'
 
 type Step = 1 | 2 | 3
@@ -196,7 +197,7 @@ export default function NovoClienteScreen() {
             </View>
             <View>
               <FieldLabel label="Data de nascimento" />
-              <FieldInput placeholder="DD/MM/AAAA" value={nascimento} onChangeText={setNascimento} keyboardType="phone-pad" />
+              <DateField value={nascimento} onChange={setNascimento} maximumDate={new Date()} />
             </View>
           </View>
         )}

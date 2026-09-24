@@ -26,8 +26,6 @@ type Form = {
   nome_japones: string
   data_nascimento: string
   nacionalidade: string
-  cpf: string
-  visto_tipo: string
   visto_validade: string
   data_entrada_japao: string
   profissao_tipo: ProfissaoTipo | ''
@@ -127,8 +125,6 @@ export default function DadosPessoaisScreen() {
     nome_japones: '',
     data_nascimento: '',
     nacionalidade: '',
-    cpf: '',
-    visto_tipo: '',
     visto_validade: '',
     data_entrada_japao: '',
     profissao_tipo: '',
@@ -149,8 +145,6 @@ export default function DadosPessoaisScreen() {
       nome_japones: cliente.nome_japones ?? '',
       data_nascimento: cliente.data_nascimento ?? '',
       nacionalidade: nacionalidadeToISO(cliente.nacionalidade) ?? cliente.nacionalidade ?? '',
-      cpf: cliente.cpf ?? '',
-      visto_tipo: cliente.visto_tipo ?? '',
       visto_validade: cliente.visto_validade ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
       profissao_tipo: cliente.profissao_tipo ?? '',
@@ -233,8 +227,6 @@ export default function DadosPessoaisScreen() {
         nome_japones: form.nome_japones,
         data_nascimento: form.data_nascimento,
         nacionalidade: form.nacionalidade,
-        cpf: form.cpf,
-        visto_tipo: form.visto_tipo,
         visto_validade: form.visto_validade,
         data_entrada_japao: form.data_entrada_japao,
         profissao_tipo: form.profissao_tipo || undefined,
@@ -249,8 +241,6 @@ export default function DadosPessoaisScreen() {
         nome_japones: emptyToNull(form.nome_japones),
         data_nascimento: emptyToNull(form.data_nascimento),
         nacionalidade: emptyToNull(form.nacionalidade),
-        cpf: emptyToNull(form.cpf),
-        visto_tipo: emptyToNull(form.visto_tipo),
         visto_validade: emptyToNull(form.visto_validade),
         data_entrada_japao: emptyToNull(form.data_entrada_japao),
         profissao_tipo: form.profissao_tipo ? form.profissao_tipo : null,
@@ -307,9 +297,8 @@ export default function DadosPessoaisScreen() {
             </View>
             <Field label="Nome completo" value={form.full_name} onChangeText={(v) => updateField('full_name', v)} />
             <Field label="Nome em japones" value={form.nome_japones} onChangeText={(v) => updateField('nome_japones', v)} placeholder="Katakana ou Kanji" />
-            <DateField label="Data de nascimento" value={form.data_nascimento} onChange={(v) => updateField('data_nascimento', v)} />
+            <DateField label="Data de nascimento" value={form.data_nascimento} onChange={(v) => updateField('data_nascimento', v)} maximumDate={new Date()} />
             <OptionGroup label="Nacionalidade" value={form.nacionalidade} onChange={(v) => updateField('nacionalidade', v)} options={NACIONALIDADE_OPTIONS} emptyLabel="Não informado" />
-            <Field label="CPF" value={form.cpf} onChangeText={(v) => updateField('cpf', v)} placeholder="000.000.000-00" keyboardType="number-pad" />
           </View>
 
           <View style={s.card}>
@@ -317,9 +306,8 @@ export default function DadosPessoaisScreen() {
               <Ionicons name="card-outline" size={18} color={colors.navy800} />
               <Text style={s.cardTitle}>Visto e entrada no Japão</Text>
             </View>
-            <Field label="Tipo de visto" value={form.visto_tipo} onChangeText={(v) => updateField('visto_tipo', v)} placeholder="Conjuge, Trabalho, Estudante..." />
             <DateField label="Validade do visto" value={form.visto_validade} onChange={(v) => updateField('visto_validade', v)} />
-            <DateField label="Entrada no Japão" value={form.data_entrada_japao} onChange={(v) => updateField('data_entrada_japao', v)} />
+            <DateField label="Entrada no Japão" value={form.data_entrada_japao} onChange={(v) => updateField('data_entrada_japao', v)} maximumDate={new Date()} />
           </View>
 
           <View style={s.card}>

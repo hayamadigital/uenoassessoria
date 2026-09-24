@@ -352,41 +352,6 @@ export interface PublicAppConfig {
   updated_at?: string
 }
 
-export type ModuloAcesso = 'estudos' | 'catalogo'
-
-export interface AppConfigAcessos {
-  estudos_disponivel: boolean
-  catalogo_disponivel: boolean
-  revision: number
-  updated_at: string | null
-  updated_by: string | null
-}
-
-export interface AcessoModulo {
-  habilitado: boolean
-  expira_em: string | null
-}
-
-export interface AcessoCliente {
-  cliente_id: string
-  estudos: AcessoModulo
-  catalogo: AcessoModulo
-  revision: number
-  updated_at: string | null
-  updated_by: string | null
-}
-
-export interface AcessoHistoricoEvento {
-  id: string
-  modulo: ModuloAcesso
-  valores_anteriores: Record<string, unknown> | null
-  valores_novos: Record<string, unknown>
-  motivo: string
-  admin_id: string
-  operation_id: string
-  created_at: string | null
-}
-
 export interface CategoriaMaterial {
   id: string
   nome: string
@@ -893,11 +858,26 @@ export interface QuestaoErroReportWithDetails extends QuestaoErroReport {
 }
 
 // ─────────────────────────────────────────────
+// Collection: /categorias_faq/{id}
+// ─────────────────────────────────────────────
+
+export interface CategoriaFaq {
+  id: string
+  nome: string
+  descricao: string | null
+  ordem: number
+  created_at: string
+}
+
+export type CategoriaFaqInsert = Omit<CategoriaFaq, 'id' | 'created_at'>
+
+// ─────────────────────────────────────────────
 // Collection: /faq/{id}
 // ─────────────────────────────────────────────
 
 export interface FAQ {
   id: string
+  categoria_id: string | null
   pergunta: string
   resposta: string
   cor_icone: string

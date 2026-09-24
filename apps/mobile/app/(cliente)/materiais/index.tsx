@@ -8,8 +8,6 @@ import { db } from '@/lib/firebase'
 import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { getMaterial, listMaterialCards } from '@ueno/firebase/queries/materiais'
-import { useClienteAccess } from '@/hooks/useClienteAccess'
-import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
 import type { MaterialCard } from '@ueno/firebase'
 
 function CardItem({ card, index }: { card: MaterialCard; index: number }) {
@@ -38,51 +36,18 @@ function CardItem({ card, index }: { card: MaterialCard; index: number }) {
 
 export default function ClienteMaterialScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
-  const { loading: loadingAcesso, error: erroAcesso, estudosLiberado, retry: retryAcesso } = useClienteAccess()
 
   const { data: material, isLoading: loadingMaterial } = useQuery({
     queryKey: ['cliente-material-detail', id],
     queryFn: () => getMaterial(db, id!),
-    enabled: !!id && estudosLiberado,
+    enabled: !!id,
   })
 
   const { data: cards = [], isLoading: loadingCards } = useQuery({
     queryKey: ['cliente-material-cards', id],
     queryFn: () => listMaterialCards(db, id!),
-    enabled: !!id && estudosLiberado && material?.tipo === 'card',
+    enabled: !!id && material?.tipo === 'card',
   })
-
-  if (!loadingAcesso && erroAcesso) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <AccessBlockedNotice
-          titulo="Não foi possível verificar seu acesso"
-          mensagem="Confira sua conexão e tente novamente."
-          onTentarNovamente={retryAcesso}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (!loadingAcesso && !estudosLiberado) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <AccessBlockedNotice
-          titulo="Estudos"
-          mensagem="Este recurso ainda não está liberado para sua conta. Fale com a equipe da Ueno."
-          onVoltar={() => router.back()}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (loadingAcesso) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <ActivityIndicator color={colors.navy800} style={{ marginTop: 40 }} />
-      </SafeAreaView>
-    )
-  }
 
   if (!id) {
     return (

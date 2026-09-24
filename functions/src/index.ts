@@ -9,12 +9,7 @@ import { getStorage } from 'firebase-admin/storage'
 import axios from 'axios'
 import sanitizeHtml from 'sanitize-html'
 import { enforceRateLimit, enforceRateLimitByIp } from './rate-limit'
-import {
-  applySetClienteModuleAccess,
-  applySetClientModuleAvailability,
-  validateSetAcessoInput,
-  validateSetAvailabilityInput,
-} from './acessos'
+import { parseDateInput } from './date'
 
 admin.initializeApp()
 
@@ -115,6 +110,12 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
   const normalizedName = requiredString(full_name, 'full_name', 120)
   const normalizedEmail = requiredString(email, 'email', 254).toLowerCase()
 
+  // Aceita DD/MM/AAAA (build 9, ainda em uso) e ISO; grava sempre ISO.
+  const normalizedDataNascimento = parseDateInput(data_nascimento)
+  if (data_nascimento != null && String(data_nascimento).trim() && !normalizedDataNascimento) {
+    throw new HttpsError('invalid-argument', 'data_nascimento inválida')
+  }
+
   if (!Array.isArray(interesse_categorias) || interesse_categorias.length === 0) {
     throw new HttpsError('invalid-argument', 'interesse_categorias é obrigatório')
   }
@@ -184,7 +185,7 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
     await clienteRef.set({
       id: clienteRef.id,
       profile_id: userRecord.uid,
-      data_nascimento: data_nascimento ?? null,
+      data_nascimento: normalizedDataNascimento,
       provincia_jp: provincia_jp ?? null,
       cidade_jp: cidade_jp ?? null,
       status_processo: 'prospect',
@@ -289,6 +290,13 @@ export const createCliente = onCall({ ...CORS }, async (request) => {
       throw new HttpsError('invalid-argument', `${field} inválido`)
     }
     details[field] = typeof value === 'string' && value.trim() ? value.trim() : null
+  }
+
+  // Mesmo tratamento do selfRegister: aceita BR ou ISO, grava ISO.
+  if (details.data_nascimento) {
+    const normalized = parseDateInput(details.data_nascimento)
+    if (!normalized) throw new HttpsError('invalid-argument', 'data_nascimento inválida')
+    details.data_nascimento = normalized
   }
   let userId: string | undefined
   let clienteId: string | undefined
@@ -465,24 +473,6 @@ export const setUserActive = onCall({ ...CORS }, async (request) => {
   await profileRef.update({ is_active: isActive, updated_at: new Date().toISOString() })
 
   return { success: true }
-})
-
-// ── Acesso por cliente (Estudos/Catálogo) ──────────────────────────
-
-export const setClienteModuleAccess = onCall({ ...CORS }, async (request) => {
-  await assertAdmin(request)
-  await enforceRateLimit(db, request, 'setClienteModuleAccess', 20)
-  const input = validateSetAcessoInput(request.data)
-  const result = await applySetClienteModuleAccess(db, input, request.auth!.uid)
-  return { success: true, revision: result.revision }
-})
-
-export const setClientModuleAvailability = onCall({ ...CORS }, async (request) => {
-  await assertAdmin(request)
-  await enforceRateLimit(db, request, 'setClientModuleAvailability', 10)
-  const input = validateSetAvailabilityInput(request.data)
-  const result = await applySetClientModuleAvailability(db, input, request.auth!.uid)
-  return { success: true, revision: result.revision }
 })
 
 // ── generateContractPdf ────────────────────────────────────────────

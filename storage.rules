@@ -44,39 +44,6 @@ service firebase.storage {
         && isAssignedToCliente(firestore.get(/databases/(default)/documents/pagamentos/$(pagamentoId)).data.cliente_id);
     }
 
-    // ── Acesso por cliente: Estudos ───────────────────────────────
-    function estudosDisponivelGlobalmente() {
-      return firestore.exists(/databases/(default)/documents/app_config/acessos)
-        && firestore.get(/databases/(default)/documents/app_config/acessos).data.estudos_disponivel == true;
-    }
-
-    // firestore.get()/exists() calls count against a per-request quota; resolve the doc
-    // once and check the resolved map here instead of calling get() again per field.
-    function moduloConcedidoValido(modulo) {
-      return modulo.habilitado == true
-        && (modulo.expira_em == null || modulo.expira_em > request.time);
-    }
-
-    // Conta suspensa não deve manter acesso a Estudos só porque o token atual não expirou.
-    // Acessar um campo ausente com .data.campo é erro de avaliação em rules (não null) —
-    // por isso o 'in' antes de ler is_active; sem ele, doc sem o campo negaria tudo.
-    function perfilAtivoData(profile) {
-      return !('is_active' in profile) || profile.is_active != false;
-    }
-
-    function perfilAtivo() {
-      return firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
-        && perfilAtivoData(firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data);
-    }
-
-    function canAccessEstudos() {
-      return isVerifiedCliente()
-        && perfilAtivo()
-        && estudosDisponivelGlobalmente()
-        && firestore.exists(/databases/(default)/documents/acessos_clientes/$(request.auth.uid))
-        && moduloConcedidoValido(firestore.get(/databases/(default)/documents/acessos_clientes/$(request.auth.uid)).data.estudos);
-    }
-
     function isImage(maxBytes) {
       return request.resource != null
         && request.resource.size <= maxBytes
@@ -131,15 +98,16 @@ service firebase.storage {
     }
 
     // ── materiais/ ────────────────────────────────────────────
-    // Estudos: leitura exige concessão individual + disponibilidade global.
-    // public/ deixou de ser uma exceção — toda a área Estudos exige a concessão.
+    // Authenticated reads; public/ subfolder is public; Admin writes
     match /materiais/{allPaths=**} {
-      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
+      allow read: if isSignedIn()
+        || resource.name.matches('.*materiais/public/.*');
       allow write: if isAdmin();
     }
 
+    // ── materiais/public/ — public read ───────────────────────
     match /materiais/public/{fileName} {
-      allow read: if isAdmin() || isInstrutor() || canAccessEstudos();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

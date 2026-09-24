@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ueno-assessoria-475b9"
+  },
+  "targets": {
+    "ueno-assessoria-475b9": {
+      "storage": {
+        "rules": [
+          "ueno-assessoria-475b9.firebasestorage.app"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

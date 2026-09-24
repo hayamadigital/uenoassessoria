@@ -7,6 +7,7 @@ import { sendPasswordResetEmail } from 'firebase/auth'
 import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { auth, db, functions } from '@/lib/firebase'
 import { registerSchema, type RegisterInput } from '@ueno/utils/validators'
+import { formatDateBR } from '@ueno/utils/date'
 import {
   INTERESSE_CATEGORIA_OPTIONS,
   INTERESSE_CATEGORIA_LABEL,
@@ -34,20 +35,13 @@ function buildLeadMessage(data: RegisterInput) {
     'Olá, visitei a UENO ASSESSORIA no evento e gostaria de receber mais informações.',
     '',
     `Nome: ${data.full_name}`,
-    `Data de nascimento: ${data.data_nascimento}`,
+    `Data de nascimento: ${formatDateBR(data.data_nascimento)}`,
     `Cidade: ${data.cidade_jp}${data.provincia_jp ? `, ${data.provincia_jp}` : ''}`,
     `Interesse: ${buildInteresseResumo(data.interesse_categorias, data.interesse_subopcoes)}`,
     `Conheceu a UENO através de: ${labelComoConheceu(data.como_conheceu)}`,
   ].join('\n')
 }
 
-function formatBirthdate(raw: string) {
-  const digits = raw.replace(/\D/g, '')
-  let formatted = digits
-  if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`
-  if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`
-  return formatted
-}
 
 function OptionButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -206,13 +200,14 @@ export function CadastroEventoPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="data_nascimento">Data de nascimento</Label>
+                  {/* type="date" nativo: exibe no formato local e entrega sempre ISO,
+                      igual ao resto do painel web — sem máscara manual. */}
                   <Input
                     id="data_nascimento"
-                    placeholder="DD/MM/AAAA"
-                    inputMode="numeric"
-                    maxLength={10}
+                    type="date"
+                    max={new Date().toISOString().slice(0, 10)}
                     value={dataNascimento}
-                    onChange={(e) => setValue('data_nascimento', formatBirthdate(e.target.value), { shouldValidate: true })}
+                    onChange={(e) => setValue('data_nascimento', e.target.value, { shouldValidate: true })}
                   />
                   {errors.data_nascimento ? <p className="text-xs text-destructive">{errors.data_nascimento.message}</p> : null}
                 </div>

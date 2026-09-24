@@ -4,6 +4,77 @@ import { ptBR } from 'date-fns/locale'
 
 export const JST_TIMEZONE = 'Asia/Tokyo'
 
+// ─────────────────────────────────────────────
+// Datas puras (sem hora): aniversário, validade, emissão…
+//
+// Formato canônico de armazenamento: ISO `AAAA-MM-DD`.
+// Formato de exibição/entrada para o usuário: `DD/MM/AAAA`.
+//
+// Data pura NÃO tem fuso: não usar formatJST/toJST aqui, senão a meia-noite
+// vira outro dia dependendo do timezone. Tudo abaixo é manipulação textual.
+// ─────────────────────────────────────────────
+
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+const BR_DATE_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/
+
+/** Rejeita datas que casam o formato mas não existem no calendário (31/02, 30/02, mês 13…). */
+function isRealDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  )
+}
+
+/** `true` só para uma data ISO `AAAA-MM-DD` que existe de fato. */
+export function isIsoDate(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const match = ISO_DATE_RE.exec(value)
+  if (!match) return false
+  return isRealDate(Number(match[1]), Number(match[2]), Number(match[3]))
+}
+
+/**
+ * Normaliza entrada de data para ISO `AAAA-MM-DD`.
+ *
+ * Aceita `DD/MM/AAAA` e `AAAA-MM-DD` de propósito: o app antigo (build 9) envia BR,
+ * e há dados legados gravados em BR — ambos precisam continuar sendo aceitos.
+ *
+ * Devolve `null` para vazio ou data inválida; quem chama decide se isso é erro.
+ */
+export function parseDateInput(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const iso = ISO_DATE_RE.exec(trimmed)
+  if (iso) {
+    const [, year, month, day] = iso
+    return isRealDate(Number(year), Number(month), Number(day)) ? trimmed : null
+  }
+
+  const br = BR_DATE_RE.exec(trimmed)
+  if (br) {
+    const [, day, month, year] = br
+    return isRealDate(Number(year), Number(month), Number(day)) ? `${year}-${month}-${day}` : null
+  }
+
+  return null
+}
+
+/**
+ * ISO `AAAA-MM-DD` → `DD/MM/AAAA` para exibição.
+ * Tolera valor legado já em BR (devolve como está) e devolve '' para vazio/inválido.
+ */
+export function formatDateBR(value: unknown): string {
+  const iso = parseDateInput(value)
+  if (!iso) return ''
+  const [year, month, day] = iso.split('-')
+  return `${day}/${month}/${year}`
+}
+
 /**
  * Converts a UTC ISO string to a JST Date object.
  */

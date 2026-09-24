@@ -22,8 +22,7 @@ import { db, storage } from '@/lib/firebase'
 import { AppImage } from '@/components/AppImage'
 import { colors } from '@/theme'
 import { useAuthStore } from '@/stores/auth.store'
-import { useClienteAccess } from '@/hooks/useClienteAccess'
-import { AccessBlockedNotice } from '@/components/AccessBlockedNotice'
+import { DateField } from '@/components/DateField'
 import { getClienteByProfileId, updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { createProcesso } from '@ueno/firebase/queries/processos'
@@ -158,7 +157,6 @@ export default function ServicoDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
   const insets = useSafeAreaInsets()
   const { session } = useAuthStore()
-  const { loading: loadingAcesso, error: erroAcesso, catalogoLiberado, retry: retryAcesso } = useClienteAccess()
   const queryClient = useQueryClient()
   const serviceId = typeof id === 'string' ? id : undefined
   const [imageFailed, setImageFailed] = useState(false)
@@ -172,19 +170,19 @@ export default function ServicoDetailScreen() {
   const { data: servico, isLoading: isLoadingServico } = useQuery({
     queryKey: ['servicos', serviceId],
     queryFn: () => getServico(db, serviceId!),
-    enabled: !!serviceId && catalogoLiberado,
+    enabled: !!serviceId,
   })
 
   const { data: variacoes, isLoading: isLoadingVariacoes } = useQuery({
     queryKey: ['servico-variacoes', serviceId, 'active'],
     queryFn: () => listVariacoesByServico(db, serviceId!, true),
-    enabled: !!serviceId && catalogoLiberado,
+    enabled: !!serviceId,
   })
 
   const { data: etapas, isLoading: isLoadingEtapas } = useQuery({
     queryKey: ['etapa-templates', serviceId],
     queryFn: () => listEtapaTemplatesByServico(db, serviceId!),
-    enabled: !!serviceId && catalogoLiberado,
+    enabled: !!serviceId,
   })
 
   const { data: cliente } = useQuery({
@@ -519,31 +517,7 @@ export default function ServicoDetailScreen() {
     submitContractMutation.mutate()
   }
 
-  if (!loadingAcesso && erroAcesso) {
-    return (
-      <SafeAreaView style={[s.safe, s.center]}>
-        <AccessBlockedNotice
-          titulo="Não foi possível verificar seu acesso"
-          mensagem="Confira sua conexão e tente novamente."
-          onTentarNovamente={retryAcesso}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (!loadingAcesso && !catalogoLiberado) {
-    return (
-      <SafeAreaView style={[s.safe, s.center]}>
-        <AccessBlockedNotice
-          titulo="Catálogo de serviços"
-          mensagem="Este recurso ainda não está liberado para sua conta. Fale com a equipe da Ueno."
-          onVoltar={() => router.replace('/(cliente)/(tabs)/catalogos')}
-        />
-      </SafeAreaView>
-    )
-  }
-
-  if (loadingAcesso || isLoadingServico) {
+  if (isLoadingServico) {
     return (
       <SafeAreaView style={[s.safe, s.center]}>
         <ActivityIndicator color={colors.navy800} />
@@ -747,7 +721,7 @@ export default function ServicoDetailScreen() {
                 <WizardCard icon="person-outline" title="Dados pessoais">
                   <WizardField label="Nome completo" value={contractForm.full_name} onChangeText={(value) => updateContractField('full_name', value)} />
                   <WizardField label="CPF" value={contractForm.cpf} onChangeText={(value) => updateContractField('cpf', value)} placeholder="000.000.000-00" keyboardType="number-pad" />
-                  <WizardField label="Data de nascimento" value={contractForm.data_nascimento} onChangeText={(value) => updateContractField('data_nascimento', value)} placeholder="AAAA-MM-DD" />
+                  <DateField label="Data de nascimento" value={contractForm.data_nascimento} onChange={(value) => updateContractField('data_nascimento', value)} maximumDate={new Date()} />
                   <WizardField label="Nome em japones" value={contractForm.nome_japones} onChangeText={(value) => updateContractField('nome_japones', value)} placeholder="Katakana ou Kanji" />
                   <WizardField label="Nacionalidade" value={contractForm.nacionalidade} onChangeText={(value) => updateContractField('nacionalidade', value)} placeholder="Brasil" />
                   <WizardField label="Observações" value={contractForm.observacoes} onChangeText={(value) => updateContractField('observacoes', value)} multiline />
@@ -775,7 +749,7 @@ export default function ServicoDetailScreen() {
                 <WizardCard icon="card-outline" title="Habilitação">
                   <WizardField label="Número da CNH" value={contractForm.cnh_numero} onChangeText={(value) => updateContractField('cnh_numero', value)} />
                   <WizardField label="Categoria" value={contractForm.cnh_categoria} onChangeText={(value) => updateContractField('cnh_categoria', value)} placeholder="Ex: B, AB" />
-                  <WizardField label="Validade" value={contractForm.cnh_validade} onChangeText={(value) => updateContractField('cnh_validade', value)} placeholder="AAAA-MM-DD" />
+                  <DateField label="Validade" value={contractForm.cnh_validade} onChange={(value) => updateContractField('cnh_validade', value)} />
                   <WizardField label="Estado emissor" value={contractForm.cnh_estado_emissor} onChangeText={(value) => updateContractField('cnh_estado_emissor', value)} placeholder="Ex: SP" />
                   <Text style={s.wizardLabel}>Tipo de trabalho</Text>
                   <View style={s.optionGrid}>
@@ -807,8 +781,8 @@ export default function ServicoDetailScreen() {
                 <WizardCard icon="id-card-outline" title="Visto e entrada no Japão">
                   <WizardField label="Zairyu Card / Japanese ID" value={contractForm.zairyu_card} onChangeText={(value) => updateContractField('zairyu_card', value)} />
                   <WizardField label="Tipo de visto" value={contractForm.visto_tipo} onChangeText={(value) => updateContractField('visto_tipo', value)} placeholder="Conjuge, Trabalho, Estudante..." />
-                  <WizardField label="Validade do visto" value={contractForm.visto_validade} onChangeText={(value) => updateContractField('visto_validade', value)} placeholder="AAAA-MM-DD" />
-                  <WizardField label="Data de entrada no Japão" value={contractForm.data_entrada_japao} onChangeText={(value) => updateContractField('data_entrada_japao', value)} placeholder="AAAA-MM-DD" />
+                  <DateField label="Validade do visto" value={contractForm.visto_validade} onChange={(value) => updateContractField('visto_validade', value)} />
+                  <DateField label="Data de entrada no Japão" value={contractForm.data_entrada_japao} onChange={(value) => updateContractField('data_entrada_japao', value)} maximumDate={new Date()} />
                 </WizardCard>
               ) : null}
 

@@ -1,5 +1,54 @@
 # CHANGELOG — UENO ASSESSORIA
 
+## [2026-09-24] — Reversão do acesso por cliente: Estudos e Catálogo liberados para todos
+
+A pedido do usuário: "quero que volte a liberação de todas as funcionalidades para todos os clientes". Reverte por completo o modelo de concessão individual implementado em `8d7a73f`/`cd241d7`/`805bd04` (18/09) — inclusive o que já estava deployado em produção.
+
+- **Firestore/Storage rules**: removidas `canAccessEstudos()`, `canAccessCatalogo()`, `estudosDisponivelGlobalmente()`, `catalogoDisponivelGlobalmente()`, `moduloConcedidoValido()`, `perfilAtivo()`, `isActiveOuAusente()`, `isAtivoOuAusente()`, `acessoClienteCoerente()` e a rota `/acessos_clientes/{uid}`. Leituras de `materiais`, `simulado_config`, `questoes`, `servicos`, `servico_variacoes`, `categorias_material` voltam a exigir só `isSignedIn()` (ou `is_public`/admin, como antes de 17/09). `cliente_processos` mantém a validação `servicoSnapshotConfere()` (não é sobre acesso, é integridade do preço no snapshot).
+- **Cloud Functions**: removidas `setClienteModuleAccess`, `setClientModuleAvailability`, `getMediaSignedUrl` e todo `functions/src/acessos.ts`. `processDeletion` não limpa mais `acessos_clientes/{uid}` (coleção deixa de ser usada).
+- **Mobile**: removidos `useClienteAccess`, `AccessBlockedNotice`, `apps/mobile/src/lib/signed-media.ts`. Abas Estudos (`simulados/index`) e Catálogo (`catalogos/index`) voltam com `href: undefined` — visíveis e abertas pra qualquer cliente logado, sem checagem nenhuma (nem a concessão individual, nem o "bloqueio total" antigo de `docs/bloqueio-simulados-materiais-especificacao.md`, que já existia desde antes dessa feature). PDF/vídeo de materiais volta a usar `getDownloadURL` direto em vez de URL assinada de 60s.
+- **Web admin**: removida a aba "Acessos" em Clientes (`ClienteAcessosTab`, rota `acessos`) e o card "Disponibilidade de módulos" em Configurações → Preferências.
+- **Mantido** (não fazia parte do controle de acesso, são melhorias à parte): filtro nativo de `is_active`/`ativo` nas queries de `materiais`/`servicos`/`servico_variacoes` (antes só filtrava em memória), o snapshot de `servico`/`variacao` gravado em `cliente_processos` na criação (`ServicoSnapshot`/`VariacaoSnapshot`), e o fix de concorrência dos testes de regras (`test:rules` com `--test-concurrency=1`) e do `projectId` do emulador (`ueno-assessoria-475b9`, batendo com `singleProjectMode`).
+- **Docs**: `docs/acesso-por-cliente-especificacao.md` e `docs/bloqueio-simulados-materiais-especificacao.md` marcados como histórico/revertidos, sem apagar o conteúdo.
+- **Publicado de verdade** (autorizado explicitamente pelo usuário, já que a feature revertida estava em produção real desde 18/09 — ver entrada abaixo): commit enviado pra `origin/main` (Vercel republica o painel web sozinho) e `firebase deploy --only firestore:rules,storage:rules,functions --project ueno-assessoria-475b9` das rules/functions revertidas.
+- Validação: 21 testes unitários + build TypeScript (functions) aprovados; `tsc --noEmit` de `apps/web` e `apps/mobile` aprovados. Testes de regras via emulador **não rodaram** nesta sessão — o ambiente não tem Java instalado (`firebase emulators:start` falha com "Unable to locate a Java Runtime"), então a reversão de `firestore.rules`/`storage.rules` foi revisada linha a linha contra o diff pré-feature, mas não confirmada no emulador.
+- Dados órfãos deixados em produção (não apagados, ficam inertes já que nada mais lê): `app_config/acessos`, `acessos_clientes/*` e seus `historico`. Avaliar limpeza manual depois, sem urgência.
+
+## [2026-09-18] — Push do acesso por cliente + migração/deploy real + guia de revisão da App Store
+
+### Firestore/Storage rules — correções da segunda rodada de auditoria
+- `packages/firebase/src/queries/acessos.ts` — os dois `onSnapshot` (`subscribeAppConfigAcessos`, `subscribeAcessoCliente`) passam `{ includeMetadataChanges: true }`; sem isso, uma confirmação cache→servidor sem mudança de dado não disparava callback, e o hook podia nunca confirmar online.
+- `apps/mobile/src/hooks/useClienteAccess.ts` — trocado "confirmado uma vez" (sticky) por "snapshot mais recente" (`configFromCache`/`acessoFromCache`): uma queda de conexão depois de confirmado volta a exigir nova confirmação antes de considerar o módulo liberado.
+- `functions/src/acessos.ts` (`assertCanAccessEstudos`) — agora confere `account_deletions/{uid}` (inclusive pra admin/instrutor), exige que o perfil exista, e confere coerência entre `acessos_clientes/{uid}.cliente_id` e o `clientes` real do uid — mesmas checagens já existentes em `firestore.rules`.
+- `storage.rules` — **bug real encontrado e corrigido em produção no mesmo dia**: a primeira tentativa de restringir `imagens/questoes/**` usava `allPaths.matches(...)` num tipo `path` que não suporta esse método; o erro de avaliação resultante negava leitura de **todo** `imagens/**` (inclusive banners de serviço), não só o prefixo pretendido. Corrigido trocando por `{segment}` (tipo string, com `!=`). Confirmado com teste isolado no emulador antes e depois do fix, ficou no ar só alguns minutos.
+- `functions/src/acessos.ts` — `MEDIA_SIGNED_URL_ALLOWED_PREFIXES` reincorpora `imagens/questoes/` (tinha sido removido numa rodada anterior por falta de proteção correspondente no Storage; agora que a proteção existe, o prefixo volta).
+- `apps/mobile/src/lib/signed-media.ts` (novo) — helper compartilhado `resolveProtectedMediaUrl`, usado em `simulados/index.tsx` (imagens de questão) e `materiais/index.tsx` (PDF/vídeo): reconhece uma URL de token permanente do Storage (não só caminho interno) e pede uma assinada nova, descartando o token antigo.
+
+### Execução real em produção (dados reais, deploy real — autorizado explicitamente pelo usuário)
+- **Migração**: `node scripts/backfill-cliente-processos-snapshot.mjs --apply` contra o projeto real — os 5 processos existentes (todos sem `servico_snapshot` desde a auditoria de 17/09) resolveram corretamente pros serviços/variações reais e foram atualizados.
+- **Deploy**: `firebase deploy --only functions,firestore:rules,firestore:indexes,storage:rules --project ueno-assessoria-475b9` — as 3 functions novas (`setClienteModuleAccess`, `setClientModuleAvailability`, `getMediaSignedUrl`) publicadas junto com as 16 já existentes; regras/índices publicados. Precisou criar `.firebaserc` (não existia) e adicionar `"target": "rules"` em `firebase.json` pra resolver "Could not find rules for the following storage targets: rules" no deploy de `storage:rules`.
+- **`app_config/acessos` criado** (não existia em produção) — módulos Estudos e Catálogo ligados globalmente.
+- **Conta demonstrativa criada e enriquecida** (`demo.revisao@uenoassessoria.com.br`, dados fictícios): concessão de Estudos+Catálogo via as próprias callables (revision/auditoria corretos); um `cliente_processos` ativo (Transferência de Habilitação → Carro) com 7 `processo_etapas` representando o fluxo real (Documentos/Entrada concluídos, Entrevista concluída, Prova escrita em andamento, Aula/Teste de volante/Emissão pendentes) e um `agendamentos` futuro (prova escrita em 3 dias) — pra Home e a aba Processos mostrarem o fluxo completo pra quem for testar.
+- **Push pro GitHub**: descoberto que `origin/main` estava 3 commits atrás (`8d7a73f`, `cd241d7`, `805bd04` — toda a feature de acesso por cliente) desde 17/09; nunca tinham sido enviados, por isso a aba "Acessos" não aparecia no painel web em produção. `git push origin main` feito (só os commits já fechados; nenhuma mudança não-commitada de nenhuma sessão foi tocada) — o Vercel deve republicar o painel web automaticamente com a aba nova na ficha do cliente.
+
+### Documentação
+- `docs/app-store-review-attachments/ueno-review-guide.pdf` (novo) — guia de teste em inglês pra equipe de revisão da Apple: visão geral do app, credenciais da conta demo, 8 passos de teste (login, cadastro, Home, timeline do processo, simulado, catálogo, perfil, exclusão de conta), mapa de funcionalidades, privacidade e suporte. Ainda sem screenshots — o Simulator.app não existe neste ambiente (restrição deliberada da plataforma) e o modo web do Expo trava (módulos nativos do Firebase sem suporte a web); usuário vai capturar no próprio Mac (licença do Xcode já aceita, projeto nativo gerado via `expo prebuild`) e enviar depois.
+
+### Validação
+- 29 testes unitários + build TypeScript (functions): aprovados.
+- `npx tsc --noEmit` mobile: aprovado.
+- 25/25 testes de regras via emulador, rodando com `--project ueno-assessoria-475b9` — o projectId errado (`demo-ueno-release`, usado em rodadas anteriores) era a causa real das 2 falhas históricas registradas antes, não a versão do Java.
+
+---
+
+## 2026-09-17 — Renovação de links ao abrir materiais
+
+- PDF/vídeo solicita URL assinada a cada toque em Abrir material, evitando reutilizar um link vencido após 60 segundos na tela.
+- Botões mostram carregamento e impedem abertura duplicada; falhas permitem nova tentativa. A resposta é descartada se a tela saiu ou perdeu acesso antes da abertura.
+- TypeScript mobile e verificações isoladas de renovação, falha/retry e cliques simultâneos aprovados.
+- Ficha local atualizada para explicar concessões persistentes por cliente e conta demonstrativa.
+
+
 Histórico de alterações e implementações do projeto.
 Formato: `[DATA] Área — O que mudou`
 
@@ -20,16 +69,36 @@ Implementa em código a spec de `docs/acesso-por-cliente-especificacao.md`. Comm
 
 ---
 
-## [2026-09-17] — Correções da auditoria de prontidão (acesso por cliente)
+## [2026-09-16] — Confirmação de e-mail automática + mensagens de erro amigáveis (cadastro de evento)
 
-Relatório `docs/app-store-auditoria-2026-09-17.md` (ferramenta externa) encontrou 6 problemas reais no modelo do commit `8d7a73f`. Todos corrigidos e verificados nesta sessão (25 testes de integração de regras + 29 unitários, todos verdes).
+Corrige a fricção de "dupla confirmação por e-mail" identificada como pendência na entrada anterior do cadastro de evento, e a exposição de erro técnico (`interesse_categorias é obrigatório [400]`) observada ao vivo num build mobile desatualizado.
 
-- **5 processos em produção sem `servico_snapshot`** quebrariam a tela de detalhe. `packages/firebase/src/queries/processos.ts` usa um placeholder seguro em vez de `null` quando ausente; `scripts/backfill-cliente-processos-snapshot.mjs` (dry-run por padrão) preenche o snapshot real — ainda não executado contra produção.
-- `simulados/index.tsx` ainda condicionava materiais privados ao status do processo, ignorando a concessão de Estudos — removido; a concessão é a única autoridade agora.
-- `firestore.rules`: criação de `cliente_processos` agora exige `canAccessCatalogo()` e valida que `servico_snapshot`/`variacao_snapshot` batem com o serviço/variação reais (evita o cliente declarar um preço fabricado).
-- `useClienteAccess.ts`: erro de verificação agora força não-liberado (antes mantinha o último estado em cache); checagem periódica de expiração + retomada de app em primeiro plano; os 4 guards mobile distinguem "erro ao verificar" (com tentar novamente) de "não liberado".
-- `firestore.rules`/`storage.rules`: `canAccessEstudos()`/`canAccessCatalogo()` agora conferem `users/{uid}.is_active`; leitura direta por id de `materiais`/`servicos`/`servico_variacoes` agora confere `is_active`/`ativo` (antes só a listagem filtrava). Achado durante a correção (não pela auditoria): acessar `.data.campo` num campo ausente é erro de avaliação em rules, não `null` — os helpers novos checam `in` antes de ler.
-- Mídia protegida (URL assinada) continua pendente, por decisão já registrada — sem mudança nesta correção.
+- `functions/src/index.ts` — `selfRegister` grava o custom claim `passwordless: true` na conta criada (só se aplica a contas sem senha; não afeta admin/instrutor convidados por `inviteUser`/`createCliente`). Nova function **`confirmPasswordlessEmail`**: no primeiro login de uma conta com esse claim, marca `emailVerified: true` direto — dispensa a segunda confirmação por e-mail, já que só é possível logar depois de completar o link de "definir senha", que já prova posse do e-mail.
+- `apps/mobile/app/_layout.tsx` — chama `confirmPasswordlessEmail` antes de decidir se bloqueia na tela "Confirme seu e-mail".
+- `packages/utils/src/cadastro-evento.ts` — `friendlyRegisterErrorMessage(code)` (novo): traduz o `code` de erro do `selfRegister` pra mensagem em português comum (e-mail duplicado, campos incompletos, muitas tentativas, sem conexão, erro genérico) — nunca mais repassa `error.message`/código HTTP bruto pra tela.
+- `apps/mobile/app/(auth)/register.tsx` e `apps/web/src/pages/evento/CadastroEventoPage.tsx` — usam essa mensagem amigável no lugar do erro bruto da function.
+- **Correção retroativa em produção**: das 8 contas `cliente` existentes, 1 estava com e-mail não verificado por causa da confusão entre app antigo/backend novo (`empregosjapao.ueno@gmail.com`, criada em 07/09) — marcada como verificada manualmente via Admin SDK (`service-account.json` local), sem exigir que a pessoa clique em nenhum link.
+- Validado no **Firebase Local Emulator Suite**: cadastro sem senha → define senha pelo link → login → `confirmPasswordlessEmail` confirma o e-mail automaticamente, sem segunda etapa.
+- **Deployado em produção**: `firebase deploy --only functions` (16 functions, incluindo a nova `confirmPasswordlessEmail`); commit `00a91c8` (só os 5 arquivos desta correção, sem misturar com o workstream paralelo de App Store); `git push` → Vercel **Ready** sem erro de cache desta vez.
+
+---
+
+## [2026-09-16] — Especificação de acesso por cliente
+
+- Criada `docs/acesso-por-cliente-especificacao.md`: concessões individuais de Estudos/Catálogo, disponibilidade global, painel, auditoria, autorização Firestore/Storage/Functions, mídia protegida, revogação, migração e critérios de aceite.
+- Definida conta de revisão Apple com as mesmas permissões de um cliente real, sem ativação temporária exclusiva para análise.
+- Spec de bloqueio global temporário marcada como substituída. Aprovação de processo e ativação da conta continuam independentes.
+- Alteração documental; nenhuma funcionalidade implementada ou publicada nesta etapa.
+
+---
+
+## [2026-09-16] — Deploy web autorizado e preparação do TestFlight atualizado
+
+- Usuário autorizou o conjunto completo, incluindo cadastro de eventos e cidades. Novo deploy Vercel concluído como **READY**, ID `dpl_3Wpf5ZLvTBD2SzN6aJ699oegLss5`, no domínio `https://ueno-assessoria.vercel.app`.
+- Política e suporte públicos verificados com HTTP 200 e contato correto; rota `/evento` responde com o HTML da aplicação. Cadastro real não enviado nesta sessão.
+- Build 1.0.0 (8) concluído e enviado ao App Store Connect, submissão `10cb5ce3-3ce0-4f41-ad78-728825bb1108`. Apple confirmou `VALID` e testes internos. Build anterior às mudanças paralelas; não usar para revisão final.
+- Build 1.0.0 (9) concluído e enviado à App Store Connect, com o código `ab91f02` após TypeScript aprovado. Build `7ac737ed-657a-4f48-be01-8ce41222c128`; submissão `ce67d460-5dc2-4361-892d-122daf9b7edd`. Inclui múltiplos interesses e menu simplificado. Aguardava processamento da Apple; usar este build nos testes.
+- Ficha e arte anteriores sinalizadas para revisão: o menu simplificado removeu atalhos dos recursos divulgados nas imagens. Nenhum envio à revisão pública da Apple nesta etapa.
 
 ---
 

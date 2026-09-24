@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { validateCPF } from './cpf'
+import { parseDateInput } from './date'
 import { PROFISSAO_TIPOS } from './profissoes'
 import {
   COMO_CONHECEU_OPTIONS,
@@ -9,6 +10,15 @@ import {
 
 const optionalFirestoreIdSchema = z.string().min(1).optional()
 const optionalFirestoreIdOrEmptySchema = optionalFirestoreIdSchema.or(z.literal(''))
+
+/**
+ * Data pura opcional: aceita vazio, ISO `AAAA-MM-DD` e o legado `DD/MM/AAAA`.
+ * Aceitar BR é proposital — há dados gravados nesse formato e o build antigo ainda o envia.
+ */
+const optionalDateSchema = z
+  .string()
+  .optional()
+  .refine((v) => !v || parseDateInput(v) !== null, 'Data inválida')
 
 // ─────────────────────────────────────────────
 // Auth
@@ -31,9 +41,12 @@ export const registerSchema = z
   .object({
     full_name: z.string().min(2, 'Nome completo obrigatório'),
     email: z.string().email('Email inválido'),
+    // Aceita ISO (app novo, via seletor de calendário) e DD/MM/AAAA (build antigo ainda
+    // em uso no TestFlight). A Cloud Function normaliza para ISO antes de gravar.
     data_nascimento: z
       .string()
-      .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'Use o formato DD/MM/AAAA'),
+      .min(1, 'Data de nascimento obrigatória')
+      .refine((v) => parseDateInput(v) !== null, 'Data inválida'),
     // Preenchida automaticamente ao escolher uma sugestão do autocomplete de cidade —
     // não é campo visível, então não pode bloquear o envio (a lista de cidades não é
     // exaustiva; o visitante pode digitar uma cidade que não está nela).
@@ -127,8 +140,8 @@ export const pagamentoSchema = z.object({
   valor_jpy: z.number().int().min(1, 'Valor deve ser maior que zero'),
   metodo: z.enum(['dinheiro', 'transferencia', 'pix', 'outro']),
   status: z.enum(['pendente', 'pago', 'cancelado', 'estornado']).default('pendente'),
-  data_vencimento: z.string().optional(),
-  data_pagamento: z.string().optional(),
+  data_vencimento: optionalDateSchema,
+  data_pagamento: optionalDateSchema,
   notas: z.string().optional(),
 })
 
@@ -307,6 +320,18 @@ export const categoriaMaterialSchema = z.object({
 export type CategoriaMaterialInput = z.infer<typeof categoriaMaterialSchema>
 
 // ─────────────────────────────────────────────
+// Categoria de FAQ
+// ─────────────────────────────────────────────
+
+export const categoriaFaqSchema = z.object({
+  nome: z.string().min(2, 'Nome obrigatório'),
+  descricao: z.string().optional(),
+  ordem: z.number().int().default(0),
+})
+
+export type CategoriaFaqInput = z.infer<typeof categoriaFaqSchema>
+
+// ─────────────────────────────────────────────
 // Questões
 // ─────────────────────────────────────────────
 
@@ -457,7 +482,7 @@ export type NovoClienteInput = z.infer<typeof novoClienteSchema>
 export const dadosPessoaisSchema = z.object({
   full_name: z.string().min(2, 'Nome completo obrigatório'),
   nome_japones: z.string().optional(),
-  data_nascimento: z.string().optional(),
+  data_nascimento: optionalDateSchema,
   /** Código ISO 3166-1 alpha-2 (ver packages/utils/paises) */
   nacionalidade: z.string().optional(),
   cpf: z
@@ -466,8 +491,8 @@ export const dadosPessoaisSchema = z.object({
     .refine((val) => !val || validateCPF(val), { message: 'CPF inválido' }),
   zairyu_card: z.string().optional(),
   visto_tipo: z.string().optional(),
-  visto_validade: z.string().optional(),
-  data_entrada_japao: z.string().optional(),
+  visto_validade: optionalDateSchema,
+  data_entrada_japao: optionalDateSchema,
   profissao_tipo: z.enum(PROFISSAO_TIPOS).optional(),
   profissao_empresa: z.string().optional(),
   /** Observações internas da assessoria — só o web preenche */
@@ -503,7 +528,7 @@ export type EnderecoJpInput = z.infer<typeof enderecoJpSchema>
 export const processoSchema = z.object({
   servico_id: z.string().min(1, 'Selecione um serviço'),
   variacao_id: z.string().optional(),
-  data_inicio: z.string().optional(),
+  data_inicio: optionalDateSchema,
   valor_acordado_jpy: z.number().int().min(0).optional(),
   notas: z.string().optional(),
 })
@@ -521,6 +546,9 @@ export const etapaSchema = z.object({
   agendamento_modo: z
     .enum(['nao_aplica', 'definir_dia', 'definir_dia_hora'])
     .default('nao_aplica'),
+  // Sem validação de data pura aqui de propósito: conforme `agendamento_modo`, este campo
+  // guarda `AAAA-MM-DD` OU `AAAA-MM-DDTHH:mm` (ver ProcessoDetailPage). Unificar os dois
+  // formatos é decisão de modelagem, fora do escopo da padronização de datas.
   data_agendada: z.string().optional(),
   responsavel: z
     .enum(['cliente', 'assessoria', 'menkyocenter', 'outros'])
@@ -570,8 +598,8 @@ export const habilitacaoSchema = z.object({
   categoria: z.string().optional(),
   nome_habilitacao: z.string().optional(),
   numero: z.string().optional(),
-  data_emissao: z.string().optional(),
-  data_vencimento: z.string().optional(),
+  data_emissao: optionalDateSchema,
+  data_vencimento: optionalDateSchema,
   observacoes: z.string().optional(),
   situacao: z.enum(['positiva', 'negativa']).default('positiva'),
 })
@@ -583,7 +611,10 @@ export type HabilitacaoInput = z.infer<typeof habilitacaoSchema>
 // ─────────────────────────────────────────────
 
 export const entradaSaidaSchema = z.object({
-  data_viagem: z.string().min(1, 'Data obrigatória'),
+  data_viagem: z
+    .string()
+    .min(1, 'Data obrigatória')
+    .refine((v) => parseDateInput(v) !== null, 'Data inválida'),
   tipo: z.enum(['entrada', 'saida']),
   observacao: z.string().optional(),
 })

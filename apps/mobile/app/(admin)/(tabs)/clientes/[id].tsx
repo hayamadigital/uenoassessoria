@@ -33,6 +33,8 @@ import { listAgendamentos } from '@ueno/firebase/queries/agendamentos'
 import { avatarPath } from '@ueno/firebase/storage'
 import { nacionalidadeToISO, nomePais } from '@ueno/utils/paises'
 import { Avatar } from '@/components/Avatar'
+import { DateField } from '@/components/DateField'
+import { formatDateBR } from '@ueno/utils/date'
 import { colors } from '@/theme'
 import { format, parseISO, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -224,6 +226,29 @@ function EditableField({
   }
 
   return <InfoRow label={label} value={value ?? null} />
+}
+
+/**
+ * Versão data do EditableField: seletor de calendário na edição, `DD/MM/AAAA` na leitura.
+ * `value`/`onChange` trafegam em ISO — quem chama não precisa mais formatar na mão.
+ */
+function EditableDateField({
+  label,
+  value,
+  editing,
+  onChange,
+  maximumDate,
+}: {
+  label: string
+  value: string | null | undefined
+  editing: boolean
+  onChange: (value: string) => void
+  maximumDate?: Date
+}) {
+  if (editing) {
+    return <DateField label={label} value={value ?? ''} onChange={onChange} maximumDate={maximumDate} />
+  }
+  return <InfoRow label={label} value={formatDateBR(value) || null} />
 }
 
 function InfoRow({ label, value, last }: { label: string; value: string | null; last?: boolean }) {
@@ -970,18 +995,17 @@ export default function ClienteDetalheScreen() {
               </View>
               <EditableField label="Nome completo" value={profileForm.full_name} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('full_name', v)} />
               <EditableField label="Nome em Japonês (フリガナ)" value={clienteForm.nome_japones} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nome_japones', v)} placeholder="Katakana ou Kanji" />
-              <EditableField label="Data de Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : safeDate(cliente.data_nascimento, 'd/MM/yyyy')} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} placeholder="AAAA-MM-DD" />
+              <EditableDateField label="Data de Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : cliente.data_nascimento} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} maximumDate={new Date()} />
               <EditableField label="Nacionalidade" value={editingSection === 'pessoal' ? clienteForm.nacionalidade : nomePais(cliente.nacionalidade)} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nacionalidade', v)} placeholder="BR, JP, PT..." />
               <EditableField label="CPF" value={clienteForm.cpf} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('cpf', v)} keyboardType="number-pad" />
               <EditableField label="Email" value={profileForm.email} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('email', v)} keyboardType="email-address" />
               <EditableField label="Zairyu Card / Japanese ID" value={clienteForm.zairyu_card} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('zairyu_card', v)} placeholder="Número do cartão" />
               <EditableField label="Tipo de Visto" value={clienteForm.visto_tipo} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('visto_tipo', v)} placeholder="Ex: Cônjuge, Trabalho, Estudante..." />
-              <EditableField
+              <EditableDateField
                 label="Validade do Visto / Documento"
-                value={editingSection === 'pessoal' ? clienteForm.visto_validade : safeDate(cliente.visto_validade, 'd/MM/yyyy')}
+                value={editingSection === 'pessoal' ? clienteForm.visto_validade : cliente.visto_validade}
                 editing={editingSection === 'pessoal'}
                 onChange={(v) => updateClienteField('visto_validade', v)}
-                placeholder="AAAA-MM-DD"
               />
               <View style={s.formSubsection}>
                 <Text style={s.formSubsectionTitle}>Profissão / Trabalho</Text>
@@ -1242,8 +1266,8 @@ export default function ClienteDetalheScreen() {
                       <EditableField label="Nome" value={draft.nome_habilitacao} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, nome_habilitacao: v } }))} />
                       <EditableField label="Categoria" value={draft.categoria} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, categoria: v } }))} />
                       <EditableField label="Número" value={draft.numero} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, numero: v } }))} />
-                      <EditableField label="Emissão" value={editing ? draft.data_emissao : safeDate(draft.data_emissao, 'd/MM/yyyy')} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_emissao: v } }))} placeholder="AAAA-MM-DD" />
-                      <EditableField label="Validade" value={editing ? draft.data_vencimento : safeDate(draft.data_vencimento, 'd/MM/yyyy')} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_vencimento: v } }))} placeholder="AAAA-MM-DD" />
+                      <EditableDateField label="Emissão" value={draft.data_emissao} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_emissao: v } }))} />
+                      <EditableDateField label="Validade" value={draft.data_vencimento} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, data_vencimento: v } }))} />
                       <EditableField label="Situação" value={draft.situacao} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, situacao: v as ClienteHabilitacaoInsert['situacao'] } }))} placeholder="positiva ou negativa" />
                       <EditableField label="Observações" value={draft.observacoes} editing={editing} onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [draftId]: { ...draft, observacoes: v } }))} multiline />
                       {editing && (
@@ -1300,7 +1324,7 @@ export default function ClienteDetalheScreen() {
                         </View>
                       </View>
                       <EditableField label="Tipo" value={draft.tipo} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, tipo: v as ClienteEntradaSaidaInsert['tipo'] } }))} placeholder="entrada ou saida" />
-                      <EditableField label="Data" value={editing ? draft.data_viagem : safeDate(draft.data_viagem, 'd/MM/yyyy')} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, data_viagem: v } }))} placeholder="AAAA-MM-DD" />
+                      <EditableDateField label="Data" value={draft.data_viagem} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, data_viagem: v } }))} />
                       <EditableField label="Observação" value={draft.observacao} editing={editing} onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [draftId]: { ...draft, observacao: v } }))} multiline />
                       {editing && (
                         <TouchableOpacity style={s.saveItemBtn} onPress={() => saveEntradasSaidasMutation.mutate()} disabled={saveEntradasSaidasMutation.isPending} activeOpacity={0.85}>
@@ -1533,8 +1557,8 @@ export default function ClienteDetalheScreen() {
                     <EditableField label="Nome" value={activeNewHabilitacao.nome_habilitacao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, nome_habilitacao: v } }))} />
                     <EditableField label="Categoria" value={activeNewHabilitacao.categoria} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, categoria: v } }))} />
                     <EditableField label="Número" value={activeNewHabilitacao.numero} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, numero: v } }))} />
-                    <EditableField label="Emissão" value={activeNewHabilitacao.data_emissao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_emissao: v } }))} placeholder="AAAA-MM-DD" />
-                    <EditableField label="Validade" value={activeNewHabilitacao.data_vencimento} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_vencimento: v } }))} placeholder="AAAA-MM-DD" />
+                    <EditableDateField label="Emissão" value={activeNewHabilitacao.data_emissao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_emissao: v } }))} />
+                    <EditableDateField label="Validade" value={activeNewHabilitacao.data_vencimento} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, data_vencimento: v } }))} />
                     <EditableField label="Situação" value={activeNewHabilitacao.situacao} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, situacao: v as ClienteHabilitacaoInsert['situacao'] } }))} placeholder="positiva ou negativa" />
                     <EditableField label="Observações" value={activeNewHabilitacao.observacoes} editing onChange={(v) => setHabilitacaoDrafts((current) => ({ ...current, [activeNewHabilitacaoId]: { ...activeNewHabilitacao, observacoes: v } }))} multiline />
                   </ScrollView>
@@ -1579,7 +1603,7 @@ export default function ClienteDetalheScreen() {
                   </View>
                   <View style={s.contactFormBody}>
                     <EditableField label="Tipo" value={activeNewEntrada.tipo} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, tipo: v as ClienteEntradaSaidaInsert['tipo'] } }))} placeholder="entrada ou saida" />
-                    <EditableField label="Data" value={activeNewEntrada.data_viagem} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, data_viagem: v } }))} placeholder="AAAA-MM-DD" />
+                    <EditableDateField label="Data" value={activeNewEntrada.data_viagem} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, data_viagem: v } }))} />
                     <EditableField label="Observação" value={activeNewEntrada.observacao} editing onChange={(v) => setEntradaSaidaDrafts((current) => ({ ...current, [activeNewEntradaId]: { ...activeNewEntrada, observacao: v } }))} multiline />
                     <View style={s.contactFooter}>
                       <TouchableOpacity style={s.contactCancelBtn} onPress={() => { removeLocalDraft(setEntradaSaidaDrafts, activeNewEntradaId); setEditingItem(null) }} activeOpacity={0.85}>

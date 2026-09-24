@@ -151,7 +151,6 @@ export async function processDeletion(db: Firestore, auth: Auth, storage: Storag
     }
   }
   await removeFiles(`avatares/${uid}/`)
-  await removeDoc(db.collection('acessos_clientes').doc(uid))
   await removeDoc(db.collection('users').doc(uid))
   try { await auth.deleteUser(uid) }
   catch (error) { if ((error as { code?: string }).code !== 'auth/user-not-found') throw error }

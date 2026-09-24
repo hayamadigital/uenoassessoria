@@ -22,6 +22,7 @@ import { createAgendamento, listAgendamentos, updateAgendamentoStatus, listAgend
 import { listClientes } from '@ueno/firebase/queries/clientes'
 import { listInstrutores } from '@ueno/firebase/queries/perfis'
 import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
+import { DateField } from '@/components/DateField'
 import { colors } from '@/theme'
 import { format, addDays, startOfDay, isSameDay, parseISO } from 'date-fns'
 import { enUS, ptBR } from 'date-fns/locale'
@@ -442,13 +443,7 @@ export default function AgendaAdminScreen() {
               <View style={s.twoCols}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>{t('date')}</Text>
-                  <TextInput
-                    value={form.data}
-                    onChangeText={(value: string) => updateForm({ data: value })}
-                    placeholder="AAAA-MM-DD"
-                    placeholderTextColor={colors.ink300}
-                    style={s.input}
-                  />
+                  <DateField value={form.data} onChange={(value) => updateForm({ data: value })} />
                 </View>
                 <View style={{ width: 112 }}>
                   <Text style={s.fieldLabel}>{t('hour')}</Text>

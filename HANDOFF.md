@@ -1,25 +1,36 @@
 # HANDOFF — UENO ASSESSORIA
 
-Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-17.
+Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-24.
+
+## Reversão do acesso por cliente — 24/09/2026
+
+**Toda a feature de "Especificação de acesso por cliente" (seções abaixo, 16-18/09) foi revertida a pedido do usuário.** Estudos e Catálogo voltam a ficar liberados para qualquer cliente autenticado, sem concessão individual, sem toggle global e sem o "bloqueio total" antigo (`docs/bloqueio-simulados-materiais-especificacao.md`, que já bloqueava essas abas desde antes dessa feature existir — só descobri isso ao investigar, e o usuário confirmou que queria abrir de vez, não só voltar pro bloqueio total).
+
+Importante pra quem ler as seções antigas abaixo: elas descreviam um estado "implementado, não deployado" que **deixou de ser verdade em 18/09** — a feature foi deployada de verdade em produção (rules, functions, `app_config/acessos` ligado, conta demo com concessão) e o código foi enviado pro `origin/main` (Vercel republicou o painel web com a aba "Acessos"). A reversão desta sessão desfez tudo isso: revert no código local, commit, `git push` pra `main`, e `firebase deploy --only firestore:rules,storage:rules,functions` das rules/functions revertidas. Ver `CHANGELOG.md` de 24/09 pra lista completa do que foi removido/mantido.
+
+Ficam órfãos em produção (não apagados, inertes): `app_config/acessos`, `acessos_clientes/*`. Também fica pendente: os testes de integração de regras (`functions/test/deletion-rules.integration.cjs`) não rodaram nesta sessão porque o ambiente não tem Java (`firebase emulators:start` falha) — a reversão de `firestore.rules`/`storage.rules` foi conferida manualmente linha a linha, não confirmada no emulador.
+
+## Build 10 e correção de abertura de materiais — 17/09/2026
+
+Correção implementada: PDF/vídeo resolve uma URL assinada nova a cada clique, em vez de guardar a URL gerada ao entrar na tela. Carregamento nos dois botões, proteção contra cliques simultâneos, mensagem de erro com nova tentativa e descarte da resposta se a tela desmontar ou perder acesso. TypeScript mobile, diff-check e verificações isoladas de renovação por clique, erro/retry e concorrência aprovados.
+
+Teste real da conta demonstrativa encontrou `iam.serviceAccounts.signBlob` negado na runtime. Após pedido explícito de autorização e continuidade pelo usuário, concedido `roles/iam.serviceAccountTokenCreator` à conta `442537306636-compute@developer.gserviceaccount.com` **sobre ela mesma**, preservando demais vínculos. Não houve alteração de papéis de usuários do app. Repetição com a identidade demonstrativa: callable HTTP 200 e leitura de um byte do PDF via URL assinada HTTP 206. Credenciais e URLs não foram registradas. Esse teste usou autenticação customizada da conta de teste; não valida senha nem navegação em iPhone.
+
+Build iOS **1.0.0 (10)** concluído no EAS: `4cec84f4-d4d4-4fd1-a24e-48bb51068974`. Upload à App Store Connect **concluído com sucesso**: submissão EAS `ea28e3ad-3792-42e3-b470-1577277adf84`. Aguardar processamento/disponibilidade na Apple. A ficha local `docs/app-store-ficha.md` foi atualizada para o acesso por cliente e a conta demonstrativa.
+
+Pendente: conferir processamento Apple, teste com senha em dispositivo, screenshots e campos privados da ficha no App Store Connect, depois revisão pública. Não confundir upload EAS com revisão pública. Não há ferramenta de navegador conectada disponível nesta sessão e a chave Apple usada no upload permanece no serviço EAS; a ficha remota não foi editada. Tokens permanentes antigos continuam como pendência de proteção já comunicada; não foram revogados nesta etapa de renovação dos links.
+
+## Auditoria de prontidão — 2026-09-17, verificação após deploy/migração
+
+**Produção avançou; ainda não pronto para submissão final.** Confirmados remotamente 19 Functions (incluindo concessões e mídia), configuração global com Estudos/Catálogo ligados, uma concessão e 5/5 processos com snapshot. Apple ainda tem build 9 como mais recente, válido em TestFlight interno/externo. 29 testes unitários + 25 de regras, build Functions e TypeScript mobile aprovados.
+
+Restam dois pontos de mídia: metadados do bucket ainda têm tokens permanentes em 2/2 arquivos de `materiais/` e 203/203 de `imagens/questoes/`; ignorar o token no helper não revoga links antigos. Além disso, a tela de material resolve uma URL de 60s ao carregar e reutiliza no clique sem renovação, podendo abrir URL vencida. Ver detalhes na primeira seção de `docs/app-store-auditoria-2026-09-17.md`. Ainda faltam novo build, teste funcional da assinatura/conta demonstrativa em produção/dispositivo e conferência da ficha/revisão pública. Nenhum deploy ou alteração de dados nesta checagem; o deploy/migração foi feito na outra sessão e confirmado aqui por leitura.
 
 ## Especificação de acesso por cliente — 2026-09-16, implementada em código 2026-09-17
 
 Criada `docs/acesso-por-cliente-especificacao.md`, a pedido do usuário. Propõe liberação manual por cliente de Estudos (simulados + materiais) e Catálogo, combinada com disponibilidade global, autorização no servidor, auditoria, expiração, revogação e acesso idêntico para clientes reais e contas da revisão Apple. Substitui a proposta de toggle global para todos em `docs/bloqueio-simulados-materiais-especificacao.md`; não altera aprovação de processos nem suspensão da conta. Seleção individual de materiais/serviços e cobrança por conteúdo estão fora desta primeira etapa.
 
 **Implementado em código em 2026-09-17** (commit `8d7a73f`): modelo de concessão completo (`acessos_clientes`, `app_config/acessos`, callables com auditoria/idempotência/concorrência), regras do Firestore/Storage exigindo a concessão para ler o conteúdo — antes só a aba era escondida no app, o dado continuava lendo direto via SDK —, aba admin "Acessos", toggle global em Preferências, hook e guards no mobile, filtro de `is_active` nativo nas queries (`scripts/backfill-is-active.mjs` para documentos antigos, ainda não executado contra o projeto real), e snapshot do serviço/variação em `cliente_processos` para o Catálogo não quebrar processos existentes ao revogar. 29 testes unitários + 22 de integração de regras, todos verdes. **Não deployado**: módulos continuam desligados globalmente, nenhum cliente real é afetado. Pendente por decisão do usuário: mídia protegida com URL assinada (seção 10 da spec) — fica para antes do rollout com clientes reais.
-
-## Correções da auditoria de prontidão — 2026-09-17
-
-Relatório: `docs/app-store-auditoria-2026-09-17.md` (ferramenta externa, revisão do código sem deploy). Encontrou 6 problemas reais no modelo de acesso por cliente implementado em `8d7a73f` — todos corrigidos e verificados nesta sessão (25 testes de integração de regras + 29 unitários, todos verdes):
-
-1. **5 processos em produção sem `servico_snapshot`** (criados antes do modelo) quebrariam a tela de detalhe. `packages/firebase/src/queries/processos.ts` agora usa um placeholder seguro em vez de `null` quando o snapshot está ausente; `scripts/backfill-cliente-processos-snapshot.mjs` (dry-run por padrão) preenche o snapshot real a partir do serviço/variação vinculados — ainda não executado contra produção.
-2. `apps/mobile/app/(cliente)/(tabs)/simulados/index.tsx` ainda condicionava materiais privados ao status do processo (`ativo`/`analise`), ignorando a concessão de Estudos. Removido: a concessão agora é a única autoridade sobre a biblioteca.
-3. `firestore.rules` permitia criar `cliente_processos` só com vínculo de propriedade, sem exigir Catálogo — um SDK direto podia abrir solicitação mesmo com o módulo negado. Adicionado `canAccessCatalogo()` na regra de criação, mais validação de que o `servico_snapshot`/`variacao_snapshot` enviado bate com o serviço/variação reais (o cliente não pode declarar um preço diferente do real).
-4. Mídia protegida (URL assinada) continua pendente — decisão já registrada, sem mudança nesta correção.
-5. `useClienteAccess.ts` mantinha o último estado liberado mesmo com o listener em erro (deveria negar), não reavaliava vencimento enquanto a tela ficava aberta, e os guards não distinguiam "erro ao verificar" de "não liberado". Corrigido: erro força não-liberado, checagem periódica de expiração + retomada de app em primeiro plano, e os 4 guards agora mostram "tentar novamente" quando a verificação falha.
-6. As regras de `canAccessEstudos()`/`canAccessCatalogo()` não conferiam se o perfil (`users/{uid}.is_active`) estava ativo, e a leitura direta por id de `materiais`/`servicos`/`servico_variacoes` não conferia `is_active`/`ativo` (só a listagem filtrava). Ambos adicionados — com cuidado extra: acessar um campo ausente com `.data.campo` é erro de avaliação em rules, não `null`, então os helpers novos checam `in` antes de ler o campo (achado durante a correção, não pela auditoria).
-
-Não deployado; módulos continuam desligados. Itens de publicação/migração/build da auditoria (seções 2-7 do relatório) continuam fora desta correção.
 
 ## Cadastro rápido de evento (mobile + web) — 2026-09-16
 
@@ -39,18 +50,21 @@ Outras mudanças de dado: `Cliente.interesse_categoria`/`interesse_subopcao` (si
 - Testado ponta a ponta só contra o **Firebase Local Emulator Suite** antes do deploy; nenhuma chamada real de cadastro feita contra produção ainda (só verificação visual da página).
 - Se um próximo deploy web falhar de novo com erro de `patch-package`, o fix é o mesmo: `vercel deploy --prod --force` (a partir da raiz do repo, projeto já linkado em `.vercel/project.json`).
 
-**Pendência de produto identificada mas não implementada**: hoje quem se cadastra sem senha ainda passa por **duas confirmações por e-mail separadas** no primeiro uso — o e-mail de definir senha, e depois a tela "confirme seu e-mail" no primeiro login (`emailVerified` continua `false`, `sendPasswordResetEmail` não marca isso). Dava pra marcar `emailVerified: true` automaticamente no primeiro login bem-sucedido dessas contas, já que só é possível logar depois de provar dono do e-mail pelo link de senha — ninguém pediu essa simplificação ainda, só ficou registrado como oportunidade.
+**Pendência da dupla confirmação por e-mail — RESOLVIDA e já deployada (2026-09-16, commit `00a91c8`)**: `selfRegister` agora grava o custom claim `passwordless: true` na conta; nova Cloud Function `confirmPasswordlessEmail` confirma `emailVerified` automaticamente no primeiro login de contas com esse claim (não mexe em admin/instrutor convidados por `inviteUser`/`createCliente`). `apps/mobile/app/_layout.tsx` chama essa function antes de decidir se bloqueia na tela de confirmar e-mail. Deployada em produção junto com todas as functions (16 no total agora). Também corrigido: as telas de cadastro (mobile e `/evento`) não mostram mais erro técnico bruto (tipo `interesse_categorias é obrigatório [400]`) — `friendlyRegisterErrorMessage` em `packages/utils/src/cadastro-evento.ts` traduz pra mensagem em português comum.
+
+**Correção retroativa aplicada em produção (2026-09-16)**: das 8 contas `cliente` existentes, 1 estava com e-mail não verificado por causa da janela de confusão entre app antigo/backend novo (`empregosjapao.ueno@gmail.com`, criada 07/09) — marcada como verificada manualmente via Admin SDK, sem exigir clique em link. Isso foi feito na mão, uma vez só; não é um processo automático — se aparecer outra conta real travada nessa tela por causa da mesma janela de transição, precisa do mesmo tratamento manual (script simples com `service-account.json`, já removido do repo).
 
 ## Publicação em andamento — 2026-09-16
 
-- Firebase publicado com sucesso: todas as Functions do código atual, incluindo `selfRegister` do novo cadastro de eventos, e regras/índices Firestore/Storage. Não foram removidos os dois índices remotos ausentes no arquivo local. A função de pedido de exclusão publicada retornou `UNAUTHENTICATED` no teste sem login, sem alteração de dados.
-- Vercel autenticada como `hayamadigital-5045`, mas o deploy web **não foi executado**: a revisão automática bloqueou a publicação do conjunto que também inclui `/evento`, cadastro com senha definida por e-mail e busca de cidades. Confirmação do usuário solicitada. Não contornar esse bloqueio por push ou outro comando.
-- Novo build iOS **1.0.0 (8)** solicitado ao EAS; projeto enviado e credenciais Apple aceitas. ID `30211c67-9852-4a7f-a0fd-fa02e55e8681`. Consultar o status antes de afirmar que concluiu ou solicitar outro. Ainda não submetido à App Store Connect.
-- Build web, TypeScript mobile e 17 testes unitários do backend aprovados novamente com o código atual. Cadastro de eventos ainda sem validação ponta a ponta nesta sessão.
-- Textos e escopo para revisão em `docs/app-store-ficha.md`. Página pública de suporte preparada em `apps/web/public/suporte.html`, para `/suporte.html` após deploy. Arte aprovada com 9030 × 2796 pixels, sete painéis de 1290 × 2796; exportação individual e upload pendentes.
-- Chrome não pode ser controlado nesta sessão: o pacote/skill indicado não está instalado no caminho disponível. Login manual do usuário no App Store Connect não foi inspecionado. O EAS acessou as credenciais Apple remotas para gerar o build.
+- O usuário autorizou explicitamente o deploy web incluindo cadastro de eventos e cidades, resolvendo o bloqueio anterior da revisão automática.
+- Firebase: Functions e regras/índices publicados nesta preparação; os dois índices remotos adicionais foram preservados. Pedido de exclusão sem login rejeitado em produção. O trabalho paralelo atualizou novamente `selfRegister` para múltiplos interesses; não restaurar a versão singular.
+- Vercel: novo deploy desta sessão concluído como **READY**, deployment `dpl_3Wpf5ZLvTBD2SzN6aJ699oegLss5`, commit de referência `ab91f02`, em `https://ueno-assessoria.vercel.app`. `/privacidade.html` e `/suporte.html` retornaram HTTP 200 e o contato correto; `/evento` retornou o HTML da aplicação. Isso não valida o envio do formulário. O deploy foi autorizado explicitamente pelo usuário, incluindo o cadastro de eventos e cidades.
+- Build iOS **1.0.0 (8)** concluído e enviado com sucesso à App Store Connect. Build `30211c67-9852-4a7f-a0fd-fa02e55e8681`; submissão `10cb5ce3-3ce0-4f41-ad78-728825bb1108`. A consulta à Apple confirmou `VALID` e `IN_BETA_TESTING` interno. **Não usar para a revisão final:** foi gerado antes das mudanças paralelas de múltiplos interesses e menu do cliente.
+- Build iOS **1.0.0 (9)** concluído e enviado com sucesso à App Store Connect, com o código do commit `ab91f02`, após TypeScript mobile aprovado. Build `7ac737ed-657a-4f48-be01-8ce41222c128`; submissão `ce67d460-5dc2-4361-892d-122daf9b7edd`. Aguardava processamento da Apple ao concluir esta sessão; conferir disponibilidade no TestFlight antes dos testes. `app.json` foi incrementado de 8 para 9 pelo EAS.
+- Textos em `docs/app-store-ficha.md` e arte aprovada devem ser revisados à luz do menu simplificado: o material anterior divulga simulados e serviços, cujos atalhos foram removidos no trabalho paralelo. Não enviar a ficha antiga sem conferir a disponibilidade real desses recursos no build final.
+- Chrome não pode ser controlado nesta sessão; a ficha da loja não foi preenchida. O EAS usou a chave Apple remota para o upload dos builds 8 e 9. TestFlight físico e envio à revisão Apple permanecem pendentes.
 
-Esta seção substitui os estados históricos de “sem deploy” e “build 7” abaixo. A política pública permanece dependente do deploy web; testes físicos no TestFlight e preenchimento da ficha Apple continuam pendentes.
+Esta seção substitui os estados históricos de “sem deploy” e “build 7” abaixo. O cadastro em produção ainda precisa de validação funcional; o teste HTTP das páginas não comprova o fluxo completo.
 
 ## Preparação da App Store — 2026-09-15
 

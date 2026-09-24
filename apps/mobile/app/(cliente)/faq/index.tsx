@@ -5,8 +5,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { db } from '@/lib/firebase'
-import { listFaqs } from '@ueno/firebase/queries/faq'
+import { listFaqs, listCategoriasFaq } from '@ueno/firebase/queries/faq'
 import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
+import type { CategoriaFaq, FAQ } from '@ueno/firebase'
 import { colors } from '@/theme'
 
 type IoniconName = ComponentProps<typeof Ionicons>['name']
@@ -31,11 +32,25 @@ function getFaqIcon(icon: string): IoniconName {
 function buildWhatsAppUrl(phone: string | null) {
   const digits = (phone ?? '').replace(/\D/g, '')
   if (!digits) return null
-  const message = encodeURIComponent('Olá! Gostaria de falar sobre o FAQ.')
+  const message = encodeURIComponent('Olá! Gostaria de mais informações.')
   return {
     app: `whatsapp://send?phone=${digits}&text=${message}`,
     web: `https://wa.me/${digits}?text=${message}`,
   }
+}
+
+type FaqGroup = { categoria: CategoriaFaq | null; faqs: FAQ[] }
+
+function groupFaqsByCategoria(faqs: FAQ[], categorias: CategoriaFaq[]): FaqGroup[] {
+  const groups: FaqGroup[] = categorias.map((categoria) => ({
+    categoria,
+    faqs: faqs.filter((faq) => faq.categoria_id === categoria.id),
+  }))
+
+  const semCategoria = faqs.filter((faq) => !categorias.some((c) => c.id === faq.categoria_id))
+  if (semCategoria.length > 0) groups.push({ categoria: null, faqs: semCategoria })
+
+  return groups.filter((group) => group.faqs.length > 0)
 }
 
 export default function FaqIndexScreen() {
@@ -44,12 +59,21 @@ export default function FaqIndexScreen() {
     queryFn: () => listFaqs(db),
   })
 
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias-faq'],
+    queryFn: () => listCategoriasFaq(db),
+  })
+
   const { data: publicConfig } = useQuery({
     queryKey: ['public-app-config'],
     queryFn: () => getPublicAppConfig(db),
   })
 
   const publishedFaqs = useMemo(() => faqs.filter((faq) => faq.is_active), [faqs])
+  const faqGroups = useMemo(
+    () => groupFaqsByCategoria(publishedFaqs, categorias),
+    [publishedFaqs, categorias],
+  )
   const whatsappUrl = buildWhatsAppUrl(publicConfig?.support_whatsapp ?? null)
 
   async function openWhatsApp() {
@@ -110,42 +134,53 @@ export default function FaqIndexScreen() {
           </Text>
         )}
 
-        <Text style={s.sectionLabel}>Todas as perguntas</Text>
-
         {isLoading ? (
-          <View style={s.emptyCard}>
-            <Ionicons name="hourglass-outline" size={22} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Carregando perguntas...</Text>
-          </View>
+          <>
+            <Text style={s.sectionLabel}>Todas as perguntas</Text>
+            <View style={s.emptyCard}>
+              <Ionicons name="hourglass-outline" size={22} color={colors.ink300} />
+              <Text style={s.emptyTxt}>Carregando perguntas...</Text>
+            </View>
+          </>
         ) : publishedFaqs.length === 0 ? (
-          <View style={s.emptyCard}>
-            <Ionicons name="help-circle-outline" size={24} color={colors.ink300} />
-            <Text style={s.emptyTxt}>Nenhuma pergunta publicada</Text>
-          </View>
+          <>
+            <Text style={s.sectionLabel}>Todas as perguntas</Text>
+            <View style={s.emptyCard}>
+              <Ionicons name="help-circle-outline" size={24} color={colors.ink300} />
+              <Text style={s.emptyTxt}>Nenhuma pergunta publicada</Text>
+            </View>
+          </>
         ) : (
-          <View style={{ gap: 10 }}>
-            {publishedFaqs.map((faq) => {
-              const iconColor = faq.cor_icone || '#7E22CE'
-              return (
-                <TouchableOpacity
-                  key={faq.id}
-                  style={s.faqCard}
-                  activeOpacity={0.78}
-                  onPress={() => router.push(`/(cliente)/faq/${faq.id}`)}
-                >
-                  <View style={[s.faqIcon, { backgroundColor: `${iconColor}18` }]}>
-                    <Ionicons name={getFaqIcon(faq.icone)} size={18} color={iconColor} />
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.faqTag}>FAQ</Text>
-                    <Text style={s.faqQ} numberOfLines={2}>
-                      {faq.pergunta}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.ink300} />
-                </TouchableOpacity>
-              )
-            })}
+          <View style={{ gap: 22 }}>
+            {faqGroups.map((group) => (
+              <View key={group.categoria?.id ?? 'sem-categoria'} style={{ gap: 10 }}>
+                <Text style={s.sectionLabel}>
+                  {faqGroups.length > 1 ? (group.categoria?.nome ?? 'Outras perguntas') : 'Todas as perguntas'}
+                </Text>
+                {group.faqs.map((faq) => {
+                  const iconColor = faq.cor_icone || '#7E22CE'
+                  return (
+                    <TouchableOpacity
+                      key={faq.id}
+                      style={s.faqCard}
+                      activeOpacity={0.78}
+                      onPress={() => router.push(`/(cliente)/faq/${faq.id}`)}
+                    >
+                      <View style={[s.faqIcon, { backgroundColor: `${iconColor}18` }]}>
+                        <Ionicons name={getFaqIcon(faq.icone)} size={18} color={iconColor} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={s.faqTag}>FAQ</Text>
+                        <Text style={s.faqQ} numberOfLines={2}>
+                          {faq.pergunta}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.ink300} />
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>

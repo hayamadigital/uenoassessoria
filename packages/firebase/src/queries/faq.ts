@@ -7,10 +7,12 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  query,
+  orderBy,
   type Unsubscribe,
   type Firestore,
 } from 'firebase/firestore'
-import type { FAQ, FAQInsert } from '../types'
+import type { CategoriaFaq, CategoriaFaqInsert, FAQ, FAQInsert } from '../types'
 
 const DEFAULT_ICON = 'HelpCircle'
 const DEFAULT_COLOR = '#6B46C1'
@@ -21,6 +23,7 @@ function normalizeFaq(id: string, data: Record<string, unknown>, index = 0): FAQ
 
   return {
     id,
+    categoria_id: typeof data.categoria_id === 'string' ? data.categoria_id : null,
     pergunta:
       typeof data.pergunta === 'string'
         ? data.pergunta
@@ -82,4 +85,72 @@ export async function updateFaq(
 
 export async function deleteFaq(db: Firestore, id: string): Promise<void> {
   await deleteDoc(doc(db, 'faq', id))
+}
+
+export async function reorderFaqs(
+  db: Firestore,
+  updates: Array<{ id: string; ordem: number }>,
+): Promise<void> {
+  await Promise.all(updates.map((u) => updateDoc(doc(db, 'faq', u.id), { ordem: u.ordem })))
+}
+
+// ─────────────────────────────────────────────
+// Categorias de FAQ
+// ─────────────────────────────────────────────
+
+function normalizeCategoriaFaq(id: string, data: Record<string, unknown>): CategoriaFaq {
+  return {
+    id,
+    nome: typeof data.nome === 'string' ? data.nome : '',
+    descricao: typeof data.descricao === 'string' ? data.descricao : null,
+    ordem: typeof data.ordem === 'number' ? data.ordem : 0,
+    created_at: typeof data.created_at === 'string' ? data.created_at : '',
+  }
+}
+
+export async function listCategoriasFaq(db: Firestore): Promise<CategoriaFaq[]> {
+  const snap = await getDocs(query(collection(db, 'categorias_faq'), orderBy('ordem')))
+  return snap.docs.map((d) => normalizeCategoriaFaq(d.id, d.data()))
+}
+
+export function subscribeCategoriasFaq(
+  db: Firestore,
+  onChange: (categorias: CategoriaFaq[]) => void,
+): Unsubscribe {
+  return onSnapshot(query(collection(db, 'categorias_faq'), orderBy('ordem')), (snap) => {
+    onChange(snap.docs.map((d) => normalizeCategoriaFaq(d.id, d.data())))
+  })
+}
+
+export async function createCategoriaFaq(
+  db: Firestore,
+  input: CategoriaFaqInsert,
+): Promise<CategoriaFaq> {
+  const ref = await addDoc(collection(db, 'categorias_faq'), {
+    ...input,
+    created_at: new Date().toISOString(),
+  })
+  const snap = await getDoc(ref)
+  return normalizeCategoriaFaq(snap.id, snap.data() ?? {})
+}
+
+export async function updateCategoriaFaq(
+  db: Firestore,
+  id: string,
+  input: Partial<CategoriaFaqInsert>,
+): Promise<CategoriaFaq> {
+  await updateDoc(doc(db, 'categorias_faq', id), input)
+  const snap = await getDoc(doc(db, 'categorias_faq', id))
+  return normalizeCategoriaFaq(snap.id, snap.data() ?? {})
+}
+
+export async function deleteCategoriaFaq(db: Firestore, id: string): Promise<void> {
+  await deleteDoc(doc(db, 'categorias_faq', id))
+}
+
+export async function reorderCategoriasFaq(
+  db: Firestore,
+  updates: Array<{ id: string; ordem: number }>,
+): Promise<void> {
+  await Promise.all(updates.map((u) => updateDoc(doc(db, 'categorias_faq', u.id), { ordem: u.ordem })))
 }

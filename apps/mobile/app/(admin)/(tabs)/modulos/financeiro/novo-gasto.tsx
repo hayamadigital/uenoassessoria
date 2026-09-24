@@ -19,6 +19,8 @@ import { AppImage } from '@/components/AppImage'
 import { createGasto, listAdminProfiles } from '@ueno/firebase/queries/financeiro'
 import { uploadFile, gastoComprovantePath } from '@ueno/firebase/storage'
 import { useAuthStore } from '@/stores/auth.store'
+import { DateField } from '@/components/DateField'
+import { parseDateInput } from '@ueno/utils/date'
 import { colors } from '@/theme'
 import { format } from 'date-fns'
 import type { FinalidadeGasto } from '@ueno/firebase/types'
@@ -56,7 +58,7 @@ export default function NovoGastoScreen() {
   const [finalidade, setFinalidade] = useState<FinalidadeGasto | null>(null)
   const [descricao, setDescricao] = useState('')
   const [valor, setValor] = useState('')
-  const [data, setData] = useState(format(new Date(), 'dd/MM/yyyy'))
+  const [data, setData] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [fotoUri, setFotoUri] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -73,8 +75,7 @@ export default function NovoGastoScreen() {
       const valorNum = Number(valor.replace(/[^0-9]/g, ''))
       if (!valorNum) throw new Error('Informe um valor válido')
 
-      const [dd, mm, yyyy] = data.split('/')
-      const dataISO = `${yyyy}-${mm}-${dd}`
+      if (!parseDateInput(data)) throw new Error('Informe uma data válida')
 
       let comprovante_url: string | null = null
       if (fotoUri) {
@@ -93,7 +94,7 @@ export default function NovoGastoScreen() {
         finalidade,
         descricao: descricao.trim(),
         valor_jpy: valorNum,
-        data: dataISO,
+        data,
         comprovante_url,
         registrado_por: session?.userId ?? '',
       })
@@ -239,17 +240,7 @@ export default function NovoGastoScreen() {
         {/* Data */}
         <View style={s.fieldGroup}>
           <FieldLabel label="Data" />
-          <View style={s.fieldWrap}>
-            <Ionicons name="calendar-outline" size={14} color={colors.ink400} />
-            <TextInput
-              style={s.fieldInput}
-              placeholder="DD/MM/AAAA"
-              placeholderTextColor={colors.ink400}
-              value={data}
-              onChangeText={setData}
-              keyboardType="number-pad"
-            />
-          </View>
+          <DateField value={data} onChange={setData} />
         </View>
 
         {/* Comprovante */}

@@ -17,6 +17,9 @@
     "./contrato-render": "./src/contrato-render.ts",
     "./privacy-policy.json": "./src/privacy-policy.json"
   },
+  "scripts": {
+    "test": "node --test src/*.test.ts"
+  },
   "dependencies": {
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",

@@ -1,14 +1,34 @@
 import { safeErrorMessage } from '@/lib/error-message'
 import { useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   HelpCircle, Plus, Pencil, Trash2, Eye, EyeOff, GripVertical,
   Car, FileText, Calendar, Clock, MapPin, CreditCard, Users, Shield,
   BookOpen, CheckCircle, AlertCircle, Info, Phone, Mail, Globe, Star,
   Briefcase, Building, Flag, Award, ClipboardList, MessageCircle, Lock,
   Camera, Download, Landmark, Lightbulb, Navigation, Clipboard, Upload,
-  FileSpreadsheet, CircleCheck, CircleX, Search,
+  FileSpreadsheet, CircleCheck, CircleX, Search, FolderPlus,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -26,9 +46,15 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { db } from '@/lib/firebase'
-import { listFaqs, createFaq, updateFaq, deleteFaq } from '@ueno/firebase/queries/faq'
-import type { FAQ, FAQInsert } from '@ueno/firebase'
+import {
+  listFaqs, createFaq, updateFaq, deleteFaq, reorderFaqs,
+  listCategoriasFaq, createCategoriaFaq, updateCategoriaFaq, deleteCategoriaFaq, reorderCategoriasFaq,
+} from '@ueno/firebase/queries/faq'
+import type { FAQ, FAQInsert, CategoriaFaq } from '@ueno/firebase'
+import { categoriaFaqSchema, type CategoriaFaqInput } from '@ueno/utils/validators'
 import { includesText, isWithinDateRange, matchesActiveFilter, nextSort, sortBy, type ActiveFilter, type SortState } from '@/utils/table'
+
+const SEM_CATEGORIA = '__sem_categoria__'
 
 // ── Ícones disponíveis ────────────────────────────────────────
 const ICON_LIST: { name: string; label: string; Icon: LucideIcon }[] = [
@@ -88,6 +114,15 @@ function hexToRgba(hex: string, alpha: number) {
   const g = parseInt(safeHex.slice(3, 5), 16)
   const b = parseInt(safeHex.slice(5, 7), 16)
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function faqsByCategoria(faqs: FAQ[], categoriaId: string | null): FAQ[] {
+  return faqs.filter((faq) => faq.categoria_id === categoriaId)
+}
+
+function nextOrdemFor(faqs: FAQ[], categoriaId: string | null): number {
+  const doGrupo = faqsByCategoria(faqs, categoriaId)
+  return doGrupo.length > 0 ? Math.max(...doGrupo.map((f) => f.ordem)) + 1 : 0
 }
 
 const FAQ_CSV_HEADERS = ['pergunta', 'resposta', 'icone', 'cor_icone', 'is_active', 'ordem'] as const
@@ -254,6 +289,7 @@ function parseFaqCsvRows(text: string, nextOrdem: number): ParsedFaqRow[] {
 
     parsedRows.push({
       linha: rowNumber,
+      categoria_id: null,
       pergunta,
       resposta,
       icone,
@@ -389,11 +425,15 @@ function FaqIconPreview({ cor, icone }: { cor: string; icone: string }) {
 // ── Dialog de criar/editar ────────────────────────────────────
 function FaqDialog({
   faq,
-  nextOrdem,
+  faqs,
+  categorias,
+  defaultCategoriaId,
   onClose,
 }: {
   faq?: FAQ
-  nextOrdem: number
+  faqs: FAQ[]
+  categorias: CategoriaFaq[]
+  defaultCategoriaId?: string | null
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -404,19 +444,24 @@ function FaqDialog({
   const [corIcone, setCorIcone] = useState(faq?.cor_icone ?? DEFAULT_COLOR)
   const [icone, setIcone] = useState(faq?.icone ?? DEFAULT_ICON)
   const [isActive, setIsActive] = useState(faq?.is_active ?? true)
+  const [categoriaId, setCategoriaId] = useState<string | null>(
+    faq ? faq.categoria_id : (defaultCategoriaId ?? null),
+  )
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: () => {
       if (!pergunta.trim()) throw new Error('Pergunta é obrigatória')
       if (!resposta.trim()) throw new Error('Resposta é obrigatória')
+      const categoriaMudou = isEdit && faq!.categoria_id !== categoriaId
       const payload = {
+        categoria_id: categoriaId,
         pergunta: pergunta.trim(),
         resposta: resposta.trim(),
         cor_icone: corIcone,
         icone,
         is_active: isActive,
-        ordem: faq?.ordem ?? nextOrdem,
+        ordem: !isEdit || categoriaMudou ? nextOrdemFor(faqs, categoriaId) : faq!.ordem,
       }
       return isEdit ? updateFaq(db, faq!.id, payload) : createFaq(db, payload)
     },
@@ -468,6 +513,20 @@ function FaqDialog({
         </div>
 
         <div className="space-y-2">
+          <Label>Categoria</Label>
+          <select
+            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={categoriaId ?? ''}
+            onChange={(e) => setCategoriaId(e.target.value || null)}
+          >
+            <option value="">Sem categoria</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-2">
           <Label>Ícone</Label>
           <IconPicker value={icone} color={corIcone} onChange={setIcone} />
         </div>
@@ -501,9 +560,160 @@ function FaqDialog({
   )
 }
 
+// ── Dialog de criar/editar categoria ───────────────────────────
+function CategoriaFaqDialog({
+  categoria,
+  nextOrdem,
+  onClose,
+  onDeleted,
+}: {
+  categoria?: CategoriaFaq
+  nextOrdem: number
+  onClose: () => void
+  onDeleted?: (id: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const isEdit = !!categoria
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<CategoriaFaqInput>({
+    resolver: zodResolver(categoriaFaqSchema),
+    defaultValues: isEdit
+      ? { nome: categoria.nome, descricao: categoria.descricao ?? '', ordem: categoria.ordem }
+      : { nome: '', descricao: '', ordem: nextOrdem },
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: CategoriaFaqInput) => {
+      const payload = { nome: data.nome, descricao: data.descricao || null, ordem: data.ordem }
+      return isEdit
+        ? updateCategoriaFaq(db, categoria.id, payload)
+        : createCategoriaFaq(db, payload)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categorias-faq'] })
+      onClose()
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCategoriaFaq(db, categoria!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categorias-faq'] })
+      queryClient.invalidateQueries({ queryKey: ['faq'] })
+      onDeleted?.(categoria!.id)
+      onClose()
+    },
+  })
+
+  const handleDelete = () => {
+    if (!categoria) return
+    const confirmed = window.confirm(
+      `Excluir a categoria "${categoria.nome}"? As perguntas dela ficarão sem categoria.`,
+    )
+    if (confirmed) deleteMutation.mutate()
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>
+              Nome <span className="text-destructive">*</span>
+            </Label>
+            <Input {...register('nome')} placeholder="Ex: Pagamentos" />
+            {errors.nome && <p className="text-xs text-destructive">{errors.nome.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label>Descrição</Label>
+            <Input {...register('descricao')} placeholder="Descrição opcional" />
+          </div>
+          <DialogFooter>
+            {isEdit && (
+              <Button
+                variant="destructive"
+                type="button"
+                onClick={handleDelete}
+                isLoading={deleteMutation.isPending}
+                className="mr-auto"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </Button>
+            )}
+            <Button variant="outline" type="button" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" isLoading={mutation.isPending}>
+              {isEdit ? 'Salvar' : 'Criar categoria'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Aba de categoria (arrastável) ───────────────────────────────
+function CategoriaTab({
+  categoria,
+  active,
+  onSelect,
+  onEdit,
+}: {
+  categoria: CategoriaFaq
+  active: boolean
+  onSelect: () => void
+  onEdit: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: categoria.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="group relative flex items-center">
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        onClick={onSelect}
+        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm transition-colors pr-8 cursor-grab active:cursor-grabbing ${
+          active ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'
+        }`}
+      >
+        {categoria.nome}
+      </button>
+      <div className="absolute right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="p-0.5 rounded hover:bg-black/10"
+          title="Editar categoria"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Row da lista ──────────────────────────────────────────────
 function FaqRow({
   faq,
+  categoriaNome,
+  dragDisabled,
   onEdit,
   onToggle,
   onDelete,
@@ -511,6 +721,8 @@ function FaqRow({
   isDeleting,
 }: {
   faq: FAQ
+  categoriaNome?: string | null
+  dragDisabled?: boolean
   onEdit: () => void
   onToggle: () => void
   onDelete: () => void
@@ -518,11 +730,28 @@ function FaqRow({
   isDeleting: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: faq.id, disabled: dragDisabled ?? false })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : faq.is_active ? 1 : 0.5,
+  }
 
   return (
-    <tr className={`hover:bg-muted/20 ${!faq.is_active ? 'opacity-50' : ''}`}>
+    <tr ref={setNodeRef} style={style} className="hover:bg-muted/20">
       <td className="px-3 py-3">
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          disabled={dragDisabled}
+          title={dragDisabled ? 'Limpe os filtros para reordenar' : 'Arraste para reordenar'}
+          className={dragDisabled ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}
+        >
+          <GripVertical className={`h-4 w-4 ${dragDisabled ? 'text-muted-foreground/30' : 'text-muted-foreground'}`} />
+        </button>
       </td>
       <td className="px-3 py-3">
         <FaqIconPreview cor={faq.cor_icone} icone={faq.icone ?? DEFAULT_ICON} />
@@ -531,6 +760,9 @@ function FaqRow({
         <p className="text-sm font-medium leading-snug">{faq.pergunta}</p>
         <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{faq.resposta}</p>
       </td>
+      {categoriaNome !== undefined && (
+        <td className="px-4 py-3 text-sm text-muted-foreground">{categoriaNome ?? '—'}</td>
+      )}
       <td className="px-4 py-3">
         <Badge variant={faq.is_active ? 'success' : 'outline'}>
           {faq.is_active ? 'Publicada' : 'Inativa'}
@@ -853,6 +1085,9 @@ export function FaqPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [showImportar, setShowImportar] = useState(false)
   const [editFaq, setEditFaq] = useState<FAQ | null>(null)
+  const [showNovaCategoria, setShowNovaCategoria] = useState(false)
+  const [editCategoria, setEditCategoria] = useState<CategoriaFaq | undefined>()
+  const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
   const [createdFrom, setCreatedFrom] = useState('')
@@ -862,16 +1097,30 @@ export function FaqPage() {
     direction: 'asc',
   })
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
   const { data: faqs = [], isLoading, isError, error } = useQuery({
     queryKey: ['faq'],
     queryFn: () => listFaqs(db),
   })
 
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias-faq'],
+    queryFn: () => listCategoriasFaq(db),
+  })
+
   const publicadas = faqs.filter((f) => f.is_active).length
   const rascunhos = faqs.filter((f) => !f.is_active).length
-  const nextOrdem = faqs.length > 0 ? Math.max(...faqs.map((f) => f.ordem)) + 1 : 0
+  const semCategoriaCount = faqsByCategoria(faqs, null).length
+  const defaultCategoriaIdParaNova = categoriaAtiva === null || categoriaAtiva === SEM_CATEGORIA ? null : categoriaAtiva
+
   const faqsFiltradas = useMemo(() => {
     const rows = faqs.filter((faq) => {
+      if (categoriaAtiva === SEM_CATEGORIA && faq.categoria_id !== null) return false
+      if (categoriaAtiva !== null && categoriaAtiva !== SEM_CATEGORIA && faq.categoria_id !== categoriaAtiva) return false
       if (!matchesActiveFilter(faq.is_active, activeFilter)) return false
       if (!includesText([faq.pergunta, faq.resposta, faq.is_active ? 'publicada ativo' : 'inativa inativo'].join(' '), busca)) return false
       return isWithinDateRange(faq.created_at, createdFrom, createdTo)
@@ -883,7 +1132,10 @@ export function FaqPage() {
       status: (faq) => faq.is_active,
       created_at: (faq) => faq.created_at,
     })
-  }, [activeFilter, busca, createdFrom, createdTo, faqs, sort])
+  }, [activeFilter, busca, categoriaAtiva, createdFrom, createdTo, faqs, sort])
+
+  const filtrosNeutros = !busca && activeFilter === 'all' && !createdFrom && !createdTo && sort.key === 'ordem' && sort.direction === 'asc'
+  const dragDisabled = categoriaAtiva === null || !filtrosNeutros
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
@@ -895,6 +1147,48 @@ export function FaqPage() {
     mutationFn: (id: string) => deleteFaq(db, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['faq'] }),
   })
+
+  const reorderMutation = useMutation({
+    mutationFn: (updates: Array<{ id: string; ordem: number }>) => reorderFaqs(db, updates),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['faq'] }),
+  })
+
+  const reorderCategoriasMutation = useMutation({
+    mutationFn: (updates: Array<{ id: string; ordem: number }>) => reorderCategoriasFaq(db, updates),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categorias-faq'] }),
+  })
+
+  function handleFaqDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = faqsFiltradas.findIndex((f) => f.id === active.id)
+    const newIndex = faqsFiltradas.findIndex((f) => f.id === over.id)
+    const reordered = arrayMove(faqsFiltradas, oldIndex, newIndex)
+    const novasOrdens = new Map(reordered.map((f, i) => [f.id, i]))
+
+    queryClient.setQueryData(['faq'], (current: FAQ[] = []) =>
+      current.map((f) => (novasOrdens.has(f.id) ? { ...f, ordem: novasOrdens.get(f.id)! } : f)),
+    )
+
+    reorderMutation.mutate(reordered.map((f, i) => ({ id: f.id, ordem: i })))
+  }
+
+  function handleCategoriaDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = categorias.findIndex((c) => c.id === active.id)
+    const newIndex = categorias.findIndex((c) => c.id === over.id)
+    const reordered = arrayMove(categorias, oldIndex, newIndex)
+
+    queryClient.setQueryData(
+      ['categorias-faq'],
+      reordered.map((c, i) => ({ ...c, ordem: i })),
+    )
+
+    reorderCategoriasMutation.mutate(reordered.map((c, i) => ({ id: c.id, ordem: i })))
+  }
 
   return (
     <div>
@@ -950,6 +1244,55 @@ export function FaqPage() {
             title="Criado até"
           />
         </div>
+
+        {/* Abas de categoria */}
+        <div className="flex items-center justify-between gap-3 flex-wrap border-b pb-2">
+          <div className="flex gap-1 flex-wrap items-center">
+            <button
+              onClick={() => setCategoriaAtiva(null)}
+              className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                categoriaAtiva === null
+                  ? 'bg-primary text-primary-foreground'
+                  : 'hover:bg-muted text-muted-foreground'
+              }`}
+            >
+              Todas
+            </button>
+
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoriaDragEnd}>
+              <SortableContext items={categorias.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+                {categorias.map((cat) => (
+                  <CategoriaTab
+                    key={cat.id}
+                    categoria={cat}
+                    active={categoriaAtiva === cat.id}
+                    onSelect={() => setCategoriaAtiva(cat.id)}
+                    onEdit={() => setEditCategoria(cat)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+
+            {categorias.length > 0 && semCategoriaCount > 0 && (
+              <button
+                onClick={() => setCategoriaAtiva(SEM_CATEGORIA)}
+                className={`px-4 py-1.5 rounded-md text-sm transition-colors ${
+                  categoriaAtiva === SEM_CATEGORIA
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-muted text-muted-foreground'
+                }`}
+              >
+                Sem categoria
+              </button>
+            )}
+          </div>
+
+          <Button variant="ghost" size="sm" onClick={() => setShowNovaCategoria(true)}>
+            <FolderPlus className="mr-2 h-4 w-4" />
+            Nova categoria
+          </Button>
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner />
@@ -963,35 +1306,49 @@ export function FaqPage() {
           </div>
         ) : faqsFiltradas.length === 0 ? (
           <div className="rounded-md border border-dashed py-16 text-center text-sm text-muted-foreground">
-            Nenhuma pergunta cadastrada.
+            Nenhuma pergunta {categoriaAtiva !== null ? 'nesta categoria' : 'cadastrada'}.
           </div>
         ) : (
           <div className="rounded-md border">
+            {dragDisabled && (
+              <p className="px-4 py-2 text-xs text-muted-foreground border-b bg-muted/20">
+                Selecione uma categoria (ou "Sem categoria"), com filtros em "Ativas e inativas" e sem busca/data, para reordenar arrastando.
+              </p>
+            )}
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40">
                 <tr>
                   <th className="w-8 px-3 py-3" />
                   <th className="w-14 px-3 py-3" />
                   <SortableTh sort={sort} sortKey="pergunta" onSort={(key) => setSort(nextSort(sort, key))}>Pergunta</SortableTh>
+                  {categoriaAtiva === null && <th className="px-4 py-3 text-left font-medium">Categoria</th>}
                   <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {faqsFiltradas.map((faq) => (
-                  <FaqRow
-                    key={faq.id}
-                    faq={faq}
-                    onEdit={() => setEditFaq(faq)}
-                    onToggle={() =>
-                      toggleMutation.mutate({ id: faq.id, is_active: !faq.is_active })
-                    }
-                    onDelete={() => deleteMutation.mutate(faq.id)}
-                    isToggling={toggleMutation.isPending && toggleMutation.variables?.id === faq.id}
-                    isDeleting={deleteMutation.isPending && deleteMutation.variables === faq.id}
-                  />
-                ))}
-              </tbody>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleFaqDragEnd}>
+                <SortableContext items={faqsFiltradas.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                  <tbody className="divide-y">
+                    {faqsFiltradas.map((faq) => (
+                      <FaqRow
+                        key={faq.id}
+                        faq={faq}
+                        dragDisabled={dragDisabled}
+                        {...(categoriaAtiva === null
+                          ? { categoriaNome: categorias.find((c) => c.id === faq.categoria_id)?.nome ?? null }
+                          : {})}
+                        onEdit={() => setEditFaq(faq)}
+                        onToggle={() =>
+                          toggleMutation.mutate({ id: faq.id, is_active: !faq.is_active })
+                        }
+                        onDelete={() => deleteMutation.mutate(faq.id)}
+                        isToggling={toggleMutation.isPending && toggleMutation.variables?.id === faq.id}
+                        isDeleting={deleteMutation.isPending && deleteMutation.variables === faq.id}
+                      />
+                    ))}
+                  </tbody>
+                </SortableContext>
+              </DndContext>
             </table>
           </div>
         )}
@@ -999,19 +1356,38 @@ export function FaqPage() {
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         {createOpen && (
-          <FaqDialog nextOrdem={nextOrdem} onClose={() => setCreateOpen(false)} />
+          <FaqDialog
+            faqs={faqs}
+            categorias={categorias}
+            defaultCategoriaId={defaultCategoriaIdParaNova}
+            onClose={() => setCreateOpen(false)}
+          />
         )}
       </Dialog>
 
       {showImportar && (
-        <ImportarFaqDialog nextOrdem={nextOrdem} onClose={() => setShowImportar(false)} />
+        <ImportarFaqDialog nextOrdem={nextOrdemFor(faqs, null)} onClose={() => setShowImportar(false)} />
       )}
 
       <Dialog open={!!editFaq} onOpenChange={(open: boolean) => { if (!open) setEditFaq(null) }}>
         {editFaq && (
-          <FaqDialog faq={editFaq} nextOrdem={nextOrdem} onClose={() => setEditFaq(null)} />
+          <FaqDialog faq={editFaq} faqs={faqs} categorias={categorias} onClose={() => setEditFaq(null)} />
         )}
       </Dialog>
+
+      {(showNovaCategoria || editCategoria) && (
+        <CategoriaFaqDialog
+          {...(editCategoria ? { categoria: editCategoria } : {})}
+          nextOrdem={categorias.length}
+          onDeleted={(id) => {
+            if (categoriaAtiva === id) setCategoriaAtiva(null)
+          }}
+          onClose={() => {
+            setShowNovaCategoria(false)
+            setEditCategoria(undefined)
+          }}
+        />
+      )}
     </div>
   )
 }

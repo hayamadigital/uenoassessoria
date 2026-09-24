@@ -1,6 +1,8 @@
 # Especificação — Bloqueio Total de Simulados e Materiais (temporário)
 
 > Atualização de 16/09/2026: a proposta de liberação global para todos foi substituída por [Acesso a recursos por cliente](acesso-por-cliente-especificacao.md). Este documento permanece como histórico do bloqueio temporário; não implementar os dois modelos como fontes paralelas de autorização.
+>
+> Atualização de 24/09/2026: decisão revertida. O acesso por cliente foi desfeito e Estudos/Catálogo voltaram a ficar liberados para todos os clientes autenticados, sem bloqueio nenhum (nem o "bloqueio total" descrito abaixo, nem a concessão individual da spec acima). Ambos os documentos ficam só como histórico.
 
 Cobre o item 19 do `docs/raio-x-especificacao.md`.
 

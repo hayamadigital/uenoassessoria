@@ -32,7 +32,6 @@ const tabs = [
   { label: 'Endereço', href: 'endereco' },
   { label: 'Documentos', href: 'documentos' },
   { label: 'Histórico', href: 'historico' },
-  { label: 'Acessos', href: 'acessos' },
   // Stubs legados (mantidos temporariamente)
   { label: 'Agendamentos', href: 'agendamentos' },
   { label: 'Financeiro', href: 'financeiro' },

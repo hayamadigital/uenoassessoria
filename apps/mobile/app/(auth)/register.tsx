@@ -13,6 +13,7 @@ import { sendPasswordResetEmail } from 'firebase/auth'
 import { auth, functions, db } from '@/lib/firebase'
 import { getPublicAppConfig } from '@ueno/firebase/queries/public-config'
 import { registerSchema, type RegisterInput } from '@ueno/utils/validators'
+import { formatDateBR } from '@ueno/utils/date'
 import {
   INTERESSE_CATEGORIA_OPTIONS,
   INTERESSE_CATEGORIA_LABEL,
@@ -24,6 +25,7 @@ import {
   friendlyRegisterErrorMessage,
 } from '@ueno/utils/cadastro-evento'
 import { CityAutocomplete } from '@/components/CityAutocomplete'
+import { DateField } from '@/components/DateField'
 import { colors } from '@/theme'
 
 function buildWhatsAppUrls(phone: string | null, message: string) {
@@ -41,7 +43,7 @@ function buildLeadMessage(data: RegisterInput) {
     'Olá, visitei a UENO ASSESSORIA no evento e gostaria de receber mais informações.',
     '',
     `Nome: ${data.full_name}`,
-    `Data de nascimento: ${data.data_nascimento}`,
+    `Data de nascimento: ${formatDateBR(data.data_nascimento)}`,
     `Cidade: ${data.cidade_jp}${data.provincia_jp ? `, ${data.provincia_jp}` : ''}`,
     `Interesse: ${buildInteresseResumo(data.interesse_categorias, data.interesse_subopcoes)}`,
     `Conheceu a UENO através de: ${labelComoConheceu(data.como_conheceu)}`,
@@ -227,23 +229,8 @@ export default function RegisterScreen() {
             <Controller
               control={control}
               name="data_nascimento"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[s.input, errors.data_nascimento && s.inputErr]}
-                  placeholder="DD/MM/AAAA"
-                  placeholderTextColor={colors.ink400}
-                  keyboardType="numeric"
-                  maxLength={10}
-                  onBlur={onBlur}
-                  onChangeText={(text: string) => {
-                    const digits = text.replace(/\D/g, '')
-                    let formatted = digits
-                    if (digits.length > 2) formatted = digits.slice(0, 2) + '/' + digits.slice(2)
-                    if (digits.length > 4) formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8)
-                    onChange(formatted)
-                  }}
-                  value={value}
-                />
+              render={({ field: { onChange, value } }) => (
+                <DateField value={value} onChange={onChange} maximumDate={new Date()} />
               )}
             />
             {errors.data_nascimento && <Text style={s.errTxt}>{errors.data_nascimento.message}</Text>}
