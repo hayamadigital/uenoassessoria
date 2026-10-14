@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
@@ -6,12 +7,14 @@ import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import { auth } from '@/lib/firebase'
 import { signIn } from '@ueno/firebase'
 import { loginSchema, type LoginInput } from '@ueno/utils/validators'
 import { colors } from '@/theme'
 
 export default function LoginScreen() {
+  const [showPassword, setShowPassword] = useState(false)
   const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
@@ -94,16 +97,34 @@ export default function LoginScreen() {
               control={control}
               name="password"
               render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[s.input, errors.password && s.inputErr]}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.ink400}
-                  secureTextEntry
-                  autoComplete="password"
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                />
+                <View style={s.passwordWrap}>
+                  <TextInput
+                    style={[s.input, s.passwordInput, errors.password && s.inputErr]}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.ink400}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="password"
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                  />
+                  <TouchableOpacity
+                    style={s.eyeBtn}
+                    onPress={() => setShowPassword((v) => !v)}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    hitSlop={8}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={colors.ink500}
+                    />
+                  </TouchableOpacity>
+                </View>
               )}
             />
             {errors.password && <Text style={s.errTxt}>{errors.password.message}</Text>}
@@ -164,6 +185,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.ink100,
   },
+  passwordWrap: { position: 'relative', justifyContent: 'center' },
+  // Espaço à direita para o texto da senha não passar por baixo do botão do olho.
+  passwordInput: { paddingRight: 48 },
+  eyeBtn: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 48, alignItems: 'center', justifyContent: 'center' },
   inputErr: { borderColor: colors.err },
   errTxt: { fontSize: 12, color: colors.err, marginTop: 4 },
   forgotWrap: { alignSelf: 'flex-end', marginBottom: 28 },

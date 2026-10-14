@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { EmailAuthProvider, reauthenticateWithCredential, signOut } from 'firebase/auth'
 import { httpsCallable } from 'firebase/functions'
@@ -15,6 +16,7 @@ type Result = { status: 'pending' | 'processing' | 'completed'; retention: { rea
 const receiptKey = 'ueno-account-deletion-receipt'
 export default function DeleteAccount() {
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [confirmation, setConfirmation] = useState('')
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [restoring, setRestoring] = useState(true)
@@ -74,7 +76,10 @@ export default function DeleteAccount() {
     </View> : auth.currentUser ? <View style={styles.card}>
       <Text style={styles.text}>Esta ação solicita a exclusão definitiva da sua conta, perfil, documentos, fotos e histórico. A equipe concluirá em até 30 dias. Contratos e registros financeiros só serão mantidos quando houver obrigação de retenção; o motivo e o prazo serão informados na confirmação.</Text>
       <Text style={styles.text}>Confirme sua senha e digite EXCLUIR para continuar.</Text>
-      <TextInput accessibilityLabel="Sua senha" placeholder="Sua senha" secureTextEntry autoCapitalize="none" value={password} onChangeText={setPassword} style={[styles.text, { padding: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }]} />
+      <View style={{ position: 'relative', justifyContent: 'center' }}>
+        <TextInput accessibilityLabel="Sua senha" placeholder="Sua senha" secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} value={password} onChangeText={setPassword} style={[styles.text, { padding: 12, paddingRight: 44, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }]} />
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} hitSlop={8} onPress={() => setShowPassword(v => !v)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#5A6478" /></TouchableOpacity>
+      </View>
       <TextInput accessibilityLabel="Digite EXCLUIR" placeholder="EXCLUIR" autoCapitalize="characters" value={confirmation} onChangeText={setConfirmation} style={[styles.text, { padding: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8 }]} />
       <TouchableOpacity accessibilityRole="button" disabled={sending || confirmation !== 'EXCLUIR' || !password} style={[styles.button, { opacity: confirmation === 'EXCLUIR' && password ? 1 : 0.5 }]} onPress={() => { void request() }}><Text style={[styles.link, { color: '#B91C1C' }]}>{sending ? 'Enviando…' : 'Solicitar exclusão definitiva'}</Text></TouchableOpacity>
     </View> : <Text style={styles.text}>Entre na sua conta para solicitar a exclusão.</Text>}

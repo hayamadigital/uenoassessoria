@@ -22,7 +22,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "10",
+      "buildNumber": "13",
       "privacyManifests": {
         "NSPrivacyTracking": false,
         "NSPrivacyCollectedDataTypes": [
@@ -130,7 +130,9 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1a32f5"
       },
-      "package": "com.ueno.assessoria"
+      "package": "com.ueno.assessoria",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
@@ -157,6 +159,10 @@
       [
         "expo-build-properties",
         {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
+          },
           "ios": {
             "useFrameworks": "static"
           }

@@ -121,10 +121,10 @@ export default function ProcessoDetailScreen() {
     enabled: !!processo?.cliente_id,
   })
 
-  const { data: contratos = [] } = useQuery({
-    queryKey: ['processos', processoId, 'contratos'],
-    queryFn: () => listContratosByProcesso(db, processoId!),
-    enabled: !!processoId,
+  const { data: contratos = [], isError: contratosError } = useQuery({
+    queryKey: ['processos', processoId, 'contratos', processo?.cliente_id],
+    queryFn: () => listContratosByProcesso(db, processoId!, processo!.cliente_id),
+    enabled: !!processoId && !!processo?.cliente_id,
   })
 
   if (isLoading || !processo) {
@@ -220,7 +220,9 @@ export default function ProcessoDetailScreen() {
         </Section>
 
         <Section title="Contrato">
-          {contratos.length === 0 ? (
+          {contratosError ? (
+            <Empty text="Não foi possível carregar os contratos. Tente novamente mais tarde." />
+          ) : contratos.length === 0 ? (
             <Empty text="Nenhum contrato vinculado a este processo ainda." />
           ) : (
             contratos.map((contrato) => (

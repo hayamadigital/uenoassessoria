@@ -1,6 +1,56 @@
 # HANDOFF — UENO ASSESSORIA
 
-Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-24.
+## [2026-10-05] — Preparação da publicação Android
+
+Firebase Android cadastrado (`com.ueno.assessoria`, app `1:442537306636:android:e0f425c4f6216d5aa95c29`) e `google-services.json` conectado ao Expo. Compile/target SDK 36 explícitos. App Check agora inicializa Play Integrity em produção Android (debug em desenvolvimento), mantendo App Attest no iOS; ainda depende da configuração do Console/Firebase com o certificado de assinatura Google Play. Não relaxar enforcement para contornar essa pendência.
+
+Primeiro AAB EAS em compilação: `ca77a5b1-46da-4aa7-8e90-24233918fb16`, versão 1.0.0 / versionCode 2. Keystore criado no EAS. TypeScript mobile e prebuild Android passaram; sem dispositivo/emulador Android disponível no PATH para teste real. Página web de exclusão de conta adicionada, com solicitação por e-mail sem instalar o app; publicada e conferida visualmente em `https://ueno-assessoria.vercel.app/excluir-conta.html` (deploy `dpl_CXB9tZrSE1mRtdqD72unkdNZXUcW`, READY; build web passou). `.remember/` excluído do deploy para evitar corrida com arquivos temporários. Ícone 512×512 preparado em `output/google-play/icon-512.png`.
+
+Conta Google aberta no Chrome mostrou cadastro inicial do Play Console. Titular/tipo da conta ainda não confirmados pelo usuário. **Nenhum envio ao Google Play**, teste fechado ou solicitação de produção iniciado. Ficha, requisitos e próximos passos em `docs/google-play-release.md`. Contas pessoais novas podem exigir 12 testadores por 14 dias antes de solicitar produção. Nenhum commit/push nesta etapa.
+
+## [2026-10-05] — Aprovado, mas disponibilidade territorial não configurada
+
+Consulta ao vivo da API Apple: versão 1.0 em READY_FOR_SALE / READY_FOR_DISTRIBUTION; submissão COMPLETE, item APPROVED. Catálogo público Apple retornou zero resultados para app 6804929737 nos países JP e BR. API appAvailabilityV2 retornou 404 (recurso ausente). Conferência visual no Chrome, página Preços e disponibilidade: seção Disponibilidade do app mostra **Configurar disponibilidade**, sem países configurados. Método de distribuição é Público; Japão é país de referência de preços e preço é gratuito, mas isso não habilita distribuição no Japão. Nenhuma configuração remota foi alterada nesta verificação. Próximo passo: configurar disponibilidade incluindo Japão; decidir demais países sem presumir distribuição global. Apple informa até 24h para visibilidade após alteração.
+
+## [2026-09-30] — Build 13 reenviado à Apple: WAITING_FOR_REVIEW
+
+Estado confirmado pela API oficial em **30/09/2026 às 09:43 JST**: versão App Store **1.0**, binário **1.0.0 (13)**, versão e submissão em **WAITING_FOR_REVIEW**. Reenvio efetivo para revisão pública, não apenas upload ao TestFlight. Submissão existente: `2710a477-c32d-4fb3-9fe2-6bc6bf20b8f7`; versão Apple: `7725447c-695b-4ef9-a690-a39ef52ede61`; build Apple: `03304512-f2ca-4a79-a52c-44e30a16d6a3` (VALID). Liberação após aprovação continua configurada como `AFTER_APPROVAL`; não foi alterada.
+
+- **Build EAS 13**: `04d6585b-6881-408f-b5ee-918bd5830d59`, FINISHED. Upload EAS `7363546e-e33d-498e-a0d4-422c0d0c6566`, FINISHED. Build 12 (`07adb5e9-6d00-4867-b133-8b1459c83674`) foi intermediário e não foi escolhido para revisão.
+- **Cadastro**: nascimento opcional no mobile/web, sem envio da data ausente ao backend/WhatsApp.
+- **Contratos**: teste real com identidade de cliente revelou permission-denied na consulta por processo. Corrigido `listContratosByProcesso` com filtro de `cliente_id` para o mobile e filtragem/ordenação local do processo; fluxo admin preservado. Tela agora informa falha de carregamento em vez de apresentar ausência de contratos. Nenhuma regra foi relaxada.
+- **Estudos**: apesar da reversão de 24/09, ainda havia filtro de materiais condicionado a processo ativo/em análise. Removido para corresponder à política confirmada: todos os materiais ativos e simulados disponíveis gratuitamente a qualquer usuário autenticado, independentemente de contratar assessoria.
+- **Web publicada** em 29/09: https://ueno-assessoria.vercel.app, deployment `dpl_JDSDdajkxNQhgUHtGnwBjEZrni6n` (READY). Conferido `/evento`: validação obrigatória ausente e rótulo opcional presente; política/suporte HTTP 200. Upload inicial excedeu limite de arquivos; nova tentativa compactada concluiu. `.vercelignore` adicionado. Esse deploy inclui o cadastro corrigido; as mudanças posteriores na tela de Estudos e no uso mobile da consulta de contratos estão no build 13. A chamada administrativa web de contratos não mudou.
+- **Demo em produção**: `apple-review-demo-contract` e `apple-review-demo-payment`, duas parcelas `demo-1`/`demo-2`; documento e registros claramente fictícios, cancelados, valores zero, sem cobrança/recebimento/notificação. Preservados processo ativo, 7 etapas e 1 agendamento. PDF `output/pdf/contrato-demo-revisao-apple.pdf`, renderizado e inspecionado, vinculado no Storage somente ao cliente demo.
+- **Validação**: TypeScript mobile/web aprovado; 23 testes functions (2 regressões novas de contratos) e 12 utils aprovados; build iOS nativo 13 concluído. Consultas com identidade demo e regras reais: contrato, parcelas, serviços e materiais lidos; contratos de outro cliente negados; PDF do contrato HTTP 200, dois vídeos HTTP 206/200 e PDF de estudo HTTP 206. Login por email/senha confirmado usando em memória a credencial privada já cadastrada na Apple. Teste visual no iPhone **não confirmado**, assim como fluxo completo de novo cadastro em dispositivo. Emuladores de regras não executados por ausência de Java.
+- **Ficha Apple**: descrição pt-BR atualizada, removida concessão manual; notas substituídas por resposta completa às cinco perguntas e correção 5.1.1(v), instruções da demo e exclusão de conta. Contato Natielly Narumi / Hayama Dhein, hayamadigital@gmail.com, +817021974995. Senha existente preservada. Leitura posterior confirmou descrição/notas/build salvos.
+- **Reenvio**: item rejeitado marcado `resolved: true`, submissão existente enviada com `submitted: true`; confirmação independente retornou WAITING_FOR_REVIEW e build 13. As respostas foram salvas nas **notas de revisão**; não foi postada mensagem separada na conversa da rejeição (API pública não expõe esse recurso). Navegador continuou indisponível; usado acesso oficial à Apple com chave existente no EAS, somente em memória, sem salvar chaves/senhas.
+
+**Próximo acompanhamento:** aguardar avaliação da Apple e confirmar teste visual do build 13 em iPhone. Não reenviar novamente enquanto está na fila. Alterações continuam no working tree, junto de mudanças anteriores de outra sessão: não houve commit/push nesta etapa. O deploy web foi direto pela CLI; cuidado para um futuro push não republicar uma versão sem a correção local. Scripts operacionais temporários estão em `tmp/`, sem segredos persistidos.
+
+## Verificação de prontidão — 29/09/2026
+
+**Ainda não pronto para reenviar.** Consulta EAS ao vivo confirmou build mais recente 1.0.0 (11), `d1eea7a6-bf25-4a39-a07d-c4bc1c3786dc`, concluído em 24/09; nenhuma compilação com a correção do nascimento opcional ainda. Exportação iOS local Expo/Metro/Hermes passou (2.300 módulos); isso não substitui build nativo nem teste em dispositivo. Testes utils/functions e compilação web/mobile já aprovados nesta sessão; diff-check limpo.
+
+Consulta somente leitura em produção: conta demo habilitada, email verificado, provedor senha, perfil cliente e um cadastro de cliente. Um processo ativo, valor definido, 7 etapas e 1 agendamento. **Nenhum contrato vinculado e nenhum pagamento lançado**: não será possível demonstrar contrato/parcelas com os dados atuais. Senha/login não testados; consultas administrativas não comprovam acesso pelas regras do cliente. Não houve alteração de dados.
+
+Política e suporte retornam HTTP 200 com email público correto. `/evento` retorna HTTP 200, mas o JavaScript publicado ainda contém a validação de nascimento obrigatório e não contém o rótulo opcional. Publicar a correção web. Banco: 9 serviços (7 marcados ativos), 20 materiais (20 marcados ativos).
+
+Limitações: consulta App Store Connect pelo navegador indisponível nesta tentativa — runtime do plugin aponta para `browser/26.825.32147/scripts/browser-service.mjs` inexistente, mesmo usando a skill instalada 26.915.31029. Portanto não houve confirmação nova do status Apple nem da ficha remota. Último estado confirmado anteriormente: rejeição do build 10. Testes de regras via emulador continuam sem executar por ausência de Java. Resposta à Apple, ficha remota e reenvio não enviados nesta verificação.
+
+Antes do reenvio: disponibilizar build corrigido; testar cadastro sem nascimento/login/arquivos em dispositivo; preparar contrato e parcelas **fictícios da demo** para revisar o fluxo completo; atualizar ficha remota e enviar resposta preparada junto da versão corrigida. Não criar cobranças reais nem enviar notificações para preencher a demo.
+
+Documento de contexto para quem pegar o projeto a partir daqui. Última atualização: 2026-09-30.
+
+## [2026-09-29] — Modelo comercial confirmado e resposta à Apple preparada
+
+Responsável confirmou: autocadastro gratuito para qualquer pessoa; simulados e materiais gratuitos independentemente de contratação; serviços de assessoria solicitados pelo app, analisados pela equipe, valor definido conforme localização e pagamento presencial ao assessor. Código conferido: aba Processos aparece com processo ativo (não depende de pagamento); detalhe mostra valor, parcelas, etapas e contrato. Agenda separada acessível pela Home. Respostas às cinco perguntas redigidas em `docs/app-store-resposta-revisao-2026-09-29.md`; ficha local corrigida para remover a antiga concessão individual. Nenhuma resposta ou alteração remota enviada nesta etapa. Ainda necessários novo build com nascimento opcional, teste da demo/processo ativo e atualização remota antes da revisão.
+
+## [2026-09-29] — Correção local do cadastro após rejeição Apple
+
+Revisão do build 10 rejeitada por 5.1.1(v) (data de nascimento obrigatória) e pedido de informações 2.1(b) sobre modelo comercial. Cadastro mobile/web agora aceita nascimento omitido ou vazio, identifica o campo como opcional e não inclui data ausente no payload nem no WhatsApp. Tipagem de `selfRegister` alinhada ao comportamento existente, que já aceita ausência. Quatro testes de regressão adicionados.
+
+Validação: 12 testes utils, 21 testes functions, TypeScript mobile e build web aprovados (aviso de chunks grandes no Vite). Correção ainda local: nenhum deploy, novo build ou reenvio nesta etapa. Rascunho e perguntas comerciais pendentes em `docs/app-store-resposta-revisao-2026-09-29.md`; usuário solicitou discutir dúvidas antes de enviar a resposta à Apple. Build 11 não inclui esta correção. Não confundir a rejeição do build 10 com o upload posterior do 11.
 
 ## Build iOS 11 no TestFlight — 24/09/2026
 

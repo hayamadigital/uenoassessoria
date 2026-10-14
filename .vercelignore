@@ -1,0 +1,63 @@
+node_modules/
+.turbo/
+dist/
+build/
+.expo/
+*.tsbuildinfo
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Compiled output
+functions/lib/
+
+# Secrets
+service-account.json
+*.serviceAccountKey.json
+
+# Claude Code local settings (não commitar)
+.claude/settings.local.json
+
+# Git worktrees
+.worktrees/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Expo
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.vercel
+.env*
+
+# Local agent tool state
+.codex/
+.superpowers/
+
+# Native projects are generated from apps/mobile/app.json (Expo CNG).
+/apps/mobile/ios/
+/apps/mobile/android/
+
+# Local Firebase emulator logs
+*-debug.log
+
+# Local review artifacts are not application source.
+tmp/
+output/
+design-references/
+docs/app-store-review-attachments/
+.agents/
+.remember/

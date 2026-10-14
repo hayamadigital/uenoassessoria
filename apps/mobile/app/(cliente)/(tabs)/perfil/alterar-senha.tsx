@@ -18,18 +18,38 @@ function Field({
   onChangeText: (value: string) => void
   placeholder?: string
 }) {
+  // Estado por campo: revelar a senha atual não deve revelar a nova junto.
+  const [showPassword, setShowPassword] = useState(false)
+
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.ink300}
-        secureTextEntry
-        autoCapitalize="none"
-        style={s.input}
-      />
+      <View style={s.inputWrap}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.ink300}
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={[s.input, s.inputWithEye]}
+        />
+        <TouchableOpacity
+          style={s.eyeBtn}
+          onPress={() => setShowPassword((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={showPassword ? `Ocultar ${label.toLowerCase()}` : `Mostrar ${label.toLowerCase()}`}
+          hitSlop={8}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={colors.ink500}
+          />
+        </TouchableOpacity>
+      </View>
     </View>
   )
 }
@@ -106,6 +126,10 @@ const s = StyleSheet.create({
   field: { gap: 6 },
   label: { color: colors.ink700, fontWeight: '700', fontSize: 12.5 },
   input: { minHeight: 44, borderWidth: 1, borderColor: colors.ink200, borderRadius: 10, paddingHorizontal: 12, color: colors.ink900, backgroundColor: colors.white, fontSize: 14 },
+  inputWrap: { position: 'relative', justifyContent: 'center' },
+  // Espaço à direita para o texto não passar por baixo do botão do olho.
+  inputWithEye: { paddingRight: 44 },
+  eyeBtn: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 44, alignItems: 'center', justifyContent: 'center' },
   saveBtn: { minHeight: 50, borderRadius: 12, backgroundColor: colors.navy800, alignItems: 'center', justifyContent: 'center' },
   saveBtnDisabled: { opacity: 0.6 },
   saveText: { color: colors.white, fontSize: 14, fontWeight: '800' },

@@ -97,7 +97,17 @@ export async function getContratoByProcesso(
 export async function listContratosByProcesso(
   db: Firestore,
   processoId: string,
+  clienteId?: string,
 ): Promise<Contrato[]> {
+  if (clienteId) {
+    // As regras de clientes exigem cliente_id na consulta. Filtrar o processo
+    // depois da leitura mantém o acesso restrito aos contratos do próprio cliente.
+    const snap = await getDocs(query(collection(db, 'contratos'), where('cliente_id', '==', clienteId)))
+    return snap.docs
+      .map((d) => toContrato(d.id, d.data()))
+      .filter((contrato) => contrato.processo_id === processoId && contrato.aditivo_de == null)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  }
   const snap = await getDocs(
     query(
       collection(db, 'contratos'),

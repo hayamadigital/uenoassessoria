@@ -11,8 +11,6 @@ import { colors } from '@/theme'
 import { useNavigation } from '@react-navigation/native'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSimuladoDraftsStore } from '@/stores/simulado-drafts.store'
-import { getClienteByProfileId } from '@ueno/firebase/queries/clientes'
-import { listProcessosByCliente } from '@ueno/firebase/queries/processos'
 import {
   createSimuladoResultado,
   listCategoriasMaterial,
@@ -258,30 +256,16 @@ export default function SimuladosScreen() {
     })
   }, [view, navigation])
 
-  const { data: cliente } = useQuery({
-    queryKey: ['cliente', 'me', session?.userId],
-    queryFn: () => getClienteByProfileId(db, session!.userId),
-    enabled: !!session,
-  })
-
   const { data: simuladoResultados } = useQuery({
     queryKey: ['cliente-simulado-resultados', session?.userId],
     queryFn: () => listClienteSimuladoResultados(db, session!.userId),
     enabled: !!session,
   })
 
-  const { data: processos } = useQuery({
-    queryKey: ['processos', cliente?.id],
-    queryFn: () => listProcessosByCliente(db, cliente!.id),
-    enabled: !!cliente,
-  })
-
   const { data: publicConfig } = useQuery({
     queryKey: ['public-app-config'],
     queryFn: () => getPublicAppConfig(db),
   })
-
-  const canViewPrivateMaterials = (processos ?? []).some((processo) => processo.status === 'ativo' || processo.status === 'analise')
 
   const { data: categorias = [], isLoading: loadingCategorias } = useQuery({
     queryKey: ['categorias-material', session?.userId],
@@ -292,8 +276,8 @@ export default function SimuladosScreen() {
   })
 
   const { data: materiais = [], isLoading: loadingMateriais } = useQuery({
-    queryKey: ['materiais-cliente-simulados', session?.userId, canViewPrivateMaterials],
-    queryFn: () => listMateriais(db, undefined, !canViewPrivateMaterials),
+    queryKey: ['materiais-cliente-simulados', session?.userId],
+    queryFn: () => listMateriais(db),
     enabled: !!session,
     staleTime: 0,
     refetchOnMount: 'always',
@@ -343,7 +327,7 @@ export default function SimuladosScreen() {
 
   const allMaterials = materiais ?? []
   const visibleMaterials = allMaterials.filter(
-    (material) => material.is_active !== false && (material.is_public || canViewPrivateMaterials),
+    (material) => material.is_active !== false,
   )
   const isLoading = loadingMateriais || loadingCategorias
 

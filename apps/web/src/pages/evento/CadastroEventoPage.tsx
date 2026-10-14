@@ -35,7 +35,7 @@ function buildLeadMessage(data: RegisterInput) {
     'Olá, visitei a UENO ASSESSORIA no evento e gostaria de receber mais informações.',
     '',
     `Nome: ${data.full_name}`,
-    `Data de nascimento: ${formatDateBR(data.data_nascimento)}`,
+    ...(data.data_nascimento ? [`Data de nascimento: ${formatDateBR(data.data_nascimento)}`] : []),
     `Cidade: ${data.cidade_jp}${data.provincia_jp ? `, ${data.provincia_jp}` : ''}`,
     `Interesse: ${buildInteresseResumo(data.interesse_categorias, data.interesse_subopcoes)}`,
     `Conheceu a UENO através de: ${labelComoConheceu(data.como_conheceu)}`,
@@ -118,7 +118,7 @@ export function CadastroEventoPage() {
       await selfRegister({
         full_name: data.full_name,
         email: data.email,
-        data_nascimento: data.data_nascimento,
+        ...(data.data_nascimento ? { data_nascimento: data.data_nascimento } : {}),
         provincia_jp: data.provincia_jp,
         cidade_jp: data.cidade_jp,
         interesse_categorias: data.interesse_categorias,
@@ -199,14 +199,14 @@ export function CadastroEventoPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="data_nascimento">Data de nascimento</Label>
+                  <Label htmlFor="data_nascimento">Data de nascimento (opcional)</Label>
                   {/* type="date" nativo: exibe no formato local e entrega sempre ISO,
                       igual ao resto do painel web — sem máscara manual. */}
                   <Input
                     id="data_nascimento"
                     type="date"
                     max={new Date().toISOString().slice(0, 10)}
-                    value={dataNascimento}
+                    value={dataNascimento ?? ''}
                     onChange={(e) => setValue('data_nascimento', e.target.value, { shouldValidate: true })}
                   />
                   {errors.data_nascimento ? <p className="text-xs text-destructive">{errors.data_nascimento.message}</p> : null}

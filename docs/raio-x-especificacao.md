@@ -2,12 +2,12 @@
 
 Confronto ponto a ponto entre a especificação enviada pelo dono do app e o código real do repositório (mobile, web admin, Cloud Functions e Firestore), com caminho de arquivo e fluxo de teste para cada item.
 
-Levantamento feito lendo o código-fonte em 2026-09-15, com uma segunda passagem no mesmo dia incorporando o retorno do **Alexandre** (dono da UENO) sobre a lista original.
+Levantamento feito lendo o código-fonte em 2026-09-15, com uma segunda passagem no mesmo dia incorporando o retorno do **Alexandre** (dono da UENO) sobre a lista original, e uma terceira passagem em 2026-09-17 reconciliando com o código já implementado (cadastro de evento deployado; acesso por cliente implementado, ainda não deployado) e com as specs técnicas escritas nesse meio-tempo.
 
 **Legenda**
-- ✅ **Já existe** — comportamento confirmado no código correspondendo à especificação (5 itens)
-- 🟡 **É melhoria** — a funcionalidade já existe, mas com lacuna concreta e pontual (13 itens)
-- 🔴 **Precisa implementar** — nenhuma estrutura de dados ou tela correspondente foi encontrada (14 itens)
+- ✅ **Já existe** — comportamento confirmado no código correspondendo à especificação (3 itens)
+- 🟡 **É melhoria** — a funcionalidade já existe, mas com lacuna concreta e pontual, **ou** já tem solução especificada/em implementação (16 itens)
+- 🔴 **Precisa implementar** — nenhuma estrutura de dados ou tela correspondente foi encontrada (13 itens)
 - ⚪ **Desconsiderado** — item descartado ou substituído por decisão do Alexandre (3 itens)
 
 **Atualização (retorno do Alexandre):** preço por cidade agora tem valores e regras reais (item 5); itens **6, 21 e 22** foram descartados; item **19** muda de "ajuste de regra" para bloqueio total imediato; item **26** perde a exigência de tela dedicada; toda a trilha do instrutor (**29, 30, 31, 36, 37, 38**) fica para uma **Fase 2** — confirmada como valiosa, mas não prioritária agora.
@@ -17,9 +17,9 @@ Levantamento feito lendo o código-fonte em 2026-09-15, com uma segunda passagem
 ## A · Primeiro contato e contratação
 
 ### 3. Cadastro básico no primeiro acesso — 🟡 É melhoria
-A tela de registro e a função `selfRegister` já coletam nome, e-mail, senha, data de nascimento, província e cidade. Faltam três campos da especificação: **telefone** (existe no perfil, mas não é pedido no cadastro inicial), **qual serviço tem interesse** e **como conheceu a UENO** — nenhum dos dois existe no modelo de dados nem no formulário.
-- Arquivos: `apps/mobile/app/(auth)/register.tsx`, `functions/src/index.ts:73 selfRegister`, `packages/utils/src/validators.ts:25 registerSchema`
-- Testar: Abrir o app → "Novo acesso" → conferir que o formulário pede só os 6 campos atuais.
+**Atualização (17/09/2026 — implementado e deployado em `ab91f02`/`10910ad`):** "qual serviço tem interesse" (agora múltipla escolha: categoria + sub-opção) e "como conheceu a UENO" foram implementados, tanto no mobile quanto numa página web nova (`/evento`), com autocomplete de cidade local e cadastro sem senha (o visitante define a senha depois por e-mail, sem travar o fluxo). Único gap que sobrou da lista original: **telefone** — continua não sendo pedido no formulário de cadastro (existe só no perfil, preenchido depois).
+- Arquivos: `apps/mobile/app/(auth)/register.tsx`, `apps/web/src/pages/evento/CadastroEventoPage.tsx`, `functions/src/index.ts selfRegister`, `packages/utils/src/cadastro-evento.ts`, `packages/utils/src/cidades-japao.ts`
+- Testar: Abrir o app → "Novo acesso" (ou `/evento` no web) → conferir que pede nome, nascimento, cidade (com sugestões), interesse (múltiplo), como conheceu, e-mail — sem senha e sem telefone.
 
 ### 4. Área de serviços — sub-opções, seleção múltipla e requisitos — 🟡 É melhoria
 A tela de serviço já usa variações cadastráveis (Carro AT/MT, Moto 50/400/1000cc etc.) e mostra chips selecionáveis. Dois gaps: a seleção é **única**; e não existe bloco de "quem pode / requisitos / quem não pode" antes do wizard.
@@ -63,8 +63,8 @@ O conceito existe: todo cliente novo nasce com `status_processo: 'prospect'`, e 
 ## B · App do cliente no dia a dia
 
 ### 10. Home do cliente como painel do processo — 🟡 É melhoria
-A Home já tem o essencial: saudação por nome, card "Processo ativo" com etapa atual, sino de notificações. Gaps: só mostra **um** processo mesmo com vários serviços simultâneos; "próxima etapa"/"próximo compromisso" não aparecem juntos no mesmo card.
-- Arquivos: `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx:68,241-314`
+**Atualização (17/09/2026):** a Home foi reescrita e ficou bem mais limpa — hero card com etapa atual + botão "Ver detalhes", card separado de próximo agendamento, avisos e FAQ; as seções antigas que "empurravam" pra outros lugares (materiais recomendados, acesso rápido) foram removidas. Gaps que continuam: só mostra **um** processo mesmo com vários serviços simultâneos ativos (`processos?.find(p => p.status === 'ativo' || 'analise')` pega só o primeiro); e "próxima etapa" não aparece mais em lugar nenhum da Home (só "etapa atual"), e "próximo agendamento" fica num card separado, não junto do card da etapa.
+- Arquivos: `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx`
 - Testar: Login como cliente com processo ativo/análise → tab Início.
 
 ### 11. Etapas do processo — resumo + "ver processo completo" — 🟡 É melhoria
@@ -99,23 +99,25 @@ Consequência do item 14: sem o estado "data marcada, horário pendente", não e
 ### 17. Cancelamento com aviso de regra + aceite — 🔴 Precisa implementar
 Não há tela de cancelamento de processo ou aula com aviso de taxa e checkbox de concordância — só botões genéricos "Cancelar" de modais.
 
-### 18. Contratar novos serviços sendo cliente ativo — ✅ Já existe
-A tab Serviços continua visível mesmo com processo ativo. Contratar outro serviço cria um novo processo independente.
-- Arquivos: `apps/mobile/app/(cliente)/(tabs)/_layout.tsx`
-- Testar: Cliente com processo ativo → tab Serviços → abrir outro serviço → contratar.
+### 18. Contratar novos serviços sendo cliente ativo — 🟡 É melhoria (depende do módulo Catálogo)
+Contratar outro serviço continua criando um novo processo independente. **Atualização (17/09/2026):** desde a implementação do `acesso-por-cliente-especificacao.md`, a tab Serviços (agora `catalogos/index.tsx`) só aparece com `catalogoLiberado === true` — uma concessão por cliente que hoje está **desligada globalmente** (nada foi deployado/ligado ainda). Ou seja: enquanto o módulo Catálogo não for ativado, nenhum cliente — nem os já ativos — vê a tab Serviços no app.
+- Arquivos: `apps/mobile/app/(cliente)/(tabs)/_layout.tsx`, `apps/mobile/app/(cliente)/(tabs)/catalogos/index.tsx`, `apps/mobile/src/hooks/useClienteAccess.ts`
+- Testar: Cliente com processo ativo → tab Serviços só aparece depois que o admin liberar o módulo Catálogo (globalmente em Preferências, ou individualmente na aba Acessos do cliente).
 
-### 19. Simulados e materiais — bloqueio total por enquanto — 🔴 Ação necessária
-O bloqueio já existe, mas hoje libera com o processo em `ativo` **ou** `analise` — antes da aprovação formal.
+### 19. Simulados e materiais — bloqueio total por enquanto — 🟡 Em implementação
+O bloqueio já existe, mas hoje libera com o processo em `ativo` **ou** `analise` — antes da aprovação formal. Além disso, é só filtro de UI: o `firestore.rules` atual permite leitura de materiais/simulados/questões pra qualquer cliente autenticado, então o bloqueio de tela não impede acesso direto pelo SDK.
 
 > **Decisão do Alexandre:** mudança de plano — "a princípio vamos bloquear até fazermos todos os testes, e depois decidimos quem pode ou não acessar esses materiais." Não é mais um ajuste de regra, é bloquear o acesso por completo até decisão manual da UENO.
-- Arquivos: `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx:100`, `apps/mobile/app/(cliente)/(tabs)/simulados/index.tsx:284`
 
-### 33. Estrutura do menu do cliente — ✅ Já existe
-Tabs atuais: Início, Simulados, Processos, Serviços, Perfil + sino de notificações. Bate com a especificação.
-- Arquivos: `apps/mobile/app/(cliente)/(tabs)/_layout.tsx:130-139`
+**Atualização (17/09/2026):** a solução deixou de ser um flag simples on/off. Existe agora `docs/acesso-por-cliente-especificacao.md` — um modelo de concessão por cliente (módulos "Estudos" e "Catálogo", liberados manualmente um cliente por vez, com auditoria) **já implementado em código, pendente de deploy e migração**. Esse spec substitui a proposta anterior em `docs/bloqueio-simulados-materiais-especificacao.md` (mantido só como histórico). Falta: finalizar mídia protegida com URL assinada, rodar a migração/backfill e fazer o deploy.
+- Arquivos: `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx:100`, `apps/mobile/app/(cliente)/(tabs)/simulados/index.tsx:284`, `docs/acesso-por-cliente-especificacao.md`
+
+### 33. Estrutura do menu do cliente — 🟡 É melhoria
+**Atualização (17/09/2026):** tabs atuais são Início, Simulados, FAQ (nova), Processos, Serviços, Perfil + sino de notificações. Dois desvios da especificação original: (1) ganhou uma tab **FAQ** que não estava na lista pedida (Início/Processos/Simulados/Serviços/Perfil); (2) Simulados e Serviços agora só aparecem se o cliente tiver a concessão do módulo correspondente (`acesso-por-cliente-especificacao.md`) — como os módulos estão desligados globalmente, hoje **nenhum cliente vê essas duas tabs**, incluindo os já ativos.
+- Arquivos: `apps/mobile/app/(cliente)/(tabs)/_layout.tsx`
 
 ### 34–35. Princípio "o que o cliente precisa fazer agora" — 🟡 É melhoria
-A Home com processo ativo já é mais objetiva que o catálogo genérico, mas ainda acumula acesso rápido, materiais recomendados e FAQ na mesma tela.
+**Atualização (17/09/2026):** a Home foi simplificada de verdade — removidas as seções de acesso rápido e materiais recomendados que "empurravam" o cliente pra outros lugares (ver item 10). Ainda mistura etapa atual + próximo agendamento + avisos + FAQ na mesma tela, mais denso que o exemplo minimalista da especificação, mas já é um avanço real em relação ao estado anterior.
 - Arquivos: `apps/mobile/app/(cliente)/(tabs)/inicio/index.tsx`
 
 ---

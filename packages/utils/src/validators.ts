@@ -43,10 +43,7 @@ export const registerSchema = z
     email: z.string().email('Email inválido'),
     // Aceita ISO (app novo, via seletor de calendário) e DD/MM/AAAA (build antigo ainda
     // em uso no TestFlight). A Cloud Function normaliza para ISO antes de gravar.
-    data_nascimento: z
-      .string()
-      .min(1, 'Data de nascimento obrigatória')
-      .refine((v) => parseDateInput(v) !== null, 'Data inválida'),
+    data_nascimento: optionalDateSchema,
     // Preenchida automaticamente ao escolher uma sugestão do autocomplete de cidade —
     // não é campo visível, então não pode bloquear o envio (a lista de cidades não é
     // exaustiva; o visitante pode digitar uma cidade que não está nela).

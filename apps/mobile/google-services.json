@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "442537306636",
+    "project_id": "ueno-assessoria-475b9",
+    "storage_bucket": "ueno-assessoria-475b9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:442537306636:android:e0f425c4f6216d5aa95c29",
+        "android_client_info": {
+          "package_name": "com.ueno.assessoria"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "442537306636-oca5ugqdquoken1esiv7irtnaevndnd7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwbXvbAKw77NbwVojXrIxSuVG5ibkYBqU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "442537306636-oca5ugqdquoken1esiv7irtnaevndnd7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "442537306636-b450jc3ah8lk2u1s0qkfbq70phjsgq09.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ueno.assessoria"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

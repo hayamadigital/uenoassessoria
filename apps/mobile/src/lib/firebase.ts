@@ -64,12 +64,15 @@ async function getNativeTokenWithRetry(nativeAppCheck: ReturnType<typeof initial
   throw lastError
 }
 
-async function initializeIosAppCheck(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return true
+async function initializeMobileAppCheck(): Promise<boolean> {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return true
 
   try {
     const nativeProvider = new ReactNativeFirebaseAppCheckProvider()
     nativeProvider.configure({
+      android: {
+        provider: process.env.NODE_ENV === 'production' ? 'playIntegrity' : 'debug',
+      },
       apple: {
         provider: process.env.NODE_ENV === 'production' ? 'appAttest' : 'debug',
       },
@@ -99,9 +102,9 @@ async function initializeIosAppCheck(): Promise<boolean> {
     return true
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[AppCheck] iOS ainda não validado: ${message}`)
+    console.warn(`[AppCheck] ${Platform.OS} ainda não validado: ${message}`)
     return false
   }
 }
 
-export const appCheckReady = initializeIosAppCheck()
+export const appCheckReady = initializeMobileAppCheck()

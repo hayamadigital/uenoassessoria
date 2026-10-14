@@ -98,7 +98,7 @@ export const selfRegister = onCall({ ...CORS }, async (request) => {
   } = request.data as {
     full_name: string
     email: string
-    data_nascimento: string
+    data_nascimento?: string | null
     provincia_jp: string
     cidade_jp: string
     interesse_categorias: string[]

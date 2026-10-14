@@ -131,7 +131,50 @@ export function resolveMenkyouOptions(
 }
 ```
 
-Retorna **todas** as combinações válidas para a cidade do cliente (pode ser mais de um centro — ver seção 6), não uma única resposta. A tela decide o que mostrar.
+Aceita uma estratégia de desempate para quando mais de um centro é válido para a mesma cidade — configurável pelo admin (ver seção 4), não fixa no código:
+
+```ts
+export type EstrategiaSobreposicao = 'todas' | 'mais_proxima'
+
+export function resolveMenkyouOptions(
+  cidadeCliente: string,
+  centers: MenkyouCenter[],
+  estrategia: EstrategiaSobreposicao = 'todas',
+): MenkyouPriceOption[] {
+  const cidade = cidadeCliente.trim().toLowerCase()
+  const options: MenkyouPriceOption[] = []
+
+  for (const center of centers.filter((c) => c.is_active)) {
+    const elegivel = center.cidades_elegiveis.some((c) => c.toLowerCase() === cidade)
+    const dentroDaZona = center.zona_busca_cidades.some((c) => c.toLowerCase() === cidade)
+
+    if (elegivel) {
+      if (center.preco_at_jpy != null) options.push({ center, transmissao: 'AT', preco_jpy: center.preco_at_jpy, dentro_da_zona_busca: dentroDaZona })
+      if (center.preco_mt_jpy != null) options.push({ center, transmissao: 'MT', preco_jpy: center.preco_mt_jpy, dentro_da_zona_busca: dentroDaZona })
+    } else if (center.apenas_manual_fora_da_lista && center.preco_mt_jpy != null) {
+      options.push({ center, transmissao: 'MT', preco_jpy: center.preco_mt_jpy, dentro_da_zona_busca: dentroDaZona })
+    }
+  }
+
+  if (estrategia === 'todas') return options
+
+  // 'mais_proxima': mantém só a opção do centro mais próximo por transmissão, quando
+  // dois+ centros são válidos ao mesmo tempo para a mesma cidade (ex.: se as áreas de
+  // Shizuoka e Hamakita se sobrepuserem numa cidade específica). "Mais próximo" aqui
+  // não é cálculo de distância real (fora de escopo, ver seção 5) — é o campo `ordem`
+  // que já existe em `MenkyouCenter` (hoje só usado pra ordenar a listagem no admin):
+  // o Alexandre organiza os centros na ordem real de proximidade/preferência, e o
+  // centro com `ordem` menor é considerado "o mais próximo" para efeito de desempate.
+  const maisProximaPorTransmissao = new Map<'AT' | 'MT', MenkyouPriceOption>()
+  for (const option of options) {
+    const atual = maisProximaPorTransmissao.get(option.transmissao)
+    if (!atual || option.center.ordem < atual.center.ordem) maisProximaPorTransmissao.set(option.transmissao, option)
+  }
+  return [...maisProximaPorTransmissao.values()]
+}
+```
+
+Sem sobreposição (o caso mais comum, já que hoje só Shizuoka tem `cidades_elegiveis` preenchida), as duas estratégias dão o mesmo resultado — a diferença só aparece se, no futuro, uma cidade for cadastrada como elegível em mais de um centro ao mesmo tempo. Nesse caso, o Alexandre define qual centro é "mais próximo" simplesmente arrastando/reordenando a lista de centros no admin (campo `ordem`), sem precisar de geolocalização nem de cálculo de distância real.
 
 Uso no fluxo de contratação (`apps/mobile/app/(cliente)/servicos/[id].tsx`): quando a variação selecionada tem `transmissao` preenchido e o cliente já tem `cidade_jp` cadastrada, chamar `resolveMenkyouOptions(cliente.cidade_jp, menkyouCenters)` e filtrar pela transmissão da variação. Se houver exatamente 1 resultado, mostrar o preço resolvido no lugar do `preco_jpy` estático da variação. Se houver mais de um centro elegível, mostrar as opções para o cliente escolher (ex.: "Shizuoka — ¥75.000" vs "Hamakita — ¥85.000"). Se não houver nenhum resultado (cidade não coberta por nenhum centro para essa transmissão), cair no preço estático da variação como fallback e sinalizar "sob consulta".
 
@@ -145,7 +188,21 @@ Nova aba em Configurações, seguindo o mesmo padrão de `apps/web/src/pages/con
 - Dialog de edição: nome, preço AT, preço MT, lista de cidades elegíveis (multi-select ou textarea de uma cidade por linha — mais simples de editar rápido do que um combobox), toggle "fora da lista, só manual", lista de cidades da zona de busca, campo de observação livre.
 - `packages/firebase/src/queries/menkyou_centers.ts` — CRUD padrão (`listMenkyouCenters`, `createMenkyouCenter`, `updateMenkyouCenter`, `toggleMenkyouCenterAtivo`), mesmo formato de `queries/servicos.ts`.
 
-Isso é o que resolve o "regra muda de novo no futuro" — quando Alexandre quiser mudar um preço ou adicionar uma cidade, é editar aqui, sem precisar de deploy.
+Isso é o que resolve o "regra muda de novo no futuro" — quando Alexandre quiser mudar um preço, adicionar/remover uma cidade (inclusive preencher a lista do Hamakita quando ele decidir quais cidades são atendidas — fica vazia até lá, sem bloquear o resto), é editar aqui, sem precisar de deploy.
+
+### Estratégia de sobreposição — nova opção em Preferências
+
+A escolha de "mostrar todas as opções válidas" vs "mostrar só a mais próxima" (ver `EstrategiaSobreposicao` na seção 3) também fica editável pelo Alexandre, não fixa no código. Adicionar em `PublicAppConfig` (`packages/firebase/src/types.ts`, mesmo doc `app_config/public` já usado por `support_whatsapp`, `simulado_passing_percentage` etc.):
+
+```ts
+// packages/firebase/src/types.ts — PublicAppConfig
+export interface PublicAppConfig {
+  // ...campos existentes
+  menkyou_estrategia_sobreposicao: 'todas' | 'mais_proxima' // default 'todas'
+}
+```
+
+E um seletor (dois botões ou um `<Select>`) na aba já existente `apps/web/src/pages/configuracoes/tabs/PreferenciasTab.tsx`, junto dos outros campos de `PublicAppConfig` que essa aba já edita (`support_whatsapp`, `home_material_category_id`, `simulado_passing_percentage`) — mesmo padrão de `updatePublicAppConfig`, sem tela nova.
 
 ---
 
@@ -157,11 +214,13 @@ Fora de escopo agora: geolocalização real ou cálculo de distância — é uma
 
 ---
 
-## 6. A confirmar com Alexandre antes de implementar
+## 6. Decisões que ficam com o Alexandre, sem bloquear a implementação
 
-- **Quais cidades o Hamakita atende.** A mensagem original não especifica — só diz "estamos atendendo também em Hamakita" com os preços. Sem essa lista, `cidades_elegiveis` do Hamakita fica vazio e ele não aparece pra nenhum cliente automaticamente; a UENO ficaria dependendo de cadastro manual do processo por enquanto.
-- **Se Hamakita também é "só manual fora da lista" como Shizuoka, ou se atende irrestrito.** O texto de Alexandre diz "nos outros menkyou center somente carro automático" — o que sugere que Hamakita talvez só ofereça **AT**, não os dois. Mas ele também deu um preço de MT (¥85.000) pra Hamakita, o que contradiz essa leitura. Preciso desse esclarecimento antes de fixar `preco_mt_jpy` do Hamakita como ativo — ver se ele quis dizer "os *outros* centros que não são Shizuoka nem Hamakita" (ou seja, só automático em centros menores/futuros, com Hamakita sendo uma segunda exceção com os dois tipos).
-- **Se um cliente fora da zona de Shizuoka mas coberto por Hamakita deve ver as duas opções, ou só a mais barata/mais perto.** O modelo acima (seção 3) mostra todas as opções válidas por padrão — confirmar se é isso que a UENO quer ou se prefere esconder a opção mais cara.
+Nenhum dos dois pontos abaixo trava o desenvolvimento — o sistema entra no ar com defaults seguros e o Alexandre ajusta depois, direto no admin, sem precisar de deploy nem de rodada de confirmação com o time técnico.
+
+- ~~Se Hamakita oferece AT e MT, ou só AT~~ — **confirmado (2026-09-17): Hamakita oferece os dois**, automático (¥70.000) e manual (¥85.000). A frase original "nos outros menkyou center somente carro automático" se refere a centros *além* de Shizuoka e Hamakita, não a Hamakita em si. `preco_mt_jpy: 85000` do Hamakita fica ativo como já estava no seed da seção 2 — nenhuma mudança de código necessária aqui, só a confirmação.
+- **Quais cidades o Hamakita atende.** Fica como campo editável (`cidades_elegiveis` na tela `MenkyouCentersTab`, seção 4), seedado vazio. Enquanto o Alexandre não preencher, o Hamakita simplesmente não aparece automaticamente pra nenhuma cidade (a UENO cadastra o processo manualmente nesse meio-tempo, como já faz hoje) — não impede o resto da funcionalidade de ir ao ar. Quando ele decidir, ele mesmo abre a tela e cadastra a lista, sem precisar de mim.
+- **Mostrar todas as opções ou só a mais próxima quando duas áreas se sobrepõem.** Também virou uma configuração editável (`menkyou_estrategia_sobreposicao` em Preferências, seção 4) em vez de uma decisão travada em código. "Mais próxima" é definida pela ordem que o Alexandre organiza os centros no admin (campo `ordem`, já existente), não por cálculo geográfico. Default `'todas'` — que hoje é equivalente a `'mais_proxima'` de qualquer forma, porque ainda não há sobreposição entre as áreas cadastradas. Só passa a fazer diferença de verdade se um dia uma cidade for cadastrada como elegível em mais de um centro ao mesmo tempo — e mesmo aí, o Alexandre troca o comportamento sozinho, sem depender de mim.
 
 ---
 
@@ -170,16 +229,19 @@ Fora de escopo agora: geolocalização real ou cálculo de distância — é uma
 1. `packages/firebase/src/types.ts` — adicionar `MenkyouCenter`, `MenkyouCenterInsert`, campo `transmissao` em `ServicoVariacao`.
 2. `packages/firebase/src/queries/menkyou_centers.ts` — CRUD.
 3. `packages/firebase/src/pricing.ts` — `resolveMenkyouOptions`.
-4. Admin: `MenkyouCentersTab.tsx`, cadastrar os 2 centros com os valores confirmados (Hamakita com `cidades_elegiveis` vazio até a resposta da seção 6).
-5. Admin: marcar `transmissao: 'AT' | 'MT'` nas variações de carro já existentes no catálogo.
-6. Mobile: consumir `resolveMenkyouOptions` em `apps/mobile/app/(cliente)/servicos/[id].tsx`, substituindo o preço estático quando aplicável.
-7. Testar com cidades reais (Makinohara → ¥60k/¥75k; uma cidade fora da lista, ex. Fuji → só ¥75k manual em Shizuoka, mais o que resultar de Hamakita quando definido).
+4. Admin: `MenkyouCentersTab.tsx`, cadastrar os 2 centros com os valores confirmados (Hamakita entra com `cidades_elegiveis` vazio — o Alexandre preenche quando quiser, direto na tela, sem depender de nova rodada de desenvolvimento).
+5. Admin: adicionar `menkyou_estrategia_sobreposicao` em `PreferenciasTab.tsx` (default `'todas'`).
+6. Admin: marcar `transmissao: 'AT' | 'MT'` nas variações de carro já existentes no catálogo.
+7. Mobile: consumir `resolveMenkyouOptions` em `apps/mobile/app/(cliente)/servicos/[id].tsx`, substituindo o preço estático quando aplicável.
+8. Testar com cidades reais (Makinohara → ¥60k/¥75k; uma cidade fora da lista, ex. Fuji → só ¥75k manual em Shizuoka; Hamakita só aparece depois que o Alexandre cadastrar as cidades dele).
 
 ---
 
 ## 8. Critérios de aceite
 
 - [ ] Admin consegue cadastrar/editar um menkyou center com preço AT, preço MT, cidades elegíveis e a flag de "só manual fora da lista", sem precisar de deploy.
+- [ ] Admin consegue preencher/alterar a lista de cidades do Hamakita a qualquer momento, e o preço passa a valer pra essas cidades imediatamente (sem deploy).
+- [ ] Admin consegue trocar `menkyou_estrategia_sobreposicao` entre "todas" e "mais próxima" em Preferências, sem deploy.
 - [ ] Cliente de Makinohara vendo a variação "Carro AT" vê ¥60.000; vendo "Carro MT" vê ¥75.000.
 - [ ] Cliente de uma cidade fora da lista de Shizuoka, olhando "Carro AT", **não** vê preço de Shizuoka (só MT é permitido lá) — vê "sob consulta" ou a opção de Hamakita, se aplicável.
 - [ ] Alterar um preço no admin reflete no app sem precisar de nova versão do app (é dado, não código).

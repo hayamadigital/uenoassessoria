@@ -43,7 +43,7 @@ function buildLeadMessage(data: RegisterInput) {
     'Olá, visitei a UENO ASSESSORIA no evento e gostaria de receber mais informações.',
     '',
     `Nome: ${data.full_name}`,
-    `Data de nascimento: ${formatDateBR(data.data_nascimento)}`,
+    ...(data.data_nascimento ? [`Data de nascimento: ${formatDateBR(data.data_nascimento)}`] : []),
     `Cidade: ${data.cidade_jp}${data.provincia_jp ? `, ${data.provincia_jp}` : ''}`,
     `Interesse: ${buildInteresseResumo(data.interesse_categorias, data.interesse_subopcoes)}`,
     `Conheceu a UENO através de: ${labelComoConheceu(data.como_conheceu)}`,
@@ -131,7 +131,7 @@ export default function RegisterScreen() {
       await selfRegister({
         full_name: data.full_name,
         email: data.email,
-        data_nascimento: data.data_nascimento,
+        ...(data.data_nascimento ? { data_nascimento: data.data_nascimento } : {}),
         provincia_jp: data.provincia_jp,
         cidade_jp: data.cidade_jp,
         interesse_categorias: data.interesse_categorias,
@@ -225,12 +225,12 @@ export default function RegisterScreen() {
           </View>
 
           <View style={s.fieldWrap}>
-            <Text style={s.label}>DATA DE NASCIMENTO</Text>
+            <Text style={s.label}>DATA DE NASCIMENTO (OPCIONAL)</Text>
             <Controller
               control={control}
               name="data_nascimento"
               render={({ field: { onChange, value } }) => (
-                <DateField value={value} onChange={onChange} maximumDate={new Date()} />
+                <DateField value={value ?? ''} onChange={onChange} maximumDate={new Date()} />
               )}
             />
             {errors.data_nascimento && <Text style={s.errTxt}>{errors.data_nascimento.message}</Text>}
