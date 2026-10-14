@@ -10,7 +10,6 @@ import { getClienteByProfileId, updateCliente } from '@ueno/firebase/queries/cli
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { avatarPath } from '@ueno/firebase/storage'
 import { PAISES, nacionalidadeToISO } from '@ueno/utils/paises'
-import { PROFISSOES, profissaoUsaEmpresa, type ProfissaoTipo } from '@ueno/utils/profissoes'
 import { dadosPessoaisSchema } from '@ueno/utils/validators'
 import { useAuthStore } from '@/stores/auth.store'
 import { Avatar } from '@/components/Avatar'
@@ -26,10 +25,7 @@ type Form = {
   nome_japones: string
   data_nascimento: string
   nacionalidade: string
-  visto_validade: string
   data_entrada_japao: string
-  profissao_tipo: ProfissaoTipo | ''
-  profissao_empresa: string
   observacoes_cliente: string
 }
 
@@ -125,10 +121,7 @@ export default function DadosPessoaisScreen() {
     nome_japones: '',
     data_nascimento: '',
     nacionalidade: '',
-    visto_validade: '',
     data_entrada_japao: '',
-    profissao_tipo: '',
-    profissao_empresa: '',
     observacoes_cliente: '',
   })
 
@@ -145,10 +138,7 @@ export default function DadosPessoaisScreen() {
       nome_japones: cliente.nome_japones ?? '',
       data_nascimento: cliente.data_nascimento ?? '',
       nacionalidade: nacionalidadeToISO(cliente.nacionalidade) ?? cliente.nacionalidade ?? '',
-      visto_validade: cliente.visto_validade ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
-      profissao_tipo: cliente.profissao_tipo ?? '',
-      profissao_empresa: cliente.profissao_empresa ?? '',
       observacoes_cliente: cliente.observacoes_cliente ?? '',
     })
   }, [cliente])
@@ -227,10 +217,7 @@ export default function DadosPessoaisScreen() {
         nome_japones: form.nome_japones,
         data_nascimento: form.data_nascimento,
         nacionalidade: form.nacionalidade,
-        visto_validade: form.visto_validade,
         data_entrada_japao: form.data_entrada_japao,
-        profissao_tipo: form.profissao_tipo || undefined,
-        profissao_empresa: form.profissao_empresa,
         observacoes_cliente: form.observacoes_cliente,
       })
       if (!parsed.success) {
@@ -241,10 +228,7 @@ export default function DadosPessoaisScreen() {
         nome_japones: emptyToNull(form.nome_japones),
         data_nascimento: emptyToNull(form.data_nascimento),
         nacionalidade: emptyToNull(form.nacionalidade),
-        visto_validade: emptyToNull(form.visto_validade),
         data_entrada_japao: emptyToNull(form.data_entrada_japao),
-        profissao_tipo: form.profissao_tipo ? form.profissao_tipo : null,
-        profissao_empresa: emptyToNull(form.profissao_empresa),
         observacoes_cliente: emptyToNull(form.observacoes_cliente),
       }
 
@@ -303,22 +287,10 @@ export default function DadosPessoaisScreen() {
 
           <View style={s.card}>
             <View style={s.cardTitleRow}>
-              <Ionicons name="card-outline" size={18} color={colors.navy800} />
-              <Text style={s.cardTitle}>Visto e entrada no Japão</Text>
+              <Ionicons name="airplane-outline" size={18} color={colors.navy800} />
+              <Text style={s.cardTitle}>Entrada no Japão</Text>
             </View>
-            <DateField label="Validade do visto" value={form.visto_validade} onChange={(v) => updateField('visto_validade', v)} />
             <DateField label="Entrada no Japão" value={form.data_entrada_japao} onChange={(v) => updateField('data_entrada_japao', v)} maximumDate={new Date()} />
-          </View>
-
-          <View style={s.card}>
-            <View style={s.cardTitleRow}>
-              <Ionicons name="briefcase-outline" size={18} color={colors.navy800} />
-              <Text style={s.cardTitle}>Profissão</Text>
-            </View>
-            <OptionGroup label="Tipo de trabalho" value={form.profissao_tipo} onChange={(v) => updateField('profissao_tipo', v)} options={PROFISSOES} emptyLabel="Não informado" />
-            {profissaoUsaEmpresa(form.profissao_tipo) ? (
-              <Field label="Empreiteira / fabrica / empresa" value={form.profissao_empresa} onChangeText={(v) => updateField('profissao_empresa', v)} />
-            ) : null}
           </View>
 
           <View style={s.card}>

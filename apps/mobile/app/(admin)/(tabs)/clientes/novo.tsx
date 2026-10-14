@@ -17,7 +17,6 @@ const STEPS: { n: Step; label: string }[] = [
   { n: 3, label: 'Observações' },
 ]
 
-const VISTOS = ['Permanente · 永住者', 'Temporário · 定住者', 'Técnico · 技術', 'Estudante · 留学', 'Outro']
 
 function FieldLabel({ label }: { label: string }) {
   return <Text style={s.fieldLabel}>{label}</Text>
@@ -61,14 +60,11 @@ export default function NovoClienteScreen() {
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [telefone, setTelefone] = useState('')
-  const [visto, setVisto] = useState('')
   const [cidade, setCidade] = useState('')
-  const [showVistoOpts, setShowVistoOpts] = useState(false)
 
   // Step 2 — Contato
   const [whatsapp, setWhatsapp] = useState('')
   const [endereco, setEndereco] = useState('')
-  const [cpf, setCpf] = useState('')
   const [nascimento, setNascimento] = useState('')
 
   // Step 3 — Serviço
@@ -84,8 +80,8 @@ export default function NovoClienteScreen() {
     try {
       const create = httpsCallable<Record<string, string>, { cliente_id: string; reset_link: string }>(functions, 'createCliente')
       const { data } = await create({ full_name: nome.trim(), email: email.trim(), whatsapp,
-        phone: telefone, visto_tipo: visto, cidade_jp: cidade, endereco_jp: endereco,
-        cpf, data_nascimento: nascimento, observacoes_internas: observacoes })
+        phone: telefone, cidade_jp: cidade, endereco_jp: endereco,
+        data_nascimento: nascimento, observacoes_internas: observacoes })
       await cache.invalidateQueries({ queryKey: ['clientes'] })
       if (enviaBV) {
         try { await Share.share({ message: `Olá, ${nome.trim()}! Crie sua senha para acessar a Ueno Assessoria: ${data.reset_link}` }) }
@@ -153,28 +149,6 @@ export default function NovoClienteScreen() {
               <FieldInput placeholder="+81 80-0000-0000" value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" />
             </View>
             <View>
-              <FieldLabel label="Visto" />
-              <TouchableOpacity style={s.fieldWrap} onPress={() => setShowVistoOpts((v) => !v)} activeOpacity={0.8}>
-                <Text style={[s.fieldInput, !visto && { color: colors.ink400 }]}>
-                  {visto || 'Selecione'}
-                </Text>
-                <Ionicons name={showVistoOpts ? 'chevron-up' : 'chevron-down'} size={14} color={colors.ink400} />
-              </TouchableOpacity>
-              {showVistoOpts && (
-                <View style={s.vistoOpts}>
-                  {VISTOS.map((v) => (
-                    <TouchableOpacity
-                      key={v}
-                      style={[s.vistoOpt, visto === v && s.vistoOptActive]}
-                      onPress={() => { setVisto(v); setShowVistoOpts(false) }}
-                    >
-                      <Text style={[s.vistoOptTxt, visto === v && s.vistoOptTxtActive]}>{v}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-            <View>
               <FieldLabel label="Cidade · Província" />
               <FieldInput placeholder="Toyota-shi · Aichi" value={cidade} onChangeText={setCidade} icon="location-outline" />
             </View>
@@ -190,10 +164,6 @@ export default function NovoClienteScreen() {
             <View>
               <FieldLabel label="Endereço completo (Japão)" />
               <FieldInput placeholder="Aichi-ken, Toyota-shi..." value={endereco} onChangeText={setEndereco} icon="home-outline" />
-            </View>
-            <View>
-              <FieldLabel label="CPF" />
-              <FieldInput placeholder="000.000.000-00" value={cpf} onChangeText={setCpf} keyboardType="phone-pad" />
             </View>
             <View>
               <FieldLabel label="Data de nascimento" />
@@ -292,14 +262,6 @@ const s = StyleSheet.create({
   },
   fieldInput: { flex: 1, fontSize: 13, color: colors.ink900 },
 
-  vistoOpts: {
-    backgroundColor: colors.white, borderRadius: 11, marginTop: 4,
-    borderWidth: 1, borderColor: colors.ink100, overflow: 'hidden',
-  },
-  vistoOpt: { padding: 12, borderBottomWidth: 1, borderBottomColor: colors.ink100 },
-  vistoOptActive: { backgroundColor: colors.navy50 },
-  vistoOptTxt: { fontSize: 13, color: colors.ink700 },
-  vistoOptTxtActive: { color: colors.navy800, fontWeight: '600' },
 
   toggleRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

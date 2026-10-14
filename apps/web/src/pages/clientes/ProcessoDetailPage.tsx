@@ -79,7 +79,6 @@ import { createPagamento, listPagamentos, upsertParcelas } from '@ueno/firebase/
 import { processoSchema, etapaSchema, type ProcessoInput, type EtapaInput } from '@ueno/utils/validators'
 import { formatDateJST } from '@ueno/utils/date'
 import { nomePais } from '@ueno/utils/paises'
-import { labelProfissao } from '@ueno/utils/profissoes'
 import { useAuthStore } from '@/stores/auth.store'
 import type {
   ProcessoEtapa,
@@ -1323,25 +1322,14 @@ export function ProcessoDetailPage() {
                         items: [
                           ['Telefone', clienteProcesso.profile.phone],
                           ['WhatsApp', clienteProcesso.profile.whatsapp],
-                          ['CPF', clienteProcesso.cpf],
                           ['Data de nascimento', clienteProcesso.data_nascimento],
                           ['Nome em japonês', clienteProcesso.nome_japones],
                         ],
                       },
                       {
-                        title: 'Visto e Entrada no Japão',
+                        title: 'Entrada no Japão',
                         items: [
-                          ['Zairyu Card', clienteProcesso.zairyu_card],
-                          ['Tipo de visto', clienteProcesso.visto_tipo],
-                          ['Validade do visto', clienteProcesso.visto_validade],
                           ['Entrada no Japão', clienteProcesso.data_entrada_japao],
-                        ],
-                      },
-                      {
-                        title: 'Trabalho',
-                        items: [
-                          ['Profissão', labelProfissao(clienteProcesso.profissao_tipo)],
-                          ['Empresa', clienteProcesso.profissao_empresa],
                         ],
                       },
                       {

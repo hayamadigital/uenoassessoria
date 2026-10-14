@@ -82,14 +82,6 @@ const STATUS_COLOR: Record<StatusProcesso, string> = {
   cancelado: colors.err,
 }
 
-const PROFISSAO_LABEL: Record<string, string> = {
-  autonomo: 'Autônomo',
-  nao_trabalha: 'Não trabalha',
-  empreiteira: 'Empreiteira',
-  fabrica: 'Fábrica',
-  outros: 'Outros',
-}
-
 const TIPO_RESPONSAVEL_LABEL: Record<string, string> = {
   pessoal: 'Pessoal',
   parente: 'Parente',
@@ -649,13 +641,8 @@ export default function ClienteDetalheScreen() {
       ['E-mail', cliente.profile?.email],
       ['Telefone', cliente.profile?.phone],
       ['WhatsApp', cliente.profile?.whatsapp],
-      ['CPF', cliente.cpf],
       ['Nascimento', cliente.data_nascimento],
       ['Nacionalidade', cliente.nacionalidade],
-      ['Zairyu Card', cliente.zairyu_card],
-      ['Tipo de visto', cliente.visto_tipo],
-      ['Validade do visto', cliente.visto_validade],
-      ['Profissão', cliente.profissao_tipo],
       ['CEP', cliente.cep_jp],
       ['Província', cliente.provincia_jp],
       ['Cidade', cliente.cidade_jp],
@@ -997,27 +984,7 @@ export default function ClienteDetalheScreen() {
               <EditableField label="Nome em Japonês (フリガナ)" value={clienteForm.nome_japones} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nome_japones', v)} placeholder="Katakana ou Kanji" />
               <EditableDateField label="Data de Nascimento" value={editingSection === 'pessoal' ? clienteForm.data_nascimento : cliente.data_nascimento} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('data_nascimento', v)} maximumDate={new Date()} />
               <EditableField label="Nacionalidade" value={editingSection === 'pessoal' ? clienteForm.nacionalidade : nomePais(cliente.nacionalidade)} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('nacionalidade', v)} placeholder="BR, JP, PT..." />
-              <EditableField label="CPF" value={clienteForm.cpf} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('cpf', v)} keyboardType="number-pad" />
               <EditableField label="Email" value={profileForm.email} editing={editingSection === 'pessoal'} onChange={(v) => updateProfileField('email', v)} keyboardType="email-address" />
-              <EditableField label="Zairyu Card / Japanese ID" value={clienteForm.zairyu_card} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('zairyu_card', v)} placeholder="Número do cartão" />
-              <EditableField label="Tipo de Visto" value={clienteForm.visto_tipo} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('visto_tipo', v)} placeholder="Ex: Cônjuge, Trabalho, Estudante..." />
-              <EditableDateField
-                label="Validade do Visto / Documento"
-                value={editingSection === 'pessoal' ? clienteForm.visto_validade : cliente.visto_validade}
-                editing={editingSection === 'pessoal'}
-                onChange={(v) => updateClienteField('visto_validade', v)}
-              />
-              <View style={s.formSubsection}>
-                <Text style={s.formSubsectionTitle}>Profissão / Trabalho</Text>
-              </View>
-              <EditableField
-                label="Tipo de Trabalho"
-                value={editingSection === 'pessoal' ? clienteForm.profissao_tipo : cliente.profissao_tipo ? PROFISSAO_LABEL[cliente.profissao_tipo] ?? cliente.profissao_tipo : null}
-                editing={editingSection === 'pessoal'}
-                onChange={(v) => updateClienteField('profissao_tipo', v)}
-                placeholder="Selecionar"
-              />
-              <EditableField label="Empresa" value={clienteForm.profissao_empresa} editing={editingSection === 'pessoal'} onChange={(v) => updateClienteField('profissao_empresa', v)} />
             </View>
             {editingSection === 'pessoal' && (
               <TouchableOpacity style={s.saveBtn} onPress={() => saveMutation.mutate()} disabled={saveMutation.isPending} activeOpacity={0.85}>

@@ -43,7 +43,7 @@ export async function listClientes(
     .filter((c) => {
       if (filters.search) {
         const nome = profileMap[c.profile_id]?.full_name?.toLowerCase() ?? ''
-        return nome.includes(filters.search!.toLowerCase()) || (c.cpf ?? '').includes(filters.search!)
+        return nome.includes(filters.search!.toLowerCase())
       }
       return true
     })

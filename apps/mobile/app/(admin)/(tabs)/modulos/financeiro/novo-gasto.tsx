@@ -84,7 +84,7 @@ export default function NovoGastoScreen() {
         const blob = await resp.blob()
         const fileName = fotoUri.split('/').pop() ?? 'comprovante.jpg'
         const path = gastoComprovantePath(fileName)
-        comprovante_url = await uploadFile(storage, path, blob)
+        comprovante_url = await uploadFile(storage, path, blob, blob.type || 'image/jpeg')
         setUploading(false)
       }
 

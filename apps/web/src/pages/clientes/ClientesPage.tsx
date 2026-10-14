@@ -69,7 +69,7 @@ export function ClientesPage() {
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('active')
   const [createdFrom, setCreatedFrom] = useState('')
   const [createdTo, setCreatedTo] = useState('')
-  const [sort, setSort] = useState<SortState<'nome' | 'email' | 'cpf' | 'status' | 'cidade' | 'created_at'>>({
+  const [sort, setSort] = useState<SortState<'nome' | 'email' | 'status' | 'cidade' | 'created_at'>>({
     key: 'created_at',
     direction: 'desc',
   })
@@ -95,7 +95,6 @@ export function ClientesPage() {
         [
           cliente.profile.full_name,
           cliente.profile.email,
-          cliente.cpf,
           cliente.cidade_jp,
           cliente.nacionalidade,
           nomePais(cliente.nacionalidade),
@@ -109,7 +108,6 @@ export function ClientesPage() {
     return sortBy(filtered, sort, {
       nome: (cliente) => cliente.profile.full_name,
       email: (cliente) => cliente.profile.email,
-      cpf: (cliente) => cliente.cpf,
       status: (cliente) => statusLabel[cliente.status_processo],
       cidade: (cliente) => cliente.cidade_jp,
       created_at: (cliente) => cliente.created_at,
@@ -137,7 +135,7 @@ export function ClientesPage() {
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por nome ou CPF..."
+              placeholder="Buscar por nome ou email..."
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -192,7 +190,6 @@ export function ClientesPage() {
                 <tr>
                   <SortableTh sort={sort} sortKey="nome" onSort={(key) => setSort(nextSort(sort, key))}>Nome</SortableTh>
                   <SortableTh sort={sort} sortKey="email" onSort={(key) => setSort(nextSort(sort, key))}>Email</SortableTh>
-                  <SortableTh sort={sort} sortKey="cpf" onSort={(key) => setSort(nextSort(sort, key))}>CPF</SortableTh>
                   <SortableTh sort={sort} sortKey="status" onSort={(key) => setSort(nextSort(sort, key))}>Status</SortableTh>
                   <SortableTh sort={sort} sortKey="cidade" onSort={(key) => setSort(nextSort(sort, key))}>Cidade (JP)</SortableTh>
                   <SortableTh sort={sort} sortKey="created_at" onSort={(key) => setSort(nextSort(sort, key))}>Cadastrado em</SortableTh>
@@ -202,7 +199,7 @@ export function ClientesPage() {
               <tbody className="divide-y">
                 {clientesFiltrados.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                       Nenhum cliente encontrado
                     </td>
                   </tr>
@@ -219,7 +216,6 @@ export function ClientesPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{cliente.profile.email}</td>
-                    <td className="px-4 py-3">{cliente.cpf ?? '—'}</td>
                     <td className="px-4 py-3">
                       <Badge variant={statusBadgeVariant[cliente.status_processo]}>
                         {statusLabel[cliente.status_processo]}

@@ -45,7 +45,7 @@ export default function ClientesAdminScreen() {
 
   const filtrados = (clientes ?? []).filter((c) => {
     const nome = c.profile?.full_name?.toLowerCase() ?? ''
-    const matchBusca = busca === '' || nome.includes(busca.toLowerCase()) || (c.cpf ?? '').includes(busca)
+    const matchBusca = busca === '' || nome.includes(busca.toLowerCase())
     const matchFiltro =
       filtro === 'todos' ||
       (filtro === 'ativos' && ATIVOS.includes(c.status_processo)) ||
@@ -133,12 +133,6 @@ export default function ClientesAdminScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
                       <Ionicons name="location-outline" size={11} color={colors.ink400} />
                       <Text style={s.cardMeta}>{c.cidade_jp ?? '—'}</Text>
-                      {c.cpf ? (
-                        <>
-                          <View style={s.dot} />
-                          <Text style={s.cardMeta}>{c.cpf}</Text>
-                        </>
-                      ) : null}
                     </View>
                   </View>
                   <View style={[s.statusChip, { backgroundColor: cor + '18' }]}>

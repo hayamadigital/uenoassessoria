@@ -153,10 +153,11 @@ export async function uploadDocumento(
   clienteId: string,
   file: File | Blob,
   fileName: string,
+  contentType?: string,
 ): Promise<string> {
   const path = `documentos/${clienteId}/${Date.now()}-${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`
   const storageRef = ref(storage, path)
-  await uploadBytes(storageRef, file)
+  await uploadBytes(storageRef, file, contentType ? { contentType } : undefined)
   return path
 }
 

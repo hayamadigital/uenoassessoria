@@ -39,7 +39,7 @@ import { nacionalidadeToISO } from '@ueno/utils/paises'
 import { getServico } from '@ueno/firebase/queries/servicos'
 import { listVariacoesByServico } from '@ueno/firebase/queries/servico_variacoes'
 import { listEtapaTemplatesByServico } from '@ueno/firebase/queries/etapa_templates'
-import type { ClienteInsert, DocumentoTemplate, EtapaTemplate, ProfissaoTipo, ResponsavelEtapa, Servico, ServicoVariacao } from '@ueno/firebase'
+import type { ClienteInsert, DocumentoTemplate, EtapaTemplate, ResponsavelEtapa, Servico, ServicoVariacao } from '@ueno/firebase'
 
 const responsavelLabel: Record<ResponsavelEtapa, string> = {
   cliente: 'Cliente',
@@ -68,7 +68,6 @@ type ContractStep = 'pessoais' | 'contatos' | 'habilitacao' | 'visto' | 'enderec
 
 type ContractForm = {
   full_name: string
-  cpf: string
   data_nascimento: string
   nome_japones: string
   nacionalidade: string
@@ -79,13 +78,8 @@ type ContractForm = {
   cnh_categoria: string
   cnh_validade: string
   cnh_estado_emissor: string
-  profissao_tipo: ProfissaoTipo | ''
-  profissao_empresa: string
   observacoes: string
   data_entrada_japao: string
-  visto_tipo: string
-  visto_validade: string
-  zairyu_card: string
   cep_jp: string
   provincia_jp: string
   cidade_jp: string
@@ -101,14 +95,13 @@ const CONTRACT_STEPS: Array<{ key: ContractStep; label: string; icon: keyof type
   { key: 'pessoais', label: 'Dados', icon: 'person-outline' },
   { key: 'contatos', label: 'Contato', icon: 'call-outline' },
   { key: 'habilitacao', label: 'CNH', icon: 'card-outline' },
-  { key: 'visto', label: 'Visto', icon: 'id-card-outline' },
+  { key: 'visto', label: 'Entrada', icon: 'airplane-outline' },
   { key: 'endereco', label: 'Endereço', icon: 'location-outline' },
   { key: 'documentos', label: 'Docs', icon: 'cloud-upload-outline' },
 ]
 
 const emptyForm: ContractForm = {
   full_name: '',
-  cpf: '',
   data_nascimento: '',
   nome_japones: '',
   nacionalidade: '',
@@ -119,13 +112,8 @@ const emptyForm: ContractForm = {
   cnh_categoria: '',
   cnh_validade: '',
   cnh_estado_emissor: '',
-  profissao_tipo: '',
-  profissao_empresa: '',
   observacoes: '',
   data_entrada_japao: '',
-  visto_tipo: '',
-  visto_validade: '',
-  zairyu_card: '',
   cep_jp: '',
   provincia_jp: '',
   cidade_jp: '',
@@ -140,6 +128,18 @@ const emptyForm: ContractForm = {
 function emptyToNull(value: string) {
   const trimmed = value.trim()
   return trimmed ? trimmed : null
+}
+
+// As regras do Storage só aceitam PDF/imagem; sem o tipo explícito o blob pode subir como
+// application/octet-stream e ser negado.
+function documentoContentType(file: DocumentPicker.DocumentPickerAsset): string {
+  if (file.mimeType) return file.mimeType
+  const ext = (file.name ?? file.uri).split('.').pop()?.toLowerCase()
+  if (ext === 'png') return 'image/png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'heic') return 'image/heic'
+  if (ext === 'webp') return 'image/webp'
+  return 'application/pdf'
 }
 
 function localUriToBlob(uri: string): Promise<Blob> {
@@ -240,7 +240,6 @@ export default function ServicoDetailScreen() {
     if (!cliente) return
     setContractForm({
       full_name: cliente.profile.full_name ?? '',
-      cpf: cliente.cpf ?? '',
       data_nascimento: cliente.data_nascimento ?? '',
       nome_japones: cliente.nome_japones ?? '',
       nacionalidade: cliente.nacionalidade ?? '',
@@ -251,13 +250,8 @@ export default function ServicoDetailScreen() {
       cnh_categoria: cliente.cnh_categoria ?? '',
       cnh_validade: cliente.cnh_validade ?? '',
       cnh_estado_emissor: cliente.cnh_estado_emissor ?? '',
-      profissao_tipo: cliente.profissao_tipo ?? '',
-      profissao_empresa: cliente.profissao_empresa ?? '',
       observacoes: cliente.observacoes_cliente ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
-      visto_tipo: cliente.visto_tipo ?? '',
-      visto_validade: cliente.visto_validade ?? '',
-      zairyu_card: cliente.zairyu_card ?? '',
       cep_jp: cliente.cep_jp ?? '',
       provincia_jp: cliente.provincia_jp ?? '',
       cidade_jp: cliente.cidade_jp ?? '',
@@ -294,17 +288,11 @@ export default function ServicoDetailScreen() {
       const clienteAtual = cliente
 
       const clientePayload: Partial<ClienteInsert> = {
-        cpf: emptyToNull(contractForm.cpf),
         data_nascimento: emptyToNull(contractForm.data_nascimento),
         nome_japones: emptyToNull(contractForm.nome_japones),
         nacionalidade: nacionalidadeToISO(contractForm.nacionalidade) ?? emptyToNull(contractForm.nacionalidade),
-        profissao_tipo: contractForm.profissao_tipo || null,
-        profissao_empresa: emptyToNull(contractForm.profissao_empresa),
         observacoes_cliente: emptyToNull(contractForm.observacoes),
         data_entrada_japao: emptyToNull(contractForm.data_entrada_japao),
-        visto_tipo: emptyToNull(contractForm.visto_tipo),
-        visto_validade: emptyToNull(contractForm.visto_validade),
-        zairyu_card: emptyToNull(contractForm.zairyu_card),
         cep_jp: emptyToNull(contractForm.cep_jp),
         provincia_jp: emptyToNull(contractForm.provincia_jp),
         cidade_jp: emptyToNull(contractForm.cidade_jp),
@@ -363,7 +351,7 @@ export default function ServicoDetailScreen() {
           cliente_id: clienteAtual.id,
           data_viagem: dataEntrada,
           tipo: 'entrada',
-          observacao: emptyToNull(contractForm.visto_tipo),
+          observacao: null,
         })
       }
 
@@ -374,7 +362,13 @@ export default function ServicoDetailScreen() {
         const blob = await localUriToBlob(file.uri)
         let path: string
         try {
-          path = await uploadDocumento(storage, clienteAtual.id, blob, file.name ?? `${template?.nome ?? 'documento'}.pdf`)
+          path = await uploadDocumento(
+            storage,
+            clienteAtual.id,
+            blob,
+            file.name ?? `${template?.nome ?? 'documento'}.pdf`,
+            documentoContentType(file),
+          )
         } finally {
           ;(blob as Blob & { close?: () => void }).close?.()
         }
@@ -720,7 +714,6 @@ export default function ServicoDetailScreen() {
               {currentWizardStep.key === 'pessoais' ? (
                 <WizardCard icon="person-outline" title="Dados pessoais">
                   <WizardField label="Nome completo" value={contractForm.full_name} onChangeText={(value) => updateContractField('full_name', value)} />
-                  <WizardField label="CPF" value={contractForm.cpf} onChangeText={(value) => updateContractField('cpf', value)} placeholder="000.000.000-00" keyboardType="number-pad" />
                   <DateField label="Data de nascimento" value={contractForm.data_nascimento} onChange={(value) => updateContractField('data_nascimento', value)} maximumDate={new Date()} />
                   <WizardField label="Nome em japones" value={contractForm.nome_japones} onChangeText={(value) => updateContractField('nome_japones', value)} placeholder="Katakana ou Kanji" />
                   <WizardField label="Nacionalidade" value={contractForm.nacionalidade} onChangeText={(value) => updateContractField('nacionalidade', value)} placeholder="Brasil" />
@@ -751,37 +744,11 @@ export default function ServicoDetailScreen() {
                   <WizardField label="Categoria" value={contractForm.cnh_categoria} onChangeText={(value) => updateContractField('cnh_categoria', value)} placeholder="Ex: B, AB" />
                   <DateField label="Validade" value={contractForm.cnh_validade} onChange={(value) => updateContractField('cnh_validade', value)} />
                   <WizardField label="Estado emissor" value={contractForm.cnh_estado_emissor} onChangeText={(value) => updateContractField('cnh_estado_emissor', value)} placeholder="Ex: SP" />
-                  <Text style={s.wizardLabel}>Tipo de trabalho</Text>
-                  <View style={s.optionGrid}>
-                    {([
-                      ['', 'Selecionar'],
-                      ['autonomo', 'Autônomo'],
-                      ['nao_trabalha', 'Não trabalha'],
-                      ['empreiteira', 'Empreiteira'],
-                      ['fabrica', 'Fábrica'],
-                      ['outros', 'Outros'],
-                    ] as const).map(([value, label]) => {
-                      const active = contractForm.profissao_tipo === value
-                      return (
-                        <TouchableOpacity
-                          key={value || 'empty'}
-                          style={[s.optionChip, active && s.optionChipActive]}
-                          onPress={() => updateContractField('profissao_tipo', value as ProfissaoTipo | '')}
-                        >
-                          <Text style={[s.optionChipText, active && s.optionChipTextActive]}>{label}</Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-                  <WizardField label="Empresa / empreiteira / fábrica" value={contractForm.profissao_empresa} onChangeText={(value) => updateContractField('profissao_empresa', value)} />
                 </WizardCard>
               ) : null}
 
               {currentWizardStep.key === 'visto' ? (
-                <WizardCard icon="id-card-outline" title="Visto e entrada no Japão">
-                  <WizardField label="Zairyu Card / Japanese ID" value={contractForm.zairyu_card} onChangeText={(value) => updateContractField('zairyu_card', value)} />
-                  <WizardField label="Tipo de visto" value={contractForm.visto_tipo} onChangeText={(value) => updateContractField('visto_tipo', value)} placeholder="Conjuge, Trabalho, Estudante..." />
-                  <DateField label="Validade do visto" value={contractForm.visto_validade} onChange={(value) => updateContractField('visto_validade', value)} />
+                <WizardCard icon="airplane-outline" title="Entrada no Japão">
                   <DateField label="Data de entrada no Japão" value={contractForm.data_entrada_japao} onChange={(value) => updateContractField('data_entrada_japao', value)} maximumDate={new Date()} />
                 </WizardCard>
               ) : null}

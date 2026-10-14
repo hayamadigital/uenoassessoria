@@ -8,12 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { db, storage } from '@/lib/firebase'
+import { auth, db, storage } from '@/lib/firebase'
 import { uploadFile, avatarPath } from '@ueno/firebase/storage'
 import { updateCliente } from '@ueno/firebase/queries/clientes'
 import { updateProfile } from '@ueno/firebase/queries/perfis'
 import { dadosPessoaisSchema, type DadosPessoaisInput } from '@ueno/utils/validators'
-import { PROFISSOES } from '@ueno/utils/profissoes'
 import { PAISES } from '@/lib/paises'
 import type { ClienteWithProfile } from '@ueno/firebase'
 
@@ -39,7 +38,10 @@ export function ClienteDadosPessoaisTab() {
 
     try {
       const ext = file.name.split('.').pop()
-      const path = avatarPath(cliente.profile_id, `avatar.${ext}`)
+      // As regras do Storage só deixam gravar em avatares/{uid do próprio usuário}; por isso a
+      // foto enviada pelo admin fica na pasta do admin (mesmo padrão do app admin).
+      const ownerUid = auth.currentUser?.uid ?? cliente.profile_id
+      const path = avatarPath(ownerUid, `cliente-${cliente.profile_id}-avatar-${Date.now()}.${ext}`)
 
       const publicUrl = await uploadFile(storage, path, file)
 
@@ -56,7 +58,6 @@ export function ClienteDadosPessoaisTab() {
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<DadosPessoaisInput>({
     resolver: zodResolver(dadosPessoaisSchema),
@@ -65,18 +66,10 @@ export function ClienteDadosPessoaisTab() {
       nome_japones: cliente.nome_japones ?? '',
       data_nascimento: cliente.data_nascimento ?? '',
       nacionalidade: cliente.nacionalidade ?? '',
-      cpf: cliente.cpf ?? '',
-      zairyu_card: cliente.zairyu_card ?? '',
-      visto_tipo: cliente.visto_tipo ?? '',
-      visto_validade: cliente.visto_validade ?? '',
       data_entrada_japao: cliente.data_entrada_japao ?? '',
-      profissao_tipo: cliente.profissao_tipo ?? undefined,
-      profissao_empresa: cliente.profissao_empresa ?? '',
       observacoes_internas: cliente.observacoes_internas ?? cliente.observacoes ?? '',
     },
   })
-
-  const profissaoTipo = watch('profissao_tipo')
 
   const mutation = useMutation({
     mutationFn: async (data: DadosPessoaisInput) => {
@@ -84,14 +77,8 @@ export function ClienteDadosPessoaisTab() {
         updateCliente(db, cliente.id, {
           nome_japones: data.nome_japones || null,
           nacionalidade: data.nacionalidade || null,
-          cpf: data.cpf || null,
           data_nascimento: data.data_nascimento || null,
-          zairyu_card: data.zairyu_card || null,
-          visto_tipo: data.visto_tipo || null,
-          visto_validade: data.visto_validade || null,
           data_entrada_japao: data.data_entrada_japao || null,
-          profissao_tipo: data.profissao_tipo ?? null,
-          profissao_empresa: data.profissao_empresa || null,
           observacoes_internas: data.observacoes_internas || null,
         }),
         updateProfile(db, cliente.profile_id, { full_name: data.full_name }),
@@ -178,27 +165,8 @@ export function ClienteDadosPessoaisTab() {
             </select>
           </div>
           <div className="space-y-2">
-            <Label>CPF</Label>
-            <Input {...register('cpf')} placeholder="000.000.000-00" />
-            {errors.cpf && (
-              <p className="text-xs text-destructive">{errors.cpf.message}</p>
-            )}
-          </div>
-          <div className="space-y-2">
             <Label>Email</Label>
             <Input value={cliente.profile.email} disabled />
-          </div>
-          <div className="space-y-2">
-            <Label>Zairyu Card / Japanese ID</Label>
-            <Input {...register('zairyu_card')} placeholder="Número do cartão" />
-          </div>
-          <div className="space-y-2">
-            <Label>Tipo de Visto</Label>
-            <Input {...register('visto_tipo')} placeholder="Ex: Cônjuge, Trabalho, Estudante..." />
-          </div>
-          <div className="space-y-2">
-            <Label>Validade do Visto / Documento</Label>
-            <Input type="date" {...register('visto_validade')} />
           </div>
           <div className="space-y-2">
             <Label>Data de Entrada no Japão</Label>
@@ -207,39 +175,7 @@ export function ClienteDadosPessoaisTab() {
         </CardContent>
       </Card>
 
-      {/* Bloco 2: Profissão */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Profissão / Trabalho</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Tipo de Trabalho</Label>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              {...register('profissao_tipo')}
-            >
-              <option value="">Selecionar</option>
-              {PROFISSOES.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {profissaoTipo && profissaoTipo !== 'nao_trabalha' && (
-            <div className="space-y-2">
-              <Label>Empreiteira / Fábrica / Empresa</Label>
-              <Input
-                {...register('profissao_empresa')}
-                placeholder="Nome da empresa"
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Bloco 3: Observações internas */}
+      {/* Bloco 2: Observações internas */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Observações Internas</CardTitle>

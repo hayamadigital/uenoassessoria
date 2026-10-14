@@ -10,9 +10,10 @@ export async function uploadFile(
   storage: FirebaseStorage,
   path: string,
   file: File | Blob,
+  contentType?: string,
 ): Promise<string> {
   const storageRef = ref(storage, path)
-  await uploadBytes(storageRef, file)
+  await uploadBytes(storageRef, file, contentType ? { contentType } : undefined)
   return getDownloadURL(storageRef)
 }
 
