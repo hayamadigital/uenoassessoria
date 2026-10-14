@@ -28,7 +28,7 @@
     "cancelado": "Cancelled"
   },
   "no_clients": "No clients registered",
-  "search_placeholder": "Search by name or CPF",
+  "search_placeholder": "Search by name",
   "filter_by_status": "Filter by status",
   "filter_by_instructor": "Filter by instructor",
   "timeline": "Process History",

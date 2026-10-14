@@ -28,7 +28,7 @@
     "cancelado": "Cancelado"
   },
   "no_clients": "Nenhum cliente cadastrado",
-  "search_placeholder": "Buscar por nome ou CPF",
+  "search_placeholder": "Buscar por nome",
   "filter_by_status": "Filtrar por status",
   "filter_by_instructor": "Filtrar por instrutor",
   "timeline": "Histórico do Processo",
